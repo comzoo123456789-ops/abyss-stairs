@@ -344,6 +344,9 @@
     var zone = DATA.zoneAt(this.depth);
     if (zone.props && zone.props.length) {
       lv.props.fill(0);
+      /* 굴림에서 뺄 횃불을 셈에 넣지 않은 개수 */
+      var noTorch = zone.props.length - (zone.props.indexOf("torch") >= 0 ? 1 : 0);
+      if (noTorch < 1) noTorch = zone.props.length;
       var floors = 0;
       for (i = 0; i < lv.tiles.length; i++) if (lv.tiles[i] === D.FLOOR) floors++;
       var want = Math.round(floors * 0.04);
@@ -355,7 +358,38 @@
         if (lv.traps[pid]) continue;
         if (spot.x === lv.downAt.x && spot.y === lv.downAt.y) continue;
         if (spot.x === lv.upAt.x && spot.y === lv.upAt.y) continue;
-        lv.props[pid] = 1 + Math.floor(this.rng() * zone.props.length);
+        /* ⚠ 횃불은 이 굴림에서 **뺀다.** 위 칸이 벽인 자리에만 놓을 수 있어
+         *   여기서 같이 굴리면 대부분 버려진다(실측 층당 1.4개 — 눈에 안 띈다).
+         *   아래에서 따로 놓는다. */
+        var pick = 1 + Math.floor(this.rng() * noTorch);
+        lv.props[pid] = pick;
+      }
+
+      /* 벽 횃불 — 따로 놓는다.
+       * ⚠ **위 칸이 벽인 자리**에만. 방 한가운데 떠 있으면 벽에 걸린 것으로
+       *   안 읽히고 주우러 갈 물건처럼 보인다.
+       * ⚠ 서로 너무 붙으면 빛이 겹쳐 한 덩어리가 된다 — 네 칸은 띄운다.
+       * ⚠ 층당 목표를 정해 두고 시도 횟수를 넉넉히 준다. 굴림에 맡기면
+       *   층마다 0개에서 8개까지 들쭉날쭉해 어떤 층은 아예 깜깜하다. */
+      var ti = zone.props.indexOf("torch") + 1;
+      if (ti > 0) {
+        var placed = [], wantT = 5;
+        for (i = 0; i < wantT * 24 && placed.length < wantT; i++) {
+          spot = D.randomFloor(lv, this.rng, null, null);
+          if (!spot) continue;
+          var tid = lv.idx(spot.x, spot.y);
+          if (lv.tiles[tid] !== D.FLOOR || lv.props[tid] || lv.traps[tid]) continue;
+          if (!lv.blocked(spot.x, spot.y - 1)) continue;
+          if (spot.x === lv.downAt.x && spot.y === lv.downAt.y) continue;
+          if (spot.x === lv.upAt.x && spot.y === lv.upAt.y) continue;
+          var near = false;
+          for (var t = 0; t < placed.length; t++) {
+            if (Math.abs(placed[t].x - spot.x) + Math.abs(placed[t].y - spot.y) < 5) { near = true; break; }
+          }
+          if (near) continue;
+          lv.props[tid] = ti;
+          placed.push({ x: spot.x, y: spot.y });
+        }
       }
     }
 

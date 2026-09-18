@@ -669,6 +669,22 @@
     /* 1-a) 구역 장식 — 바닥 바로 위, 함정·아이템보다 **아래**다.
      * ⚠ 순서를 바꾸면 물웅덩이가 아이템을 덮는다. 장식은 언제나 맨 밑이다. */
     if (lv.props && zone.props) {
+      /* 횃불 빛을 **먼저** 깐다. 그림보다 위에 깔면 불이 빛에 묻힌다.
+       * ⚠ 보이는 칸에만 깐다. 기억으로만 아는 자리까지 밝히면 지금 보이는 곳과
+       *   구별이 안 된다(안개의 뜻이 사라진다). */
+      for (y = y0; y <= y1; y++) {
+        for (x = x0; x <= x1; x++) {
+          id = lv.idx(x, y);
+          if (!lv.visible[id] || !lv.props[id]) continue;
+          if (zone.props[(lv.props[id] - 1) % zone.props.length] !== "torch") continue;
+          var tcx = x * TILE + ox + TILE / 2, tcy = y * TILE + oy + 8;
+          var tg = ctx.createRadialGradient(tcx, tcy, 2, tcx, tcy, TILE * 2.1);
+          tg.addColorStop(0, "rgba(255, 176, 74, .30)");
+          tg.addColorStop(1, "rgba(255, 176, 74, 0)");
+          ctx.fillStyle = tg;
+          ctx.fillRect(tcx - TILE * 2.1, tcy - TILE * 2.1, TILE * 4.2, TILE * 4.2);
+        }
+      }
       for (y = y0; y <= y1; y++) {
         for (x = x0; x <= x1; x++) {
           id = lv.idx(x, y);

@@ -1092,16 +1092,21 @@ kbd {
 .shop-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 .shop-head h2 { margin: 0; flex: 0 0 auto; }
 .shop-gold { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
+.shop-gold { display: inline-flex; align-items: center; gap: 4px; }
 .shop-gold b { font-family: var(--mono); font-size: 16px; color: var(--gold); }
 
-.shop-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+/* ⚠ 좌우 두 열 사이에 **세로 구분선**을 준다. 파는 것과 파는 내 물건이
+ *   같은 톤으로 붙어 있어 어디까지가 어느 쪽인지 안 읽혔다(제안서 지적). */
+.shop-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.shop-cols > :first-child { padding-right: 14px; }
+.shop-cols > :last-child { padding-left: 14px; border-left: 2px solid var(--line); }
 .shop-cols > * { min-width: 0; }
 .shop-list { display: flex; flex-direction: column; gap: 4px; max-height: 52vh; overflow-y: auto; }
 .shop-list .empty { font-size: 12px; color: var(--ink-dim); padding: 8px 0; }
 
 .shop-row {
   display: grid;
-  grid-template-columns: 34px 1fr auto;
+  grid-template-columns: 38px 1fr auto;
   grid-template-areas: "kind nm cost" "kind ds cost";
   gap: 0 8px;
   padding: 7px 10px;
@@ -1114,11 +1119,16 @@ kbd {
 }
 .shop-row > * { min-width: 0; }
 .shop-row:hover:not([disabled]) { border-color: var(--gold); background: #23202b; }
+/* 등급 색 상자 — 글자보다 색이 먼저 읽힌다 */
 .shop-kind {
   grid-area: kind; align-self: center;
   font-size: 9px; letter-spacing: .06em; color: var(--ink-dim);
-  border: 1px solid var(--line); border-radius: 0; padding: 1px 0; text-align: center;
+  border: 2px solid var(--line); border-radius: 0; padding: 3px 0; text-align: center;
+  background: var(--panel);
 }
+.shop-row.rar-magic  .shop-kind { border-color: #3c5f84; color: #5b8ec4; }
+.shop-row.rar-rare   .shop-kind { border-color: #8a7b2e; color: #d8c24a; }
+.shop-row.rar-relic  .shop-kind { border-color: #94491c; color: #e0742a; }
 .shop-nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
 .shop-ds {
   grid-area: ds; font-size: 10.5px; color: var(--ink-dim); line-height: 1.4;
