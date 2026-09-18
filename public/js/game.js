@@ -72,6 +72,8 @@
       weapon: null, armor: null, offhand: null,
       inventory: [],
       perks: IT.blank(),           /* 레벨업으로 쌓은 것 */
+      relics: [],                  /* 규칙을 바꾸는 유물 id 들 */
+      bloodHp: 0,                  /* 「피를 먹는 검」 으로 쌓인 최대 체력 */
       skills: [],                  /* {id, rank, cd} */
       ail: {},                     /* {poison:{turns}, ...} */
       ward: 0                      /* 흡수막 남은 양 */
@@ -130,6 +132,58 @@
 
   /* ── 능력치 — 한 곳에서만 계산한다 ───────────────────────
    * ⚠ 화면과 규칙이 각자 더하면 반드시 어긋난다(표시된 공격력과 실제가 다르다). */
+  /* ── 유물 ─────────────────────────────────────────────
+   *
+   * 유물은 **규칙을 바꾼다.** 그래서 stats() 로는 표현되지 않고, 정해진 자리에서
+   * hasRelic() 으로 읽힌다. 어디서 읽는지를 여기 모아 둔다 — 흩어 두면 어떤 이상
+   * 동작이 어느 유물 때문인지 추적이 안 된다.
+   *
+   *   r_brush      applyAil      상태이상 지속 ×2
+   *   r_blank      attack        치명타 + 체력 25% 이하 → 즉사
+   *   r_reverse    attack        체력이 낮을수록 피해 증가
+   *   r_hourglass  act           쿨다운 −2/턴
+   *   r_scales     kill · stats  금화 ×2 · 최대 체력 −20%
+   *   r_bloodblade kill          처치마다 최대 체력 +2
+   *   r_thorns     attack        받은 피해의 40% 반사
+   *   r_stairs     descend       층마다 체력 30% 회복
+   *   r_lordseye   descend       층 전체 공개 + 전부 깨어 있음
+   *   r_memory     descend·openShop  물약 식별 · 상인 없음
+   */
+  Game.prototype.hasRelic = function (id) {
+    var r = this.player.relics;
+    if (!r) return false;
+    for (var i = 0; i < r.length; i++) if (r[i] === id) return true;
+    return false;
+  };
+
+  Game.prototype.takeRelic = function (id) {
+    var def = DATA.byId(DATA.RELICS, id);
+    if (!def || this.hasRelic(id)) return false;   /* 같은 유물을 두 번 주지 않는다 */
+    if (!this.player.relics) this.player.relics = [];
+    this.player.relics.push(id);
+    this.say("유물 「" + def.name + "」 — " + def.note, "level");
+    /* 지금 층에 바로 듣는 유물은 여기서 한 번 적용한다.
+     * ⚠ 안 하면 "주웠는데 아무 일도 없다" 가 되어 다음 층까지 고장으로 느낀다. */
+    if (id === "r_lordseye") this.revealLevel();
+    if (id === "r_memory") this.identifyAllPotions();
+    if (id === "r_scales" && this.player.hp > this.maxhp()) this.player.hp = this.maxhp();
+    return true;
+  };
+
+  /* 층 전체를 보이게 한다(군주의 눈) */
+  /* 층 전체를 보이게 한다(군주의 눈).
+   * ⚠ 몬스터를 깨우지 않는다 — 대가는 **감지 범위**로 받는다(stepMonster).
+   *   전부 깨우면 물러서서 싸우는 직업에게 그냥 나쁜 유물이 된다(실측 −12.5%p). */
+  Game.prototype.revealLevel = function () {
+    var lv = this.level;
+    for (var i = 0; i < lv.seen.length; i++) lv.seen[i] = 1;
+  };
+
+  /* 물약을 전부 식별한다(남의 기억) */
+  Game.prototype.identifyAllPotions = function () {
+    for (var i = 0; i < DATA.CONSUMABLES.length; i++) this.identified[DATA.CONSUMABLES[i].id] = true;
+  };
+
   Game.prototype.stats = function () {
     var p = this.player, c = this.cls;
     var s = IT.blank();
@@ -146,6 +200,9 @@
     if (p.weapon) s.atkFlat += p.weapon.power;
     if (p.armor) s.defFlat += p.armor.power;
     if (p.offhand) s.defFlat += p.offhand.power;
+    /* 유물: 탐욕의 저울 — 금화 두 배의 대가로 최대 체력 20% 감소.
+     * ⚠ 마지막에 곱한다. 중간에 곱하면 뒤에 더해지는 값이 깎이지 않아 대가가 흐려진다. */
+    if (this.hasRelic("r_scales")) s.hpFlat *= 0.8;
     if (!s.critMult) s.critMult = 1.8;
     return s;
   };
@@ -256,7 +313,8 @@
       }
     }
 
-    /* 상인 — 2층마다. 금화가 점수판 숫자로만 남으면 탐험할 이유가 준다. */
+    /* 상인 — 2층마다. 금화가 점수판 숫자로만 남으면 탐험할 이유가 준다.
+     * ⚠ 유물 「남의 기억」 은 물약을 전부 식별해 주는 대신 상인을 없앤다 — 그게 대가다. */
     if (DATA.hasShop(this.depth)) {
       spot = freeSpot(null);
       if (spot) {
@@ -272,6 +330,18 @@
       if (!spot) continue;
       if (manhattan(spot.x, spot.y, lv.downAt.x, lv.downAt.y) < 3) continue;
       lv.traps[lv.idx(spot.x, spot.y)] = 1;
+    }
+
+    /* ── 층에 내려설 때 듣는 유물 ──
+     * ⚠ 몬스터·함정·상인을 다 배치한 **뒤**에 둔다. 앞에 두면 군주의 눈이
+     *   아직 없는 몬스터를 깨우고, 계단의 기억이 최대 체력이 바뀌기 전 값으로 회복한다. */
+    if (this.hasRelic("r_lordseye")) this.revealLevel();
+    if (this.hasRelic("r_memory")) this.identifyAllPotions();
+    if (this.hasRelic("r_stairs") && this.depth > 1) {
+      var back = Math.round(this.maxhp() * 0.3);
+      var was = this.player.hp;
+      this.player.hp = Math.min(this.maxhp(), this.player.hp + back);
+      if (this.player.hp > was) this.say("계단을 밟자 숨이 돌아온다. +" + (this.player.hp - was), "good");
     }
 
     this.updateFov();
@@ -295,6 +365,9 @@
 
   Game.prototype.rollShop = function (depth) {
     var stock = [], i;
+    /* ⚠ 한때 「남의 기억」 이 값을 1.6배로 올렸다 — 그래도 −14~−20%p 였다.
+     *   상점은 빌드를 만드는 자리라 조금만 건드려도 판이 무너진다. 지금은 대가가 없다. */
+    var priceMul = 1;
     for (i = 0; i < DATA.SHOP_ITEMS; i++) {
       var it;
       if (this.rng() < 0.62) {
@@ -306,8 +379,19 @@
         it = this.makeItem(def, 0, 0);
         it.cost = def.cost;
       }
-      stock.push({ what: "item", item: it, cost: it.cost });
+      stock.push({ what: "item", item: it, cost: Math.round(it.cost * priceMul) });
     }
+    /* 유물 — 상인이 하나쯤 갖고 있다. ⚠ 항상 두면 금화만 모아 전부 사게 되어
+     *   레벨업에서 고르는 맛이 사라진다. 절반쯤만 둔다. */
+    var relicPool = [];
+    for (i = 0; i < DATA.RELICS.length; i++) {
+      if (!this.hasRelic(DATA.RELICS[i].id)) relicPool.push(DATA.RELICS[i]);
+    }
+    if (relicPool.length && this.rng() < 0.5) {
+      var rel = relicPool[Math.floor(this.rng() * relicPool.length)];
+      stock.push({ what: "relic", relic: rel.id, cost: Math.round(rel.cost * priceMul) });
+    }
+
     /* 스킬 — 안 배운 것 먼저, 없으면 단계 올리기 */
     var offered = {};
     for (i = 0; i < DATA.SHOP_SKILLS; i++) {
@@ -325,7 +409,7 @@
       var cur = this.skillOf(pick.id);
       var rank = cur ? cur.rank + 1 : 1;
       stock.push({ what: "skill", skill: pick.id, rank: rank,
-                   cost: DATA.skillCost(depth, rank) });
+                   cost: Math.round(DATA.skillCost(depth, rank) * priceMul) });
     }
     return stock;
   };
@@ -444,9 +528,11 @@
     if (!spent || this.over) return false;
     this.turn += 1;
     var i, s;
+    /* 유물: 깨진 모래시계 — 쿨다운이 턴마다 2씩 줄어든다 */
+    var cdStep = this.hasRelic("r_hourglass") ? 2 : 1;
     for (i = 0; i < this.player.skills.length; i++) {
       s = this.player.skills[i];
-      if (s.cd > 0) s.cd -= 1;
+      if (s.cd > 0) s.cd = Math.max(0, s.cd - cdStep);
     }
     this.tickAil(this.player, true);
     if (this.over) return true;
@@ -489,8 +575,12 @@
     if (!def) return false;
     var cur = target.ail[kind];
     var power = def.perTurn * (1 + (powerMul || 0));
+    /* 유물: 두 번 새기는 붓 — 지속이 두 배. 내가 거는 것만 해당한다
+     * (몬스터가 나에게 거는 것까지 늘리면 내 유물이 나를 때린다). */
+    var turns = def.turns;
+    if (target !== this.player && this.hasRelic("r_brush")) turns *= 2;
     /* 이미 걸려 있으면 turns 를 새로 고치고 더 센 쪽을 남긴다(중첩 대신 갱신) */
-    target.ail[kind] = { turns: def.turns, power: Math.max(power, cur ? cur.power : 0) };
+    target.ail[kind] = { turns: turns, power: Math.max(power, cur ? cur.power : 0) };
     return true;
   };
 
@@ -784,8 +874,21 @@
     if (who === this.player) {
       var st = this.stats();
       var dmg = this.roll(this.power(), target.def);
+      /* 유물: 거꾸로 읽는 장부 — 체력이 낮을수록 세진다(빈사에서 +70%).
+       * ⚠ 치명타 배수보다 **먼저** 곱한다. 나중에 곱하면 치명타와 함께 폭증한다. */
+      if (this.hasRelic("r_reverse")) {
+        var lack = 1 - (this.player.hp / Math.max(1, this.maxhp()));
+        dmg = Math.round(dmg * (1 + 0.7 * Math.max(0, Math.min(1, lack))));
+      }
       var crit = this.critRoll(1);
       if (crit) { dmg = Math.round(dmg * crit); this.crits += 1; }
+      /* 유물: 빈 이름 — 치명타가 터지고 상대가 이미 약하면 그 자리에서 지운다.
+       * ⚠ 보스에는 안 통한다. 통하면 10층이 치명타 한 방으로 끝난다. */
+      if (crit && !target.boss && this.hasRelic("r_blank") &&
+          target.hp <= target.maxhp * 0.25) {
+        this.say("「" + target.name + "」 의 이름이 지워졌다.", "crit");
+        dmg = target.hp;
+      }
       /* 상태이상 — 확률이 있으면 때릴 때 걸린다 */
       var ailed = null;
       if (st.ailChance > 0 && this.rng() < st.ailChance) {
@@ -823,6 +926,13 @@
       this.player.hp -= d;
       this.say(who.name + "의 공격. " + d + " 피해.", "bad");
       sfx("hurt");
+      /* 유물: 가시 갑옷 — 받은 만큼 되돌려 준다.
+       * ⚠ 반사로 적이 죽으면 kill() 을 타야 경험치·금화가 들어온다 — damage() 를
+       *   그대로 쓴다(직접 hp 를 깎으면 시체만 남고 보상이 사라진다). */
+      if (this.hasRelic("r_thorns")) {
+        var back = Math.max(1, Math.round(d * 0.3));
+        this.damage(who, back, "가시", null, null);
+      }
     }
     /* 몬스터가 상태이상을 건다 */
     if (who.ailKind && this.rng() < 0.35) {
@@ -857,7 +967,20 @@
     this.kills += 1;
     /* 금화를 떨군다 — 상점이 있으니 금화가 곧 힘이다 */
     var g = Math.round((3 + this.depth * 2 + (m.elite ? 30 : 0)) * (1 + this.stats().goldBoost));
+    if (this.hasRelic("r_scales")) g *= 2;              /* 유물: 탐욕의 저울 */
     this.gold += g;
+    /* 유물: 피를 먹는 검 — 처치마다 최대 체력이 영구히 늘어난다.
+     * ⚠ 늘어난 만큼 지금 체력도 함께 올린다. 안 그러면 최대치만 오르고 체감이 없다. */
+    /* 유물: 피를 먹는 검 — 처치마다 회복한다.
+     * ⚠ 최대 체력을 불리는 방식이었다가 걷어냈다(실측 +36%p → +22%p 로도 과했다).
+     *   회복은 최대 체력이 천장이라 저절로 묶인다. */
+    if (this.hasRelic("r_bloodblade")) {
+      var mx = this.maxhp();
+      if (this.player.hp < mx) {
+        this.player.hp = Math.min(mx, this.player.hp + 4);
+        this.fx("heal", this.player.x, this.player.y);
+      }
+    }
     this.gainXp(m.xp || m.src.xp);
     if (m.boss) {
       this.over = true;
@@ -896,9 +1019,20 @@
         pool.push({ what: "skillnew", skill: sk.id });
       }
     }
+    /* 유물 — 아직 없는 것만. ⚠ 특성·스킬과 같은 통에 넣으면 유물이 10개뿐이라
+     *   후반에는 거의 안 나온다. 따로 뽑아 **한 자리를 확률로 내준다**. */
+    var relicPool = [];
+    for (i = 0; i < DATA.RELICS.length; i++) {
+      if (!this.hasRelic(DATA.RELICS[i].id)) relicPool.push(DATA.RELICS[i]);
+    }
+
     /* 셋 뽑기 */
     var out = [];
-    for (i = 0; i < 3 && pool.length; i++) {
+    if (relicPool.length && this.rng() < DATA.RELIC_CHANCE) {
+      var ri = Math.floor(this.rng() * relicPool.length);
+      out.push({ what: "relic", relic: relicPool[ri] });
+    }
+    for (i = out.length; i < 3 && pool.length; i++) {
       var k = Math.floor(this.rng() * pool.length);
       out.push(pool[k]);
       pool.splice(k, 1);
@@ -916,6 +1050,8 @@
       this.player.perks[c.perk.stat] = (this.player.perks[c.perk.stat] || 0) + c.perk.amt;
       if (c.perk.stat === "hpFlat") this.player.hp += c.perk.amt;
       this.say("「" + c.perk.label + "」 를 골랐다.", "level");
+    } else if (c.what === "relic") {
+      this.takeRelic(c.relic.id);
     } else {
       this.learn(c.skill);
     }
@@ -940,6 +1076,16 @@
     var row = this.shop[index];
     if (!row || row.sold) return false;
     if (this.gold < row.cost) { this.say("금화가 " + (row.cost - this.gold) + " 부족하다.", "warn"); sfx("deny"); return false; }
+
+    /* ⚠ 유물은 가방을 차지하지 않는다 — 가방 칸을 먹으면 "좋은데 자리가 없어 못 산다"
+     *   가 되어 유물의 뜻(규칙을 바꾼다)이 자리 관리 문제로 바뀐다. */
+    if (row.what === "relic") {
+      this.gold -= row.cost;
+      this.takeRelic(row.relic);
+      row.sold = true;
+      sfx("level");
+      return true;
+    }
 
     if (row.what === "skill") {
       var have = this.skillOf(row.skill);
@@ -1199,7 +1345,9 @@
   Game.prototype.stepMonster = function (m) {
     var p = this.player;
     if (!m.awake) {
-      if (this.isVisible(m.x, m.y) && cheb(m.x, m.y, p.x, p.y) <= 8) m.awake = true;
+      /* 유물 「군주의 눈」 의 대가 — 두 배 멀리서 알아챈다 */
+      var notice = this.hasRelic("r_lordseye") ? 16 : 8;
+      if (this.isVisible(m.x, m.y) && cheb(m.x, m.y, p.x, p.y) <= notice) m.awake = true;
       else return;
     }
     if (manhattan(m.x, m.y, p.x, p.y) === 1) { this.attack(m, p); return; }

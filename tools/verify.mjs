@@ -219,6 +219,130 @@ console.log("보물방      :", ok(treasureSealed === 0),
     noStorageOk ? "localStorage 없이도 예외 없음(시크릿 모드)" : "⚠ 예외가 난다");
 }
 
+// 2-d) 유물 — **규칙을 바꾸는** 것들이라 조용히 깨져도 화면에서는 안 보인다.
+//    ⚠ "유물을 얻었다" 는 로그만으로는 아무 것도 증명되지 않는다. 하나하나가
+//      실제로 규칙을 바꾸는지 직접 재고, **대가와 안전장치도 함께** 잰다
+//      (안전장치가 빠지면 보스를 치명타 한 방에 지우거나 내 유물이 나를 때린다).
+{
+  const mk = (relics) => {
+    const g = new Game("warrior");
+    g.reset(12345, "warrior");
+    (relics || []).forEach(r => g.takeRelic(r));
+    return g;
+  };
+  const rat = () => DATA.byId(DATA.MONSTERS, "rat");
+  const rows = [];
+  const chk = (name, good, note) => rows.push([name, !!good, note]);
+
+  /* 같은 유물을 두 번 주지 않는다 */
+  { const g = mk(["r_brush"]);
+    chk("중복 방지", g.takeRelic("r_brush") === false && g.player.relics.length === 1,
+        "두 번째 주기 거절"); }
+
+  /* 두 번 새기는 붓 — 내가 거는 것만 길어진다 */
+  { const a = mk(), b = mk(["r_brush"]);
+    const m1 = a.spawn(rat(), 5, 5, true), m2 = b.spawn(rat(), 5, 5, true);
+    a.applyAil(m1, "poison", 0); b.applyAil(m2, "poison", 0);
+    b.applyAil(b.player, "poison", 0);
+    chk("붓: 상대 ×2 · 나는 그대로",
+      m2.ail.poison.turns === m1.ail.poison.turns * 2 &&
+      b.player.ail.poison.turns === m1.ail.poison.turns,
+      m1.ail.poison.turns + " → " + m2.ail.poison.turns + "턴 · 내게는 " + b.player.ail.poison.turns + "턴"); }
+
+  /* 빈 이름 — 치명타로 약한 적을 지운다 · 보스에는 안 통한다 */
+  { const g = mk(["r_blank"]); g.critRoll = () => 2;
+    const m = g.spawn(DATA.byId(DATA.MONSTERS, "troll"), g.player.x + 1, g.player.y, true);
+    m.maxhp = 400; m.hp = 80; g.monsters.push(m);
+    g.attack(g.player, m);
+    const gone = g.monsters.indexOf(m) < 0;
+    const g2 = mk(["r_blank"]); g2.critRoll = () => 2;
+    const boss = g2.spawn(DATA.byId(DATA.MONSTERS, "lord"), g2.player.x + 1, g2.player.y, true);
+    boss.hp = Math.round(boss.maxhp * 0.1); g2.monsters.push(boss);
+    g2.attack(g2.player, boss);
+    chk("빈 이름: 지움 · 보스 면역", gone && g2.monsters.indexOf(boss) >= 0,
+      (gone ? "약한 적 지움" : "⚠ 안 지워짐") + " · " +
+      (g2.monsters.indexOf(boss) >= 0 ? "보스 안 통함" : "⚠ 보스도 즉사")); }
+
+  /* 거꾸로 읽는 장부 — 체력이 낮을수록 세다 */
+  { const dmgAt = (frac) => {
+      const g = mk(["r_reverse"]);
+      g.player.hp = Math.max(1, Math.round(g.maxhp() * frac));
+      g.rng = () => 0.5;
+      const m = g.spawn(rat(), g.player.x + 1, g.player.y, true);
+      m.hp = 9999; m.maxhp = 9999; g.monsters.push(m);
+      const h = m.hp; g.attack(g.player, m); return h - m.hp;
+    };
+    const full = dmgAt(1), low = dmgAt(0.02);
+    chk("거꾸로: 빈사에서 강해짐", low > full, "만피 " + full + " → 빈사 " + low); }
+
+  /* 깨진 모래시계 — 쿨다운이 두 배로 줄어든다 */
+  { const step = (relics) => {
+      const g = mk(relics); g.learn("cleave", true);
+      g.player.skills[0].cd = 5; g.act(true); return g.player.skills[0].cd; };
+    const a = step([]), b = step(["r_hourglass"]);
+    chk("모래시계: 쿨 2씩", b === a - 1, a + " → " + b); }
+
+  /* 탐욕의 저울 — 금화 ×2 · 최대 체력 −20% */
+  { const gold = (relics) => {
+      const g = mk(relics); const m = g.spawn(rat(), 5, 5, true); g.monsters.push(m);
+      const before = g.gold; g.kill(m); return g.gold - before; };
+    const a = gold([]), b = gold(["r_scales"]);
+    const hp0 = mk().maxhp(), hp1 = mk(["r_scales"]).maxhp();
+    chk("저울: 금화 ×2 · 체력 −20%", b === a * 2 && Math.abs(hp1 - Math.round(hp0 * 0.8)) <= 1,
+      "금화 " + a + " → " + b + " · 체력 " + hp0 + " → " + hp1); }
+
+  /* 피를 먹는 검 — 처치하면 회복한다(최대 체력은 안 늘어난다) */
+  { const g = mk(["r_bloodblade"]);
+    const mx = g.maxhp();
+    g.player.hp = 10;
+    for (let i = 0; i < 3; i++) { const m = g.spawn(rat(), 5, 5, true); g.monsters.push(m); g.kill(m); }
+    chk("피검: 처치마다 회복", g.player.hp > 10 && g.maxhp() === mx,
+      "체력 10 → " + g.player.hp + " · 최대 " + mx + " (안 변함)"); }
+
+  /* 가시 갑옷 — 되돌려 준다 */
+  { const g = mk(["r_thorns"]);
+    const m = g.spawn(rat(), g.player.x + 1, g.player.y, true);
+    m.hp = 500; m.maxhp = 500; m.atk = 40; g.monsters.push(m);
+    g.cls = Object.assign({}, g.cls, { evade: 0 });      /* 회피로 흘리면 못 잰다 */
+    const h = m.hp; g.attack(m, g.player);
+    chk("가시: 반사", m.hp < h, "몬스터 " + h + " → " + m.hp); }
+
+  /* 계단의 기억 — 내려가면 회복 */
+  { const g = mk(["r_stairs"]); g.player.hp = 10; g.descend();
+    chk("계단: 내려가면 회복", g.player.hp > 10, "10 → " + g.player.hp); }
+
+  /* 군주의 눈 — 전체 공개 · 몬스터를 깨우지는 않는다 */
+  { const g = mk(["r_lordseye"]);
+    let all = true; for (let i = 0; i < g.level.seen.length; i++) if (!g.level.seen[i]) { all = false; break; }
+    const awake = g.monsters.filter(m => m.awake).length;
+    chk("군주의 눈: 전체 공개", all && awake === 0,
+      (all ? "전부 보임" : "⚠ 안 보임") + " · 깨어 있는 몬스터 " + awake + "/" + g.monsters.length); }
+
+  /* 남의 기억 — 물약 전부 식별 · 상인은 그대로 온다 */
+  { const g = mk(["r_memory"]);
+    const pots = DATA.CONSUMABLES.filter(c => c.kind === "potion");
+    let sawShop = false;
+    for (let d = 2; d <= 8; d += 2) { g.descend(); if (g.merchant) sawShop = true; }
+    chk("남의 기억: 식별 · 상인 유지", pots.every(p => g.identified[p.id]) && sawShop,
+      pots.length + "종 식별 · 상인 " + (sawShop ? "옴" : "⚠ 안 옴")); }
+
+  /* 레벨업·상점에 실제로 나오는가 */
+  { let inPerk = 0, inShop = 0;
+    for (let s = 0; s < 60; s++) {
+      const g = new Game("warrior"); g.reset((s * 7919 + 3) >>> 0, "warrior");
+      g.offerPerks();
+      if (g.pendingPerks && g.pendingPerks.some(c => c.what === "relic")) inPerk++;
+      if (g.rollShop(4).some(r => r.what === "relic")) inShop++;
+    }
+    chk("나오는 자리", inPerk > 5 && inShop > 5,
+      "레벨업 60회 중 " + inPerk + "회 · 상점 60회 중 " + inShop + "회"); }
+
+  const bad = rows.filter(r => !r[1]).length;
+  console.log("유물        :", ok(bad === 0),
+    DATA.RELICS.length + "종 · 검사 " + rows.length + "항목" + (bad ? " · ⚠ 실패 " + bad : " 전부 통과"));
+  rows.filter(r => !r[1]).forEach(r => console.log("              ✘ " + r[0] + " — " + r[2]));
+}
+
 // 3) 조사
 const JOSA = [["굶주린 쥐", "를"], ["고블린", "을"], ["해골 병사", "를"], ["오크 전사", "를"],
               ["망령", "을"], ["동굴 트롤", "을"], ["심연의 군주", "를"], ["치유 물약", "을"],
@@ -665,6 +789,18 @@ for (const [label, args] of SCREENS) {
   console.log("하루의 장부".padEnd(20), ok(rd.status === 0),
     bad ? "문제 " + bad + "건" : (rd.stdout.match(/✔/g) || []).length + "개 항목 통과");
   if (bad) rd.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
+// 장비 창 · 유물 표시 — 휴대폰에서 장비를 볼 수 있는가, 그리고 턴을 안 쓰는가
+{
+  const rg = spawnSync(process.execPath, [path.join(ROOT, "tools", "gear-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rg.stdout.match(/✘/g) || []).length;
+  if (rg.status !== 0) fails++;
+  console.log("장비 창".padEnd(20), ok(rg.status === 0),
+    bad ? "문제 " + bad + "건" : (rg.stdout.match(/✔/g) || []).length + "개 항목 통과");
+  if (bad) rg.stdout.split(String.fromCharCode(10))
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 

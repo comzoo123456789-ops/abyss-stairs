@@ -1322,6 +1322,12 @@ kbd {
 }
 .daily-done[hidden] { display: none; }
 .dd-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 7px; }
+/* ⚠ 390px 에서 제목과 남은 시간이 폭을 다투다 "…적혔 / 다" 로 갈라졌다(실제 신고).
+ *   좁으면 두 줄로 쌓는다 — 한 줄에 우겨 넣을 폭이 아니다. */
+@media (max-width: 620px) {
+  .dd-head { flex-direction: column; align-items: flex-start; gap: 2px; }
+  .dd-head span { font-size: 10.5px; }
+}
 .dd-head b { font-size: 13px; color: var(--gold); }
 .dd-head span { font-size: 11px; color: var(--ink-dim); font-family: var(--mono); }
 
@@ -1345,9 +1351,11 @@ kbd {
 /* ⚠ 이모지 막대는 줄바꿈되면 모양이 망가진다 — pre + 가로 스크롤. */
 .ledger-text {
   margin: 0 0 9px;
-  /* ⚠ 장부 막대는 이모지다. 색 이모지 글꼴이 목록에 없으면 기기에 따라 네모(두부)로
-   *   붙어 공유판이 통째로 망가진다 — 고정폭보다 **먼저** 찾게 둔다. */
-  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", var(--mono);
+  /* ⚠ 이모지 글꼴을 **맨 앞에 두면 안 된다.** 그렇게 했다가 아이폰에서 숫자·한글까지
+   *   Apple Color Emoji 로 그려져 글자 사이가 벌어지고 장부가 통째로 깨졌다(실제 신고).
+   *   이모지는 글꼴에 없으면 시스템이 알아서 이모지 글꼴로 떨어뜨린다 —
+   *   본문 글꼴을 먼저 두고 이모지 글꼴은 **뒤에** 둔다. */
+  font-family: var(--mono), "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   font-size: 12px;
   line-height: 1.65;
   color: var(--ink);
@@ -1368,4 +1376,111 @@ kbd {
   .mode-card em { flex: 1 1 100%; }
   .ledger-text { font-size: 11.5px; }
   .ledger-acts button { flex: 1 1 0; min-height: 42px; }
+}
+
+
+/* 유물 — 레벨업 카드·상점에서 한눈에 갈리게. 색은 유물 등급(주황)과 같다. */
+.perk.relic { border-color: #7a4520; }
+.perk.relic .perk-tag { color: #e0742a; border-color: #7a4520; }
+.perk.relic .perk-title { color: #e0742a; }
+.perk.relic:hover { border-color: #e0742a; }
+
+
+/* ══════════════════════════════════════════════════════════
+   유물 · 간략 수치 · 장비 창
+   ══════════════════════════════════════════════════════════ */
+
+/* 핵심 수치 한 줄 — 2×2 상자표를 대신한다.
+ * ⚠ 표였을 때 좁은 화면에서 세로 80px 을 먹었는데 담긴 것은 숫자 넷뿐이었다
+ *   (사용자 지적). 줄바꿈은 허용하되 상자는 두르지 않는다. */
+.stat-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: rgba(0,0,0,.24);
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.stat-line > * { min-width: 0; }
+.stat-line span { display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+.stat-line em { font-style: normal; color: var(--ink-dim); font-size: 10.5px; letter-spacing: .04em; }
+.stat-line b { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
+.stat-line s { text-decoration: none; font-family: var(--mono); font-size: 10px; color: var(--gold); }
+.stat-line.wide { font-size: 13px; gap: 4px 16px; padding: 9px 11px; }
+.stat-line.wide b { font-size: 15px; }
+
+/* 유물 — 규칙을 바꾸는 것들이라 늘 보여야 한다 */
+.relics { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
+.relics u {
+  text-decoration: none;
+  font-size: 10px;
+  letter-spacing: .1em;
+  color: #e0742a;
+  text-transform: uppercase;
+}
+.relic-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 7px;
+  border: 1px solid #4a3620;
+  border-left: 2px solid #e0742a;
+  border-radius: 4px;
+  background: rgba(224,116,42,.05);
+}
+.relic-row b { font-size: 12px; color: #e0a054; font-weight: 600; }
+.relic-row em { font-style: normal; font-size: 11px; color: var(--ink-dim); line-height: 1.45; }
+.relics.full { gap: 5px; }
+.relics.full .relic-row { padding: 7px 9px; }
+
+/* 장비 창 — 휴대폰에서 장비·유물·가방을 한 화면에 */
+.gear-btn { display: none; }               /* 넓은 화면은 사이드바에 다 보인다 */
+.gear-card { max-width: 620px; }
+.gear-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+.gear-head h2 { margin: 0; }
+.gear-sec { margin-top: 14px; }
+.gear-sec h3 { margin: 0 0 7px; }
+.gear-sec h3 small { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .65; margin-left: 5px; }
+.gear-slots { display: flex; flex-direction: column; gap: 6px; }
+.gear-slot {
+  display: grid;
+  grid-template-columns: 38px 34px 1fr auto;
+  grid-template-areas: "kind art nm pw" "kind art ds ds";
+  align-items: center;
+  gap: 1px 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+}
+.gear-slot > * { min-width: 0; }
+.gs-kind {
+  grid-area: kind;
+  font-size: 10px;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  text-align: center;
+  padding: 2px 0;
+}
+.gs-art { grid-area: art; width: 32px; height: 32px; image-rendering: pixelated; }
+.gs-nm { grid-area: nm; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-pw { grid-area: pw; font-family: var(--mono); font-size: 12px; color: var(--gold); }
+.gs-ds { grid-area: ds; font-size: 11px; color: var(--ink-dim); line-height: 1.4; }
+.gear-slot.none { opacity: .5; grid-template-columns: 38px 1fr; grid-template-areas: "kind nm"; }
+.gear-card .inv { max-height: 42vh; }
+
+@media (max-width: 900px) {
+  /* ⚠ 휴대폰에서는 장비·가방을 사이드바에서 **뺀다** — 장비 창으로 옮겼다.
+   *   두 곳에 두면 좁은 사이드바가 다시 꽉 차 옮긴 뜻이 사라진다. */
+  .gear-btn { display: inline-block; }
+  .side .equip, .side .build { display: none; }
+  .side .relics { margin-top: 6px; }
+  .side-scroll > .panel:nth-child(2) { display: none; }   /* 가방 패널 */
+}
+@media (pointer: coarse) and (max-width: 900px) {
+  .gear-btn { display: inline-block; }
 }

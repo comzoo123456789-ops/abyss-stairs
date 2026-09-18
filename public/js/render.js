@@ -627,6 +627,23 @@
     }
   };
 
+  /* 유물 목록. full=true 면 설명까지 편다(장비 창용). */
+  function relicHtml(g, full) {
+    var ids = g.player.relics || [];
+    if (!ids.length) return full ? '<div class="empty">아직 유물이 없다.</div>' : "";
+    var DATA = global.DATA, out = "";
+    for (var i = 0; i < ids.length; i++) {
+      var d = DATA.byId(DATA.RELICS, ids[i]);
+      if (!d) continue;
+      out += '<div class="relic-row"' + (full ? "" : ' title="' + esc(d.note) + '"') + ">" +
+        '<b>' + esc(d.name) + "</b>" +
+        (full ? '<em>' + esc(d.note) + "</em>" : "") +
+        "</div>";
+    }
+    return '<div class="relics' + (full ? " full" : "") + '">' +
+           (full ? "" : '<u>유물</u>') + out + "</div>";
+  }
+
   Renderer.prototype.drawStats = function (el) {
     var g = this.game, p = g.player, c = g.cls;
     var DATA = global.DATA;
@@ -685,12 +702,15 @@
     }
     html += "</div>";
 
-    /* 핵심 수치 */
-    html += '<div class="stat-grid">' +
-      '<div><em>공격</em><b>' + g.power() + "</b></div>" +
-      '<div><em>방어</em><b>' + g.guard() + "</b></div>" +
-      '<div><em>치명</em><b>' + pct(st.crit) + '<s>×' + st.critMult.toFixed(1) + "</s></b></div>" +
-      '<div><em>상태이상</em><b>' + pct(st.ailChance) + "</b></div>" +
+    /* 핵심 수치 — **한 줄**이다.
+     * ⚠ 2×2 상자표였다. 네 칸에 테두리를 두르니 좁은 화면에서 세로를 80px 넘게
+     *   먹었는데, 담긴 것은 숫자 네 개뿐이었다(사용자 지적: "표로 보여주지 말고
+     *   그냥 간략하게"). 같은 정보를 한 줄에 담으면 20px 다. */
+    html += '<div class="stat-line">' +
+      '<span><em>공격</em><b>' + g.power() + "</b></span>" +
+      '<span><em>방어</em><b>' + g.guard() + "</b></span>" +
+      '<span><em>치명</em><b>' + pct(st.crit) + "</b><s>×" + st.critMult.toFixed(1) + "</s></span>" +
+      '<span><em>이상</em><b>' + pct(st.ailChance) + "</b></span>" +
       "</div>";
 
     /* 쌓인 옵션 — 이게 "내 빌드" 다. 0 인 것은 안 보여 준다(줄만 늘어난다) */
@@ -708,6 +728,10 @@
     add("물약 효과", st.potionBoost, "%");
     add("금화 획득", st.goldBoost, "%");
     if (extra.length) html += '<div class="build">' + extra.join("") + "</div>";
+
+    /* 유물 — 규칙을 바꾸는 것들이라 **무엇을 갖고 있는지 늘 보여야 한다.**
+     * 안 보이면 "왜 이렇게 되지" 를 설명할 길이 없다. */
+    html += relicHtml(g, false);
 
     /* 장비 — 등급 색으로 한눈에 */
     html += '<div class="equip">';
@@ -729,6 +753,73 @@
       x.imageSmoothingEnabled = false;
       x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
     }
+  };
+
+  /* ── 장비 창 ──────────────────────────────────────────
+   *
+   * 휴대폰에서는 사이드바가 27vh 뿐이라 장비·가방·유물이 스크롤 저 아래에 있었다
+   * (사용자 지적: "모바일에서 아이템 뭘 얻었는지 너무 불편해"). 한 화면에 모아
+   * 언제든 열 수 있게 한다.
+   * ⚠ 이 창은 **턴을 쓰지 않는다.** 여는 것만으로 몬스터가 움직이면 정보를 보는
+   *   것이 위험해져 아무도 안 열게 된다. */
+  Renderer.prototype.drawGear = function (el) {
+    var g = this.game, p = g.player, st = g.stats();
+    var slots = [["weapon", "무기"], ["armor", "갑옷"], ["offhand", "보조"]];
+    var html = '<div class="gear-sec"><h3>착용 중</h3><div class="gear-slots">';
+    for (var i = 0; i < slots.length; i++) {
+      var it = p[slots[i][0]];
+      html += '<div class="gear-slot' + (it ? "" : " none") + '">' +
+        '<span class="gs-kind">' + slots[i][1] + "</span>" +
+        (it
+          ? '<canvas class="gs-art" width="32" height="32" data-sprite="' + esc(it.sprite) + '"></canvas>' +
+            '<span class="gs-nm" style="color:' + esc(it.color) + '">' + esc(it.name) + "</span>" +
+            '<span class="gs-pw">+' + it.power + "</span>" +
+            '<span class="gs-ds">' + g.itemLines(it).map(esc).join(" · ") + "</span>"
+          : '<span class="gs-nm">비어 있다</span>') +
+        "</div>";
+    }
+    html += "</div></div>";
+
+    /* 쌓인 옵션 — 내가 무엇이 됐는가 */
+    html += '<div class="gear-sec"><h3>지금 나</h3>' +
+      '<div class="stat-line wide">' +
+        '<span><em>공격</em><b>' + g.power() + "</b></span>" +
+        '<span><em>방어</em><b>' + g.guard() + "</b></span>" +
+        '<span><em>체력</em><b>' + p.hp + "</b><s>/" + g.maxhp() + "</s></span>" +
+        '<span><em>치명</em><b>' + pct(st.crit) + "</b><s>×" + st.critMult.toFixed(1) + "</s></span>" +
+        '<span><em>이상</em><b>' + pct(st.ailChance) + "</b></span>" +
+        '<span><em>금화</em><b>' + g.gold.toLocaleString() + "</b></span>" +
+      "</div>";
+    var extra = [];
+    function add(label, v, unit) {
+      if (!v) return;
+      extra.push("<span><em>" + label + "</em><b>" +
+        (unit === "%" ? "+" + Math.round(v * 100) + "%" : (unit === "턴" ? "−" + Math.round(v) + "턴" : "+" + Math.round(v))) +
+        "</b></span>");
+    }
+    add("스킬 피해", st.skillPower, "%");
+    add("상태이상 피해", st.ailPower, "%");
+    add("쿨다운", st.cdReduce, "턴");
+    add("생명 흡수", st.lifesteal, "%");
+    add("물약 효과", st.potionBoost, "%");
+    add("금화 획득", st.goldBoost, "%");
+    if (extra.length) html += '<div class="build">' + extra.join("") + "</div>";
+    html += "</div>";
+
+    html += '<div class="gear-sec"><h3>유물 <small>규칙을 바꾼다</small></h3>' +
+      relicHtml(g, true) + "</div>";
+
+    html += '<div class="gear-sec"><h3>가방 <small>눌러서 쓰기 · 길게 눌러 버리기</small></h3>' +
+      '<div class="inv" id="gearInv"></div></div>';
+
+    el.innerHTML = html;
+    var arts = el.querySelectorAll(".gs-art");
+    for (var a = 0; a < arts.length; a++) {
+      var x = arts[a].getContext("2d");
+      x.imageSmoothingEnabled = false;
+      x.drawImage(S.bake(arts[a].getAttribute("data-sprite")), 0, 0);
+    }
+    this.drawInventory(el.querySelector("#gearInv"));
   };
 
   /* 가방 — 등급 색 + 옵션 줄. 아이템을 고르는 것이 빌드이므로 옵션이 보여야 한다. */
@@ -780,6 +871,11 @@
       var kind, title, note, tag;
       if (c.what === "perk") {
         kind = "stat"; title = c.perk.label; note = c.perk.note; tag = "능력치";
+      } else if (c.what === "relic") {
+        /* ⚠ 유물은 **왜 좋은지**까지 적는다. 규칙을 바꾸는 물건이라 효과만 읽어서는
+         *   지금 내 빌드에 맞는지 판단이 안 된다(그러면 아무거나 고르게 된다). */
+        kind = "relic"; title = c.relic.name; tag = "유물";
+        note = c.relic.note + " — " + c.relic.why;
       } else {
         var def = DATA.byId(DATA.SKILLS, c.skill);
         if (c.what === "skillnew") { kind = "new"; title = def.name; note = def.desc; tag = "새 스킬"; }
@@ -812,6 +908,11 @@
         name = def.name + " " + row.rank + "단";
         lines = [def.desc];
         col = "#8ae8f0";
+      } else if (row.what === "relic") {
+        var rd = DATA.byId(DATA.RELICS, row.relic);
+        name = rd.name;
+        lines = [rd.note];
+        col = "#e0742a";                       /* 유물 등급색과 같은 주황 */
       } else {
         name = g.itemName(row.item);
         lines = g.itemLines(row.item);
@@ -819,7 +920,8 @@
       }
       html += '<button class="shop-row' + (row.sold ? " sold" : (can ? "" : " poor")) +
         '" data-buy="' + i + '"' + (row.sold || !can ? " disabled" : "") + ">" +
-        '<span class="shop-kind">' + (row.what === "skill" ? "스킬" : "물건") + "</span>" +
+        '<span class="shop-kind">' +
+          (row.what === "skill" ? "스킬" : (row.what === "relic" ? "유물" : "물건")) + "</span>" +
         '<span class="shop-nm"' + (col ? ' style="color:' + esc(col) + '"' : "") + ">" + esc(name) + "</span>" +
         '<span class="shop-ds">' + lines.map(esc).join(" · ") + "</span>" +
         '<span class="shop-cost">' + (row.sold ? "판매됨" : row.cost + " 금") + "</span>" +

@@ -141,7 +141,7 @@
 
   /* 누른 칸을 해석한다. 붙어 있으면 한 걸음(=적이면 공격), 멀면 걸어간다. */
   function tapTile(tx, ty) {
-    if (!started() || game.over || game.busy()) return;
+    if (!started() || game.over || game.busy() || gearOpen()) return;
     stopHold();
     travelStop(null);
     var p = game.player;
@@ -250,6 +250,11 @@
       }
       return;
     }
+    /* 장비 창이 열려 있으면 I·Esc 만 받는다(모달 뒤에서 움직이면 안 된다) */
+    if (gearOpen() && e.key !== "i" && e.key !== "I" && e.key !== "Escape") {
+      if (e.key !== "Tab") e.preventDefault();
+      return;
+    }
     /* ⚠ 레벨업·상점이 열려 있으면 그쪽 키만 받는다. 안 그러면 모달 뒤에서
      *   캐릭터가 움직여 "뭐가 일어났는지 모르는" 상태가 된다. */
     if (els.perks.hidden === false) {
@@ -312,11 +317,16 @@
     if (k === "m" || k === "M") {
       e.preventDefault(); toggleSound(); return;
     }
+    if (k === "i" || k === "I") {
+      e.preventDefault();
+      if (gearOpen()) closeGear(); else openGear();
+      return;
+    }
     if (k === "?" || k === "/") {
       e.preventDefault(); els.help.hidden = false; return;
     }
     if (k === "Escape") {
-      els.help.hidden = true; return;
+      els.help.hidden = true; closeGear(); return;
     }
   }
 
@@ -521,6 +531,16 @@
     }
   }
 
+  function openGear() {
+    if (!started() || game.over || game.busy()) return;
+    stopHold();
+    travelStop(null);
+    view.drawGear(els.gearBody);
+    els.gear.hidden = false;
+  }
+  function closeGear() { els.gear.hidden = true; }
+  function gearOpen() { return els.gear && !els.gear.hidden; }
+
   function showStart() {
     els.end.hidden = true;
     els.start.hidden = false;
@@ -607,6 +627,8 @@
     els.ledgerCopy = document.getElementById("ledgerCopy");
     els.ledgerShare = document.getElementById("ledgerShare");
     els.startHint = document.getElementById("startHint");
+    els.gear = document.getElementById("gear");
+    els.gearBody = document.getElementById("gearBody");
 
     var canvas = document.getElementById("view");
     game = new window.Game("warrior");     /* 시작 화면 뒤에 깔릴 판 — 고르면 새로 만든다 */
@@ -682,27 +704,28 @@
     });
 
     /* 터치에는 오른쪽 버튼이 없다 — 길게 누르면 버린다(0.45초).
-     * 안 넣으면 휴대폰에서는 가방을 비울 방법이 아예 없다. */
-    var holdTimer = null, holdIdx = -1, holdFired = false;
-    els.inv.addEventListener("touchstart", function (e) {
-      var btn = e.target.closest(".inv-item");
-      if (!btn) return;
-      holdIdx = parseInt(btn.getAttribute("data-idx"), 10);
-      holdFired = false;
-      holdTimer = setTimeout(function () {
-        holdFired = true;
-        game.dropItem(holdIdx);
-        afterAction();
-      }, 450);
-    }, { passive: true });
-    function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
-    els.inv.addEventListener("touchend", function (e) {
-      cancelHold();
-      /* 길게 눌러 이미 버렸으면 그 뒤의 click(=사용)을 막는다 */
-      if (holdFired) { e.preventDefault(); holdFired = false; }
-    });
-    els.inv.addEventListener("touchmove", cancelHold, { passive: true });
-    els.inv.addEventListener("touchcancel", cancelHold, { passive: true });
+     * 안 넣으면 휴대폰에서는 가방을 비울 방법이 아예 없다.
+     * ⚠ 가방이 이제 **두 곳**에 있다(사이드바 · 장비 창). 배선을 베끼면 한쪽만
+     *   고쳐지므로 함수로 뺐다 — 새 가방 자리를 만들면 여기에 붙이면 된다. */
+    function bindLongPress(host, onDrop) {
+      var timer = null, idx = -1, fired = false;
+      host.addEventListener("touchstart", function (e) {
+        var btn = e.target.closest(".inv-item");
+        if (!btn) return;
+        idx = parseInt(btn.getAttribute("data-idx"), 10);
+        fired = false;
+        timer = setTimeout(function () { fired = true; onDrop(idx); }, 450);
+      }, { passive: true });
+      function cancel() { if (timer) { clearTimeout(timer); timer = null; } }
+      host.addEventListener("touchend", function (e) {
+        cancel();
+        /* 길게 눌러 이미 버렸으면 그 뒤의 click(=사용)을 막는다 */
+        if (fired) { e.preventDefault(); fired = false; }
+      });
+      host.addEventListener("touchmove", cancel, { passive: true });
+      host.addEventListener("touchcancel", cancel, { passive: true });
+    }
+    bindLongPress(els.inv, function (i) { game.dropItem(i); afterAction(); });
 
     els.perkList.addEventListener("click", function (e) {
       var b = e.target.closest("[data-perk]");
@@ -724,6 +747,33 @@
     });
     document.getElementById("shopClose").addEventListener("click", function () {
       game.closeShop(); refresh();
+    });
+
+    /* ── 장비 창 ──
+     * ⚠ **턴을 쓰지 않는다.** 여는 것만으로 몬스터가 움직이면 정보를 보는 것이
+     *   위험해져 아무도 안 연다. 열려 있는 동안 조작도 막는다(모달 뒤에서 캐릭터가
+     *   움직이면 무슨 일이 났는지 모른다 — 레벨업·상점 창과 같은 규칙). */
+    document.getElementById("gearBtn").addEventListener("click", openGear);
+    document.getElementById("gearClose").addEventListener("click", closeGear);
+    els.gear.addEventListener("click", function (e) { if (e.target === els.gear) closeGear(); });
+    /* 가방 칸을 눌러 쓰고, 길게 눌러 버린다 — 사이드바와 같은 조작이다 */
+    els.gearBody.addEventListener("click", function (e) {
+      var btn = e.target.closest(".inv-item");
+      if (!btn) return;
+      game.useItem(parseInt(btn.getAttribute("data-idx"), 10));
+      afterAction();
+      if (game.over || game.busy()) closeGear(); else view.drawGear(els.gearBody);
+    });
+    els.gearBody.addEventListener("contextmenu", function (e) {
+      var btn = e.target.closest(".inv-item");
+      if (!btn) return;
+      e.preventDefault();
+      game.dropItem(parseInt(btn.getAttribute("data-idx"), 10));
+      afterAction();
+      view.drawGear(els.gearBody);
+    });
+    bindLongPress(els.gearBody, function (idx) {
+      game.dropItem(idx); afterAction(); view.drawGear(els.gearBody);
     });
 
     document.getElementById("again").addEventListener("click", showStart);
@@ -904,6 +954,12 @@
       return { over: game.over, won: game.won };
     };
     window.__setMode = function (v) { setMode(v); return mode; };
+    window.__gear = function (open) {
+      if (open === true) openGear(); else if (open === false) closeGear();
+      return { open: gearOpen(), text: els.gearBody.textContent.replace(/s+/g, " ").trim() };
+    };
+    window.__relics = function () { return (game.player.relics || []).slice(); };
+    window.__giveRelic = function (id) { return game.takeRelic(id); };
     window.__ledger = function () {
       return { shown: !els.ledger.hidden, text: els.ledgerText.textContent,
                label: els.ledgerLabel.textContent, note: els.ledgerNote.textContent,
