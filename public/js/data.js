@@ -30,7 +30,11 @@
    * ability: kind 로 동작을 가른다 · cd = 쿨다운(턴) · power 는 공격력 배수 또는 고정값 */
   var CLASSES = [
     {
-      id: "warrior", name: "전사", sprite: "warrior",
+      id: "warrior", name: "다인", title: "성문 수비대장", sprite: "warrior",
+      age: "38세", why: "부하 40명의 이름을 되찾으려고",
+      story: "6년 전 심연에서 무언가가 올라온 「검은 밤」에 부하 40명을 잃고 혼자 살아남았다. " +
+             "그들의 이름은 이미 지워졌고, 기억하는 사람은 다인 하나뿐이다. " +
+             "군주를 죽이면 이름이 돌아온다고 믿는다.",
       hp: 58, atk: 6, def: 2, hpPerLevel: 14, atkPerLevel: 2, defPerLevel: 1,
       start: ["dagger", "leather"],
       evade: 0, scrollBoost: 1, goldBoost: 1,
@@ -39,7 +43,11 @@
       blurb: "실수를 한 번은 견딘다. 가장 멀리 가지만 마무리 화력은 약하다. 처음이라면 이쪽."
     },
     {
-      id: "rogue", name: "도적", sprite: "rogue",
+      id: "rogue", name: "셰라", title: "쫓겨난 필경생", sprite: "rogue",
+      age: "19세", why: "베껴 적은 이름들을 지키려고",
+      story: "관리소 장부에서 지워지는 이름을 몰래 베껴 적다가 들켜 쫓겨났다. " +
+             "심연에서 나온 물건을 팔아 그 장부를 한 장씩 사들이는 중이다. " +
+             "겁이 많은데 결국 내려간다.",
       hp: 40, atk: 6, def: 0, hpPerLevel: 8, atkPerLevel: 3, defPerLevel: 0,
       start: ["dagger"],
       evade: 0.14, scrollBoost: 1, goldBoost: 1.5,
@@ -48,7 +56,10 @@
       blurb: "화력은 가장 세지만 방어가 자라지 않는다. 14% 회피와 함정 감지로 버틴다."
     },
     {
-      id: "mage", name: "마법사", sprite: "mage",
+      id: "mage", name: "오르넬", title: "심연을 측량한 학자", sprite: "mage",
+      age: "나이 불명", why: "자기 이름을 되찾으려고",
+      story: "심연을 처음 측량해 지도를 그린 사람이다. 그 대가로 이름이 절반 지워져 " +
+             "스스로도 제 이름을 확신하지 못한다. 그런데도 태연하고, 이상하게 즐거워한다.",
       hp: 36, atk: 4, def: 0, hpPerLevel: 9, atkPerLevel: 2, defPerLevel: 1,
       start: ["dagger", "bolt"],
       evade: 0, scrollBoost: 1.6, goldBoost: 1,

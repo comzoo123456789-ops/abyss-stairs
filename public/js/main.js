@@ -145,23 +145,27 @@
       var c = list[i];
       html += '<button class="cls-card" data-cls="' + c.id + '">' +
         '<span class="cls-key">' + (i + 1) + "</span>" +
-        '<canvas class="cls-art" width="64" height="64" data-sprite="' + c.sprite + '"></canvas>' +
+        '<canvas class="cls-art" width="96" height="96" data-sprite="' + c.sprite + '"></canvas>' +
         '<span class="cls-name">' + c.name + "</span>" +
-        '<span class="cls-stats">체력 ' + c.hp + " · 공격 " + c.atk + " · 방어 " + c.def + "</span>" +
+        '<span class="cls-title">' + c.title + " · " + c.age + "</span>" +
+        '<span class="cls-story">' + c.story + "</span>" +
+        '<span class="cls-stats">체력 <b>' + c.hp + "</b> · 공격 <b>" + c.atk + "</b> · 방어 <b>" + c.def + "</b></span>" +
         '<span class="cls-ability">「' + c.ability.name + "」 " + c.ability.desc + "</span>" +
         '<span class="cls-blurb">' + c.blurb + "</span>" +
         "</button>";
     }
     els.classes.innerHTML = html;
 
-    /* 직업 카드에 실제 도트 그림을 넣는다 — 글자만 있으면 무엇을 고르는지 안 와닿는다 */
+    /* 직업 카드에 실제 도트 그림을 넣는다 — 글자만 있으면 누구를 고르는지 안 와닿는다.
+     * ⚠ 32px 스프라이트를 96px 로 키우므로 정수배(3배)여야 한다. 3.5배 같은 값을 쓰면
+     *   픽셀이 뭉개져 도트가 아니게 된다. */
     var arts = els.classes.querySelectorAll(".cls-art");
     for (var a = 0; a < arts.length; a++) {
       var cv = arts[a];
-      var baked = window.SPRITES.bake(cv.getAttribute("data-sprite"), 4);
+      var baked = window.SPRITES.bake(cv.getAttribute("data-sprite"));
       var x = cv.getContext("2d");
       x.imageSmoothingEnabled = false;
-      x.drawImage(baked, 0, 0);
+      x.drawImage(baked, 0, 0, 32, 32, 0, 0, 96, 96);
     }
   }
 
@@ -292,17 +296,36 @@
       refresh();
     });
 
-    document.querySelectorAll("[data-dir]").forEach(function (b) {
-      b.addEventListener("click", function () {
-        var p = b.getAttribute("data-dir").split(",");
-        game.move(parseInt(p[0], 10), parseInt(p[1], 10));
-        afterAction();
+    /* 패드 버튼은 touchstart 에서 바로 처리한다.
+     *
+     * ⚠ click 만 쓰면 두 가지가 나쁘다:
+     *   ① 브라우저가 더블탭 여부를 보려고 ~300ms 기다려 연타가 뚝뚝 끊긴다.
+     *   ② 연달아 누르면 더블탭으로 판정해 **화면이 확대된다**(이동이 통째로 불편해진다).
+     *   touchstart 에서 preventDefault 하면 둘 다 사라진다. 대신 그 뒤에 따라오는
+     *   합성 click 을 막아야 한 번 누른 것이 두 번 먹지 않는다. */
+    function bindPress(el, fn) {
+      if (!el) return;
+      var touched = false;
+      el.addEventListener("touchstart", function (e) {
+        e.preventDefault();          /* 확대·지연·합성 click 을 한 번에 막는다 */
+        touched = true;
+        fn();
+      }, { passive: false });
+      el.addEventListener("click", function () {
+        if (touched) { touched = false; return; }   /* 터치로 이미 처리했다 */
+        fn();
       });
+    }
+
+    document.querySelectorAll("[data-dir]").forEach(function (b) {
+      var p = b.getAttribute("data-dir").split(",");
+      var dx = parseInt(p[0], 10), dy = parseInt(p[1], 10);
+      bindPress(b, function () { game.move(dx, dy); afterAction(); });
     });
-    document.getElementById("btnPick").addEventListener("click", function () { game.pickUp(); afterAction(); });
-    document.getElementById("btnDown").addEventListener("click", function () { game.descendIfStairs(); afterAction(); });
-    document.getElementById("btnWait").addEventListener("click", function () { game.wait(); afterAction(); });
-    document.getElementById("btnAbility").addEventListener("click", function () { game.useAbility(); afterAction(); });
+    bindPress(document.getElementById("btnPick"), function () { game.pickUp(); afterAction(); });
+    bindPress(document.getElementById("btnDown"), function () { game.descendIfStairs(); afterAction(); });
+    bindPress(document.getElementById("btnWait"), function () { game.wait(); afterAction(); });
+    bindPress(document.getElementById("btnAbility"), function () { game.useAbility(); afterAction(); });
 
     loadBest();
     view.resize();

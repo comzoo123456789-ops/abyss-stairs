@@ -335,6 +335,33 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   //  터치 패드에 대각선 버튼이 남아 있지 않은가
   const padDirs = await ev(`[...document.querySelectorAll(".pad [data-dir]")].map(b=>b.getAttribute("data-dir"))`);
   const noDiagButtons = padDirs.every(d => d.split(",").some(v => v === "0"));
+  // ── 3-e) 모바일 연타 확대 — 방향 버튼을 빠르게 두 번 눌러도 배율이 안 변해야 한다 ──
+  //    ⚠ 실제 신고: "방향키 연속으로 누르면 확대가 되고 있어서 이동하는데 불편해".
+  //      touch-action 을 안 걸면 브라우저가 더블탭으로 보고 확대한다.
+  let zoomCheck = null;
+  if (TOUCH) {
+    const before = await ev(
+      "({ scale: window.visualViewport ? window.visualViewport.scale : 1," +
+      "   ta: getComputedStyle(document.querySelector('.dpad button')).touchAction })");
+    /* ⚠ 한 방향만 두드리면 안 된다 — 그쪽이 벽이면 턴이 안 늘어 "터치가 안 먹는다" 로
+     *   오진한다(실제로 그렇게 나왔다). 네 방향을 돌려 가며 두드린다. */
+    const btns = await ev(
+      "['.p-right','.p-down','.p-left','.p-up'].map(function(s){" +
+      "  var r = document.querySelector(s).getBoundingClientRect();" +
+      "  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })");
+    const st0 = await ev("window.__peek()");
+    for (let i = 0; i < 8; i++) {
+      const b = btns[i % btns.length];
+      await S("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: b.x, y: b.y }] });
+      await S("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+      await sleep(60);   /* 더블탭으로 오인될 만큼 빠르게 */
+    }
+    await sleep(250);
+    const after = await ev("({ scale: window.visualViewport ? window.visualViewport.scale : 1 })");
+    const st1 = await ev("window.__peek()");
+    zoomCheck = { ta: before.ta, scale0: before.scale, scale1: after.scale,
+                  turn0: st0.turn, turn1: st1.turn, x0: st0.x, x1: st1.x };
+  }
   // ── 4) 도움말이 열리고 닫히는가 ──
   await ev(`document.getElementById("helpBtn").click()`);
   const helpOpen = await ev(`!document.getElementById("help").hidden`);
@@ -453,6 +480,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     dropTest.skipped ? "가방이 비어 검사 못 함"
       : "가방 " + dropTest.before + " → " + dropTest.after + " · 기본메뉴 " +
         (dropTest.prevented ? "막음" : "⚠안 막음") + " · \"" + dropTest.log.trim() + "\"");
+  if (zoomCheck) {
+    const noZoom = Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 && zoomCheck.ta === "manipulation";
+    const moved6 = zoomCheck.turn1 > zoomCheck.turn0;
+    console.log("연타 확대    :", ok(noZoom && moved6),
+      "touch-action=" + zoomCheck.ta + " · 배율 " + zoomCheck.scale0 + " → " + zoomCheck.scale1 +
+      " · 8번 눌러 턴 " + zoomCheck.turn0 + " → " + zoomCheck.turn1);
+  }
   console.log("상태창       :", ui.stats);
   console.log("마지막 기록  :", ui.lastLog);
 
@@ -464,6 +498,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const pass = errs.length === 0 && canvas.litPct > 3 && moved && turned && canvas2.hash !== canvas.hash &&
                !overflow.docScroll && overflow.count === 0 && helpOpen && helpClosed &&
+               (!zoomCheck || (Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 && zoomCheck.ta === "manipulation" && zoomCheck.turn1 > zoomCheck.turn0)) &&
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                abilityWorks && potions.looks.length >= potions.names.length &&

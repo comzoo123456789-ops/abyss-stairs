@@ -2,10 +2,12 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- ⚠ 방향 버튼을 연달아 누르면 브라우저가 "더블탭" 으로 보고 확대한다.
+     maximum-scale 만으로는 iOS 에서 안 막힌다 — CSS 의 touch-action 과 함께 걸어야 한다. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>심연의 계단</title>
 <meta name="description" content="10층 아래 심연의 군주를 쓰러뜨리는 턴제 던전 크롤러.">
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=4">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <body>
@@ -68,10 +70,13 @@
   <div class="card start-card">
     <div class="start-head">
       <h2>심연의 계단</h2>
-      <p class="tag">던전 10층 아래에 <b>심연의 군주</b>가 있다. 내려가서 쓰러뜨린다.</p>
+      <p class="lore">도시 아래 <b>심연</b>은 매일 지형이 다시 배치된다. 그 밑의 <b>군주</b>가
+        지상의 기억을 먹고 있어서, 내려간 사람은 돌아오지 않을 뿐 아니라 <b>이름이 지워진다.</b>
+        가족도 그를 잊는다. 관리소 장부에는 이름 없이 <b>몇 층까지 갔는가</b>만 남는다.</p>
+      <p class="tag">10층까지 내려가 군주를 쓰러뜨리면 먹힌 이름들이 돌아온다.</p>
     </div>
 
-    <h3>누구로 내려갈까</h3>
+    <h3>누가 내려갈까</h3>
     <div class="classes" id="classes"></div>
 
     <h3>조작</h3>
@@ -141,7 +146,7 @@
           <li><b>문으로 둘러싸인 방</b>은 보물방이다. 좋은 물건이 있고 지키는 놈도 있다.</li>
           <li>더 좋은 무기·갑옷은 주우면 자동으로 착용된다.</li>
           <li><b>도망은 유효한 전술이다.</b> 체력이 낮으면 계단으로 달리는 편이 낫다.</li>
-          <li><b>10층</b>에 심연의 군주가 있다. 쓰러뜨리면 승리다.</li>
+          <li><b>10층</b>에 심연의 군주가 있다. 쓰러뜨리면 먹힌 이름들이 돌아온다 — 그게 승리다.</li>
         </ul>
       </div>
     </div>
@@ -150,12 +155,13 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=3"></script>
-<script src="js/sound.js?v=3"></script>
-<script src="js/data.js?v=3"></script>
-<script src="js/dungeon.js?v=3"></script>
-<script src="js/game.js?v=3"></script>
-<script src="js/render.js?v=3"></script>
-<script src="js/main.js?v=3"></script>
+<script src="js/sprites.js?v=4"></script>
+<script src="js/sprites-art.js?v=4"></script>
+<script src="js/sound.js?v=4"></script>
+<script src="js/data.js?v=4"></script>
+<script src="js/dungeon.js?v=4"></script>
+<script src="js/game.js?v=4"></script>
+<script src="js/render.js?v=4"></script>
+<script src="js/main.js?v=4"></script>
 </body>
 </html>

@@ -96,7 +96,7 @@
       }
     }
 
-    this.say("어두운 계단을 내려간다. 던전 " + DATA.MAX_DEPTH + "층 아래에 심연의 군주가 있다.");
+    this.say("관리소 장부에 층수 칸만 비워 두고 계단을 내려간다. " + DATA.MAX_DEPTH + "층 아래에 군주가 있다.");
     this.descend();
 
     /* 시작 장비는 첫 층이 만들어진 뒤에 준다 */
@@ -107,7 +107,8 @@
       this.player.inventory.push(it);
       if (it.kind === "weapon" || it.kind === "armor") this.equip(it, true);
     }
-    this.say(cls.name + " — 능력 「" + cls.ability.name + "」 는 Q 키. " + cls.ability.desc, "level");
+    this.say(cls.name + "(" + cls.title + ") — " + cls.why + " 내려왔다.", "level");
+    this.say("능력 「" + cls.ability.name + "」 는 Q 키. " + cls.ability.desc, "level");
   };
 
   Game.prototype.say = function (text, tone) {
@@ -177,7 +178,7 @@
       /* 마지막 층 — 보스는 계단(= 가장 먼 방)에 세운다 */
       def = DATA.byId(DATA.MONSTERS, "lord");
       this.monsters.push(this.spawn(def, lv.downAt.x, lv.downAt.y));
-      this.say("공기가 무겁다. 이 층에 군주가 있다.", "bad");
+      this.say("이름들이 웅웅거린다. 이 층에 군주가 있다.", "bad");
     }
 
     var mcount = DATA.monsterCount(this.depth);
@@ -227,8 +228,8 @@
     }
 
     this.updateFov();
-    this.say("던전 " + this.depth + "층.", "depth");
-    if (lv.treasure) this.say("문으로 둘러싸인 방이 있다 — 보물이다. 지키는 놈도 있다.", "item");
+    this.say("심연 " + this.depth + "층. 지형이 어제와 다르다.", "depth");
+    if (lv.treasure) this.say("문으로 둘러싸인 방이 있다 — 먼저 내려간 누군가의 짐이다. 지키는 놈도 있다.", "item");
   };
 
   /* ⚠ 정의는 `src` 에 담는다. 전에 `def` 로 뒀더니 방어력 필드와 이름이 겹쳐
@@ -686,7 +687,7 @@
     if (m.boss) {
       this.over = true;
       this.won = true;
-      this.say("심연의 군주가 무너졌다. 던전은 조용해졌다.", "win");
+      this.say("군주가 무너졌다. 먹힌 이름들이 한꺼번에 돌아온다 — 당신의 것까지.", "win");
       sfx("win");
     }
   };
@@ -713,7 +714,7 @@
     this.over = true;
     this.won = false;
     this.say(reason, "bad");
-    this.say("여기서 끝이다. 기록은 남지 않는다.", "bad");
+    this.say("장부에는 층수만 적힐 것이다. 이름은 이미 지워졌다.", "bad");
     sfx("die");
   };
 

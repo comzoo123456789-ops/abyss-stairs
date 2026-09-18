@@ -1,490 +1,358 @@
-/* 도트 스프라이트 — 16x16 픽셀 행렬.
+/* 도트 스프라이트 엔진 — 32×32.
  *
- * 한 글자가 한 픽셀이다. '.' 은 투명.
- * SVG <rect> 로 찍으면 타일 한 장에 256개라 화면이 기어간다 —
- * 그래서 스프라이트마다 오프스크린 캔버스에 한 번만 굽고(bake) 그 뒤로는 복사만 한다.
- * 그림을 고치고 싶으면 아래 문자 그림만 고치면 된다. 길이가 안 맞아도
- * def() 가 16칸으로 맞춰 주므로 세다가 틀려도 깨지지 않는다.
+ * ⚠ 32줄 × 32칸을 문자로 적지 않는다. 16×16 일 때는 문자 그림이 편했지만
+ *   32 에서는 한 픽셀을 옮기려고 줄 전체를 다시 세야 해서 사실상 못 고친다.
+ *   그래서 **원시 도형을 쌓아** 만든다 — 숫자 하나만 고쳐 위치를 옮길 수 있고,
+ *   윤곽선과 명암을 마지막에 한 번에 입힐 수 있다(그게 도트가 '깔끔해' 보이는 이유다).
+ *
+ * ⚠ 한 칸이 32px 이고 스프라이트도 32px 이라 **확대가 없다**(scale 1).
+ *   16×16 을 2배로 늘려 쓰던 때보다 픽셀이 4배라 얼굴·장식이 들어간다.
+ *
+ * 쓰는 쪽:  SPRITES.bake("warrior")  → 캔버스(32×32). 한 번 굽고 계속 쓴다.
  */
 (function (global) {
   "use strict";
 
-  var SIZE = 16;
-  var SPR = {};
+  var SIZE = 32;
 
-  function def(name, colors, rows) {
-    var g = [];
-    for (var y = 0; y < SIZE; y++) {
-      var r = rows[y] || "";
-      while (r.length < SIZE) r += ".";
-      g.push(r.slice(0, SIZE));
+  /* ── 그리는 판 ─────────────────────────────────────── */
+
+  function Board(size) {
+    this.n = size;
+    this.px = new Array(size * size).fill(null);   /* 색 문자열 또는 null(투명) */
+  }
+  Board.prototype.get = function (x, y) {
+    if (x < 0 || y < 0 || x >= this.n || y >= this.n) return null;
+    return this.px[y * this.n + x];
+  };
+  Board.prototype.set = function (x, y, c) {
+    if (x < 0 || y < 0 || x >= this.n || y >= this.n) return;
+    this.px[y * this.n + x] = c;
+  };
+  Board.prototype.rect = function (x, y, w, h, c) {
+    for (var j = 0; j < h; j++) for (var i = 0; i < w; i++) this.set(x + i, y + j, c);
+  };
+  /* 중심 (cx,cy) · 반지름 (rx,ry) 채운 타원. 정수 좌표라 계단이 남는다(그게 도트다). */
+  Board.prototype.ell = function (cx, cy, rx, ry, c) {
+    for (var y = -ry; y <= ry; y++) {
+      for (var x = -rx; x <= rx; x++) {
+        var a = (x + 0.5) / (rx + 0.5), b = (y + 0.5) / (ry + 0.5);
+        if (a * a + b * b <= 1) this.set(cx + x, cy + y, c);
+      }
     }
-    SPR[name] = { colors: colors, rows: g, baked: null, bakedScale: 0 };
+  };
+  Board.prototype.line = function (x0, y0, x1, y1, c) {
+    var dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+    var sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    var err = dx - dy;
+    for (;;) {
+      this.set(x0, y0, c);
+      if (x0 === x1 && y0 === y1) break;
+      var e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx) { err += dx; y0 += sy; }
+    }
+  };
+  /* 다각형 채우기 — 어깨·망토·모자처럼 기울어진 덩어리에 쓴다 */
+  Board.prototype.poly = function (pts, c) {
+    var minY = Infinity, maxY = -Infinity, i;
+    for (i = 0; i < pts.length; i++) { minY = Math.min(minY, pts[i][1]); maxY = Math.max(maxY, pts[i][1]); }
+    for (var y = Math.floor(minY); y <= Math.ceil(maxY); y++) {
+      var xs = [];
+      for (i = 0; i < pts.length; i++) {
+        var a = pts[i], b = pts[(i + 1) % pts.length];
+        if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) {
+          xs.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
+        }
+      }
+      xs.sort(function (p, q) { return p - q; });
+      for (i = 0; i + 1 < xs.length; i += 2) {
+        for (var x = Math.round(xs[i]); x <= Math.round(xs[i + 1]); x++) this.set(x, y, c);
+      }
+    }
+  };
+  /* 이미 칠해진 색만 바꿔치기 — 명암을 나중에 손볼 때 쓴다 */
+  Board.prototype.swap = function (from, to) {
+    for (var i = 0; i < this.px.length; i++) if (this.px[i] === from) this.px[i] = to;
+  };
+
+  /* 실루엣 밖으로 1px 윤곽선. 어두운 바닥에서 형체가 살아난다 —
+   * 윤곽선이 없으면 던전 색과 섞여 "뭔가 뭉개져 있다" 로 보인다. */
+  function outline(b, c) {
+    var add = [];
+    for (var y = 0; y < b.n; y++) {
+      for (var x = 0; x < b.n; x++) {
+        if (b.get(x, y)) continue;
+        if (b.get(x - 1, y) || b.get(x + 1, y) || b.get(x, y - 1) || b.get(x, y + 1)) add.push([x, y]);
+      }
+    }
+    for (var i = 0; i < add.length; i++) b.set(add[i][0], add[i][1], c);
   }
 
-  /* 스프라이트를 캔버스에 한 번 굽는다. 확대까지 미리 해 둬 매 프레임 scale 을 안 건다. */
-  function bake(name, scale) {
+  /* 위쪽 경계는 밝게, 아래쪽 경계는 어둡게 — 위에서 빛이 온다는 약속.
+   * 색마다 밝은/어두운 짝을 미리 정해 둔 곳(pair)만 손댄다. */
+  function rim(b, pair) {
+    var snap = b.px.slice();
+    function at(x, y) {
+      if (x < 0 || y < 0 || x >= b.n || y >= b.n) return null;
+      return snap[y * b.n + x];
+    }
+    for (var y = 0; y < b.n; y++) {
+      for (var x = 0; x < b.n; x++) {
+        var c = at(x, y);
+        if (!c || !pair[c]) continue;
+        var up = at(x, y - 1), dn = at(x, y + 1);
+        if (!up || up !== c) b.set(x, y, pair[c][0]);        /* 위가 비었거나 다른 색 → 밝게 */
+        else if (!dn || dn !== c) b.set(x, y, pair[c][1]);   /* 아래가 그러면 → 어둡게 */
+      }
+    }
+  }
+
+  /* ── 스프라이트 등록 ───────────────────────────────── */
+
+  var SPR = {};
+
+  /* ops 는 [연산, ...인자] 목록이다. 색은 팔레트 키로 적는다.
+   *   ["rect", x,y,w,h, key] · ["ell", cx,cy,rx,ry, key] · ["line", x0,y0,x1,y1, key]
+   *   ["poly", [[x,y],...], key] · ["px", [[x,y],...], key]
+   *   ["swap", fromKey, toKey] · ["rim", {key:[lightKey,darkKey]}] · ["outline", key]
+   */
+  function art(name, pal, ops, opt) {
+    SPR[name] = { pal: pal, ops: ops, opt: opt || {}, baked: null };
+  }
+
+  function draw(name) {
+    var s = SPR[name];
+    var b = new Board(SIZE);
+    var P = s.pal;
+    for (var i = 0; i < s.ops.length; i++) {
+      var o = s.ops[i], k = o[0];
+      if (k === "rect") b.rect(o[1], o[2], o[3], o[4], P[o[5]]);
+      else if (k === "ell") b.ell(o[1], o[2], o[3], o[4], P[o[5]]);
+      else if (k === "line") b.line(o[1], o[2], o[3], o[4], P[o[5]]);
+      else if (k === "poly") b.poly(o[1], P[o[2]]);
+      else if (k === "px") { for (var j = 0; j < o[1].length; j++) b.set(o[1][j][0], o[1][j][1], P[o[2]]); }
+      else if (k === "swap") b.swap(P[o[1]], P[o[2]]);
+      else if (k === "rim") {
+        var pair = {};
+        for (var key in o[1]) pair[P[key]] = [P[o[1][key][0]], P[o[1][key][1]]];
+        rim(b, pair);
+      }
+      else if (k === "outline") outline(b, P[o[1]]);
+    }
+    return b;
+  }
+
+  function bake(name) {
     var s = SPR[name];
     if (!s) return null;
-    if (s.baked && s.bakedScale === scale) return s.baked;
+    if (s.baked) return s.baked;
+    var b = draw(name);
     var c = document.createElement("canvas");
-    c.width = SIZE * scale;
-    c.height = SIZE * scale;
+    c.width = SIZE; c.height = SIZE;
     var x = c.getContext("2d");
     for (var y = 0; y < SIZE; y++) {
-      var row = s.rows[y];
       for (var i = 0; i < SIZE; i++) {
-        var col = s.colors[row[i]];
+        var col = b.get(i, y);
         if (!col) continue;
         x.fillStyle = col;
-        x.fillRect(i * scale, y * scale, scale, scale);
+        x.fillRect(i, y, 1, 1);
       }
     }
     s.baked = c;
-    s.bakedScale = scale;
     return c;
   }
 
-  /* ── 지형 ────────────────────────────────────────────── */
+  /* ── 공용 색 ───────────────────────────────────────── */
 
-  def("wall", { a: "#4a4550", b: "#39353f", c: "#5d5866", d: "#2b2831" }, [
-    "cccccccccccccccc",
-    "caaaaadaaaaaaaad",
-    "caaaaadaaaaaaaad",
-    "caaaaadaaaaaaaad",
-    "dddddddddddddddd",
-    "caaaaaaaaadaaaaa",
-    "caaaaaaaaadaaaaa",
-    "caaaaaaaaadaaaaa",
-    "dddddddddddddddd",
-    "caaaadaaaaaaaaad",
-    "caaaadaaaaaaaaad",
-    "caaaadaaaaaaaaad",
-    "dddddddddddddddd",
-    "caaaaaaaadaaaaaa",
-    "caaaaaaaadaaaaaa",
-    "bbbbbbbbbbbbbbbb"
-  ]);
+  var OUT = "#12111a";          /* 윤곽선 — 모든 생물·물건이 같은 색을 쓴다(한 세트로 보인다) */
+  var VOID = "#0a090d";
 
-  def("floor", { a: "#221f28", b: "#2a2733", c: "#1c1a22" }, [
-    "aaaaaaaaaaaaaaaa",
-    "aaaabaaaaaaaaaaa",
-    "aaaaaaaaaaaacaaa",
-    "aaaaaaaaaaaaaaaa",
-    "aacaaaaaabaaaaaa",
-    "aaaaaaaaaaaaaaaa",
-    "aaaaaaaaaaaaaaba",
-    "aaaaaaacaaaaaaaa",
-    "aaaaaaaaaaaaaaaa",
-    "abaaaaaaaaaaacaa",
-    "aaaaaaaaaaaaaaaa",
-    "aaaaaacaaaaaaaaa",
-    "aaaaaaaaabaaaaaa",
-    "aaaaaaaaaaaaaaaa",
-    "aacaaaaaaaaaaaaa",
-    "aaaaaaaaaaaaaaaa"
-  ]);
-
-  def("stairs", { a: "#221f28", s: "#8b8496", h: "#5d5866" }, [
-    "aaaaaaaaaaaaaaaa",
-    "aaaaaaaaaaaaaaaa",
-    "assssssssssssssa",
-    "ahhhhhhhhhhhhhha",
-    "aaassssssssssssa",
-    "aaahhhhhhhhhhhha",
-    "aaaaaasssssssssa",
-    "aaaaaahhhhhhhhha",
-    "aaaaaaaasssssssa",
-    "aaaaaaaahhhhhhha",
-    "aaaaaaaaaassssssa",
-    "aaaaaaaaaahhhhhha",
-    "aaaaaaaaaaaassssa",
-    "aaaaaaaaaaaahhhha",
-    "aaaaaaaaaaaaaaaa",
-    "aaaaaaaaaaaaaaaa"
-  ]);
-
-  def("door", { a: "#221f28", w: "#7a5230", d: "#5a3a20", k: "#c9a227" }, [
-    "aaaaaaaaaaaaaaaa",
-    "aadddddddddddda.",
-    "adwwwwwwwwwwwwda",
-    "adwwddwwwwddwwda",
-    "adwwddwwwwddwwda",
-    "adwwwwwwwwwwwwda",
-    "adwwwwwwwwwwwwda",
-    "adwwwwwwkwwwwwda",
-    "adwwwwwwkwwwwwda",
-    "adwwwwwwwwwwwwda",
-    "adwwddwwwwddwwda",
-    "adwwddwwwwddwwda",
-    "adwwwwwwwwwwwwda",
-    "adwwwwwwwwwwwwda",
-    "aadddddddddddda.",
-    "aaaaaaaaaaaaaaaa"
-  ]);
-
-  /* ── 플레이어 (직업별) ───────────────────────────────────
+  /* ── 지형 ──────────────────────────────────────────
    *
-   * 셋 다 실루엣이 다르게 읽혀야 한다 — 투구+망토(전사) · 후드(도적) · 뾰족모자(마법사).
-   * 같은 몸에 색만 바꾸면 화면에서 구분이 안 된다. */
+   * 지형은 도형보다 **패턴**이라 따로 그린다. 그리고 한 장만 만들어 깔면
+   * 같은 무늬가 격자로 반복돼 눈에 걸린다 — 변종을 여러 장 구워 두고
+   * 좌표로 골라 쓴다(js/render.js 의 variant). */
 
-  /* 전사 — 깃털 투구 · 붉은 망토 · 방패와 검 */
-  def("warrior", {
-    P: "#d24a3a", H: "#b8bec9", D: "#1a1a20", S: "#e0ac69",
-    C: "#9c2f2a", M: "#8a919e", B: "#6b5230", W: "#eef2f8",
-    G: "#c9a227", L: "#4a4a54", F: "#3a2a18"
+  var FLOOR_VARIANTS = 4, WALL_VARIANTS = 3;
+
+  /* 씨앗 있는 난수 — 변종이 매번 달라지면 새로고침마다 바닥이 바뀐다 */
+  function rnd(seed) {
+    var s = seed >>> 0 || 1;
+    return function () {
+      s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0;
+      return s / 4294967296;
+    };
+  }
+
+  /* 판석 바닥.
+   *
+   * ⚠ 변종마다 이음선을 **다른 자리**에 둬야 한다. 처음엔 모든 변종이 비슷한 높이에
+   *   가로 이음선을 가졌는데, 그걸 깔아 보니 바닥 전체가 **가로 줄무늬**로 보였다
+   *   (돌이 아니라 나무 판자 같았다). 배치표를 변종마다 통째로 다르게 둔다.
+   * ⚠ 판석은 타일 가장자리에 붙인다. 안쪽으로 들이면 32px 격자가 눈에 드러난다 —
+   *   이웃 타일의 판석과 맞닿아야 하나의 큰 바닥으로 읽힌다. */
+  var FLOOR_LAYOUTS = [
+    [[0, 0, 18, 15], [18, 0, 14, 15], [0, 15, 13, 17], [13, 15, 19, 17]],
+    [[0, 0, 13, 21], [13, 0, 19, 11], [13, 11, 19, 10], [0, 21, 32, 11]],
+    [[0, 0, 32, 12], [0, 12, 11, 20], [11, 12, 21, 20]],
+    [[0, 0, 15, 9], [15, 0, 17, 23], [0, 9, 15, 23], [15, 23, 17, 9]]
+  ];
+
+  function floorTile(v) {
+    var b = new Board(SIZE);
+    var r = rnd(1000 + v * 7717);
+    var MORTAR = "#1e1b26", FACE = "#302b3a", LIT = "#3a3446", DIM = "#272233";
+    b.rect(0, 0, SIZE, SIZE, MORTAR);
+
+    var L = FLOOR_LAYOUTS[v % FLOOR_LAYOUTS.length];
+    for (var i = 0; i < L.length; i++) {
+      var x = L[i][0], y = L[i][1], w = L[i][2], h = L[i][3];
+      b.rect(x, y, w - 1, h - 1, FACE);            /* 1px 은 줄눈으로 남긴다 */
+      b.rect(x, y, w - 1, 1, LIT);                 /* 위 모서리에 빛 */
+      b.rect(x, y + h - 2, w - 1, 1, DIM);         /* 아래 모서리에 그늘 */
+    }
+
+    /* 돌결 — 판석 면에만 얹는다(줄눈에 얹으면 줄눈이 흐려진다) */
+    for (var s = 0; s < 90; s++) {
+      var px = Math.floor(r() * SIZE), py = Math.floor(r() * SIZE);
+      if (b.get(px, py) !== FACE) continue;
+      b.set(px, py, r() < 0.5 ? "#363040" : "#2a2534");
+    }
+    /* 금 — 변종마다 다른 자리에 한 줄 */
+    if (v % 2 === 0) {
+      var cx = 5 + Math.floor(r() * 22), cy = 4 + Math.floor(r() * 20);
+      b.line(cx, cy, cx + 4 - Math.floor(r() * 8), cy + 5, "#241f2e");
+    }
+    /* 아주 드물게 자갈 — 눈이 붙잡을 것이 하나쯤 있어야 바닥이 살아 있다 */
+    if (v === 3) {
+      b.set(22, 7, "#423b4e"); b.set(23, 7, "#4a4257"); b.set(23, 8, "#332d3e");
+      b.set(9, 25, "#423b4e"); b.set(10, 25, "#4a4257");
+    }
+    return b;
+  }
+
+  function wallTile(v) {
+    var b = new Board(SIZE);
+    var r = rnd(2000 + v * 3313);
+    b.rect(0, 0, SIZE, SIZE, "#3c3846");       /* 줄눈(모르타르) */
+    /* 벽돌 3단 — 단마다 반 칸 어긋나게 */
+    var rows = [[0, 11], [11, 11], [22, 10]];
+    for (var ri = 0; ri < rows.length; ri++) {
+      var y = rows[ri][0], h = rows[ri][1];
+      var off = (ri % 2) ? -8 : 0;
+      for (var x = off; x < SIZE; x += 16) {
+        var bw = Math.min(16, SIZE - Math.max(0, x)) - 2;
+        var bx = Math.max(0, x) + 1;
+        if (bw <= 1) continue;
+        b.rect(bx, y + 1, bw, h - 2, "#585264");
+        b.rect(bx, y + 1, bw, 1, "#6d6679");     /* 위 하이라이트 */
+        b.rect(bx, y + h - 2, bw, 1, "#433e4e");  /* 아래 그림자 */
+      }
+    }
+    /* 돌 표면 잡티 */
+    for (var i = 0; i < 80; i++) {
+      var px = Math.floor(r() * SIZE), py = Math.floor(r() * SIZE);
+      if (b.get(px, py) === "#585264") b.set(px, py, r() < 0.5 ? "#615b6e" : "#4e4859");
+    }
+    /* 이끼 — 아래쪽에만 살짝 */
+    if (v === 1) {
+      for (var m = 0; m < 26; m++) {
+        var mx = Math.floor(r() * SIZE), my = 24 + Math.floor(r() * 8);
+        if (b.get(mx, my)) b.set(mx, my, "#3f5040");
+      }
+    }
+    return b;
+  }
+
+  function bakeBoard(b) {
+    var c = document.createElement("canvas");
+    c.width = SIZE; c.height = SIZE;
+    var x = c.getContext("2d");
+    for (var y = 0; y < SIZE; y++) {
+      for (var i = 0; i < SIZE; i++) {
+        var col = b.get(i, y);
+        if (!col) continue;
+        x.fillStyle = col;
+        x.fillRect(i, y, 1, 1);
+      }
+    }
+    return c;
+  }
+
+  var terrainCache = {};
+  function terrain(kind, variant) {
+    var key = kind + ":" + variant;
+    if (terrainCache[key]) return terrainCache[key];
+    var b;
+    if (kind === "floor") b = floorTile(variant % FLOOR_VARIANTS);
+    else if (kind === "wall") b = wallTile(variant % WALL_VARIANTS);
+    else b = floorTile(0);
+    terrainCache[key] = bakeBoard(b);
+    return terrainCache[key];
+  }
+
+  /* 문 — 나무 판자 + 철 띠 + 고리. 바닥 위에 얹는다(문틀 사이로 바닥이 보인다). */
+  art("door", {
+    o: OUT, w: "#7b5330", W: "#96663c", d: "#5c3d22", i: "#6f6a78", I: "#8a8492", k: "#c9a227"
   }, [
-    ".......P........",
-    "......PPP.......",
-    "....HHHHHHH.....",
-    "...HHHHHHHHH....",
-    "...HHSSSSSHH....",
-    "...HSDSSSDSH....",
-    "....SSSSSSS.....",
-    "..CCMMMMMMMCC...",
-    ".CCMMMMMMMMMCC..",
-    ".CBMMMMMMMMMWC..",
-    ".CBBMMMMMMMWWC..",
-    ".CBBMMMMMMMWWC..",
-    "..CGGGGGGGGGC...",
-    "...LLL...LLL....",
-    "...LLL...LLL....",
-    "..FFF.....FFF..."
+    ["rect", 4, 1, 24, 30, "d"],
+    ["rect", 5, 2, 22, 28, "w"],
+    ["rect", 5, 2, 7, 28, "W"],
+    ["rect", 12, 2, 1, 28, "d"],
+    ["rect", 19, 2, 1, 28, "d"],
+    ["rect", 4, 7, 24, 3, "i"],
+    ["rect", 4, 7, 24, 1, "I"],
+    ["rect", 4, 22, 24, 3, "i"],
+    ["rect", 4, 22, 24, 1, "I"],
+    ["ell", 22, 16, 3, 3, "k"],
+    ["ell", 22, 16, 1, 1, "d"],
+    ["outline", "o"]
   ]);
 
-  /* 도적 — 깊은 후드 · 양손 단검 · 어두운 옷 */
-  def("rogue", {
-    H: "#2f4436", S: "#d6a26a", D: "#e8d44a", T: "#3d5244",
-    K: "#c8cedb", B: "#2a2118", L: "#2c3a30", F: "#241c14"
+  /* 계단 — 아래로 멀어지는 단. 좌우 대칭으로 좁아지고 맨 아래가 검다.
+   * ⚠ 처음엔 단을 왼쪽에만 들여 검은 구멍이 한쪽에 몰렸다 — 계단이 아니라
+   *   벽 구멍처럼 보였다. 양쪽을 같이 들여야 '내려간다' 로 읽힌다. */
+  art("stairs", {
+    o: OUT, s: "#98909f", m: "#7a7384", d: "#585165", n: "#3d3847", v: VOID
   }, [
-    "................",
-    "....HHHHHHH.....",
-    "...HHHHHHHHH....",
-    "...HHHHHHHHH....",
-    "...HHSSSSSHH....",
-    "...HHSDSDSHH....",
-    "....HSSSSSH.....",
-    ".....HHHHH......",
-    "...KTTTTTTTK....",
-    "..KKTTTTTTTKK...",
-    "..KKTTTTTTTKK...",
-    "...KTTTTTTTK....",
-    "...BBBBBBBBB....",
-    "...LLL...LLL....",
-    "...LLL...LLL....",
-    "..FFF.....FFF..."
+    ["rect", 0, 0, 32, 32, "n"],
+    ["rect", 1, 2, 30, 5, "s"],            /* 첫 단 */
+    ["rect", 1, 7, 30, 2, "d"],
+    ["rect", 4, 9, 24, 5, "m"],
+    ["rect", 4, 14, 24, 2, "d"],
+    ["rect", 7, 16, 18, 4, "m"],
+    ["rect", 7, 20, 18, 2, "d"],
+    ["rect", 10, 22, 12, 4, "d"],
+    ["rect", 12, 26, 8, 5, "v"],           /* 더 아래는 어둠 */
+    ["rim", { s: ["s", "d"], m: ["s", "d"] }]
   ]);
 
-  /* 마법사 — 뾰족 모자 · 흰 수염 · 빛나는 지팡이 */
-  def("mage", {
-    O: "#8ae8f0", H: "#4a3a7a", S: "#e0ac69", D: "#241a10",
-    B: "#e8e4dc", R: "#5a4894", T: "#7a5230", V: "#3a2c60"
+  /* 함정 — 바닥 판에서 솟은 가시. 드러난 뒤에만 그린다. */
+  art("trap", {
+    o: OUT, p: "#332e3c", s: "#a9aebb", S: "#cfd4df", d: "#6b2222", h: "#4a4452"
   }, [
-    ".......O........",
-    "......HHH.......",
-    ".....HHHHH......",
-    "....HHHHHHH.....",
-    "...HHHHHHHHH....",
-    "..HHHHHHHHHHH...",
-    "....SSSSSSS.....",
-    "....SDSSSDS.....",
-    ".....BBBBB....O.",
-    "...RRRRRRRRR.TT.",
-    "..RRRRRRRRRRRT..",
-    "..RRVVRRRVVRRT..",
-    "..RRRRRRRRRRRT..",
-    "..RRRRRRRRRRRT..",
-    "...RRRRRRRRR.T..",
-    "....RRRRRRR....."
+    ["rect", 3, 3, 26, 26, "p"],
+    ["rect", 3, 3, 26, 1, "h"],
+    ["px", [[8, 26], [16, 26], [24, 26], [12, 27], [20, 27]], "h"],
+    ["poly", [[7, 26], [9, 26], [8, 12]], "s"],
+    ["poly", [[15, 26], [17, 26], [16, 9]], "s"],
+    ["poly", [[23, 26], [25, 26], [24, 13]], "s"],
+    ["poly", [[11, 28], [13, 28], [12, 17]], "s"],
+    ["poly", [[19, 28], [21, 28], [20, 16]], "s"],
+    ["px", [[8, 13], [16, 10], [24, 14], [12, 18], [20, 17]], "S"],
+    ["px", [[8, 24], [16, 24], [24, 24], [12, 26], [20, 26]], "d"],
+    ["outline", "o"]
   ]);
 
-  /* 옛 이름은 전사로 이어 둔다(어디선가 "player" 를 부르면 빈 화면이 된다) */
-  SPR.player = SPR.warrior;
-
-  /* 함정 — 드러난 뒤에만 그린다 */
-  def("trap", { a: "#221f28", S: "#9aa0ab", D: "#5a2020", K: "#3a3540" }, [
-    "aaaaaaaaaaaaaaaa",
-    "aaaaaaaaaaaaaaaa",
-    "aaKaaaKaaaKaaKaa",
-    "aaSaaaSaaaSaaSaa",
-    "aaSaaaSaaaSaaSaa",
-    "aaDaaaDaaaDaaDaa",
-    "aaaaaaaaaaaaaaaa",
-    "aKaaaKaaaKaaaKaa",
-    "aSaaaSaaaSaaaSaa",
-    "aSaaaSaaaSaaaSaa",
-    "aDaaaDaaaDaaaDaa",
-    "aaaaaaaaaaaaaaaa",
-    "aaKaaaKaaaKaaKaa",
-    "aaSaaaSaaaSaaSaa",
-    "aaDaaaDaaaDaaDaa",
-    "aaaaaaaaaaaaaaaa"
-  ]);
-
-  /* ── 몬스터 ──────────────────────────────────────────── */
-
-  def("rat", { G: "#6e6a60", D: "#4a473f", E: "#c94f4f", T: "#8a8378", P: "#d9a0a0" }, [
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "..GG........GG..",
-    "..GGG......GGG..",
-    ".GGGGGGGGGGGGG..",
-    "GGEGGGGGGGGGGGGT",
-    "GPGGGGGGGGGGGTT.",
-    ".GGGGGGGGGGGT...",
-    "..DD..DD..DD....",
-    "................",
-    "................",
-    "................",
-    "................"
-  ]);
-
-  def("goblin", {
-    G: "#6b8f3a", D: "#3f5620", E: "#e8d44a", C: "#7a4a2a",
-    W: "#9aa0ab", B: "#4a3520"
-  }, [
-    "................",
-    "..G..........G..",
-    "..GG........GG..",
-    "..GGG.GGGG.GGG..",
-    "...GGGGGGGGGG...",
-    "...GGEGGGGEGG...",
-    "...GGGGGGGGGG...",
-    "....GGDDDDGG....",
-    ".....GGGGGG.....",
-    "...CCCCCCCCC.W..",
-    "..GCCCCCCCCCGW..",
-    "...CCCCCCCCCWWW.",
-    "...BBBBBBBB.....",
-    "...GGG..GGG.....",
-    "...GGG..GGG.....",
-    "..DDD....DDD...."
-  ]);
-
-  def("orc", {
-    G: "#4a7a3a", D: "#2d4a22", E: "#e85a3a", T: "#e8e4d8",
-    A: "#6b5a3a", B: "#3a2f1e", M: "#8a8f9a"
-  }, [
-    "................",
-    "...GGGGGGGGGG...",
-    "..GGGGGGGGGGGG..",
-    "..GGDGGGGGGDGG..",
-    "..GGGGGGGGGGGG..",
-    "..GGEGGGGGGEGG..",
-    "..GGGGGGGGGGGG..",
-    "..GGTGDDDDGTGG..",
-    "...GGGGGGGGGG...",
-    ".AAAAAAAAAAAAA.M",
-    "GAAAAAAAAAAAAAGM",
-    ".AAAAAAAAAAAAAMM",
-    "..BBBBBBBBBBB.M.",
-    "..GGGG..GGGG....",
-    "..GGGG..GGGG....",
-    ".DDDD....DDDD..."
-  ]);
-
-  def("skeleton", { W: "#ded9cc", D: "#8a8577", K: "#1a1a1a" }, [
-    "................",
-    "....WWWWWWWW....",
-    "...WWWWWWWWWW...",
-    "...WWWWWWWWWW...",
-    "...WKKWWWWKKW...",
-    "...WKKWWWWKKW...",
-    "...WWWWWWWWWW...",
-    "....WWKWKWKW....",
-    ".....WWWWWW.....",
-    "......DWWD......",
-    "...WWWWWWWWWW...",
-    "..WWDWWWWWWDWW..",
-    "...WWWWWWWWWW...",
-    "....WWW..WWW....",
-    "....WWW..WWW....",
-    "...DDD....DDD..."
-  ]);
-
-  def("troll", {
-    G: "#3d6b4a", D: "#24402c", E: "#e8c84a", T: "#d8d4c8",
-    B: "#5a3a20", N: "#2a1a10"
-  }, [
-    "..GGGGGGGGGGGG..",
-    ".GGGGGGGGGGGGGG.",
-    ".GGDGGGGGGGGDGG.",
-    ".GGGGGGGGGGGGGG.",
-    ".GGEEGGGGGGEEGG.",
-    ".GGGGGGGGGGGGGG.",
-    ".GGTGGDDDDGGTGG.",
-    "..GGGGGGGGGGGG..",
-    "GGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGG",
-    "GGGGGGGGGGGGGGGG",
-    ".GGGGGGGGGGGGGG.",
-    "..BBBBBBBBBBBB..",
-    "..GGGG..GGGGG...",
-    "..GGGG..GGGGG...",
-    ".NNNNN..NNNNN..."
-  ]);
-
-  def("wraith", {
-    P: "#7a5a9e", D: "#4a3466", E: "#8ae8e8", L: "#9e7ac4", K: "#2a1d3a"
-  }, [
-    "....LLLLLLLL....",
-    "...LLLLLLLLLL...",
-    "..LLLLLLLLLLLL..",
-    "..LLKKLLLLKKLL..",
-    "..LLEKLLLLEKLL..",
-    "..LLLLLLLLLLLL..",
-    "..LLLLKKKKLLLL..",
-    "..PPPPPPPPPPPP..",
-    ".PPPPPPPPPPPPPP.",
-    ".PPPPPPPPPPPPPP.",
-    ".PPPPDDPPDDPPPP.",
-    "..PPPPPPPPPPPP..",
-    "..DPPPDDPPPDPD..",
-    "...D.DD..DD.D...",
-    "................",
-    "................"
-  ]);
-
-  def("lord", {
-    K: "#1a1020", R: "#c22a2a", F: "#e85a2a", G: "#c9a227",
-    D: "#3a2040", S: "#8a2a8a"
-  }, [
-    "..G..G.GG.G..G..",
-    "..GG.GGGGGG.GG..",
-    "..KKKKKKKKKKKK..",
-    ".KKKKKKKKKKKKKK.",
-    ".KKRRKKKKKKRRKK.",
-    ".KKRRKKKKKKRRKK.",
-    ".KKKKKKKKKKKKKK.",
-    ".KKKFKFFFFKFKKK.",
-    "..KKKKKKKKKKKK..",
-    ".SSSSSSSSSSSSSS.",
-    "SSSSSKKKKSSSSSSS",
-    "SSSSKKFFKKSSSSSS",
-    ".SSSSKKKKSSSSSS.",
-    "..DDDD..DDDD....",
-    "..DDDD..DDDD....",
-    ".KKKKK..KKKKK..."
-  ]);
-
-  /* ── 아이템 ──────────────────────────────────────────── */
-
-  def("potion", { G: "#cfe8f0", L: "#e85a7a", C: "#7a5230", H: "#ffffff" }, [
-    "................",
-    "................",
-    "......CCCC......",
-    "......CCCC......",
-    "......GGGG......",
-    ".....GGGGGG.....",
-    "....GGGGGGGG....",
-    "...GGGGGGGGGG...",
-    "...GHLLLLLLLG...",
-    "...GHLLLLLLLG...",
-    "...GLLLLLLLLG...",
-    "...GLLLLLLLLG...",
-    "...GLLLLLLLLG...",
-    "....GLLLLLLG....",
-    ".....GGGGGG.....",
-    "................"
-  ]);
-
-  def("scroll", { P: "#e8e0c8", D: "#b8ad8e", I: "#3a3028", R: "#a02a2a" }, [
-    "................",
-    "................",
-    "..DDDDDDDDDDDD..",
-    "..DPPPPPPPPPPD..",
-    "..DPIIIIIIIIPD..",
-    "..DPPPPPPPPPPD..",
-    "..DPIIIIIIPPPD..",
-    "..DPPPPPPPPPPD..",
-    "..DPIIIIIIIIPD..",
-    "..DPPPPPPPPPPD..",
-    "..DPIIIIPPPPPD..",
-    "..DPPPPPPPPPPD..",
-    "..DDDDDDDDDDDD..",
-    "....RRRRRRRR....",
-    "................",
-    "................"
-  ]);
-
-  def("sword", { B: "#d8dde8", E: "#9aa0ab", G: "#c9a227", H: "#5a3a20" }, [
-    "..............B.",
-    ".............BEB",
-    "............BEB.",
-    "...........BEB..",
-    "..........BEB...",
-    ".........BEB....",
-    "........BEB.....",
-    ".......BEB......",
-    "......BEB.......",
-    ".....BEB........",
-    "....GGGGG.......",
-    "...GGGGGGG......",
-    "....HHH.........",
-    "...HHH..........",
-    "..HHH...........",
-    ".GG............."
-  ]);
-
-  def("armor", { S: "#9aa0ab", D: "#6a7080", L: "#c8ced8", G: "#c9a227" }, [
-    "................",
-    "....SS....SS....",
-    "...SSSS..SSSS...",
-    "..SSSSSSSSSSSS..",
-    ".SSLLSSSSSSLLSS.",
-    ".SSSSSSSSSSSSSS.",
-    ".SSSSSGGGGSSSSS.",
-    ".SSSSSGGGGSSSSS.",
-    ".SSSSSSSSSSSSSS.",
-    ".DSSSSSSSSSSSSD.",
-    ".DSSSSSSSSSSSSD.",
-    "..DSSSSSSSSSSD..",
-    "..DDSSSSSSSSDD..",
-    "...DDDDDDDDDD...",
-    "................",
-    "................"
-  ]);
-
-  def("gold", { G: "#e8c84a", D: "#b8931f", L: "#fff0a0" }, [
-    "................",
-    "................",
-    "................",
-    "................",
-    ".....GGGGGG.....",
-    "....GLLGGGGG....",
-    "...GLGGGGGGGG...",
-    "...GLGGGGGGGG...",
-    "...GGGGGGGGGG...",
-    "....GGGGGGGD....",
-    ".....DDDDDD.....",
-    "...GGGGGGGGGG...",
-    "..GLGGGGGGGGDD..",
-    "..GGGGGGGGGGDD..",
-    "...DDDDDDDDDD...",
-    "................"
-  ]);
-
-  def("corpse", { R: "#7a2020", D: "#4a1414", B: "#c8c0b0" }, [
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "................",
-    "......DD........",
-    "....DRRRRD......",
-    "...DRRBRRRD.....",
-    "..DRRRRRRRRD....",
-    "...DRRRRRRD.....",
-    "....DDRRDD......",
-    "......DD........",
-    "................",
-    "................",
-    "................"
-  ]);
-
-  global.SPRITES = { SIZE: SIZE, data: SPR, bake: bake, def: def };
+  global.SPRITES = {
+    SIZE: SIZE,
+    OUT: OUT,
+    FLOOR_VARIANTS: FLOOR_VARIANTS,
+    WALL_VARIANTS: WALL_VARIANTS,
+    art: art,
+    bake: bake,
+    terrain: terrain,
+    data: SPR
+  };
 })(window);
