@@ -328,7 +328,25 @@ row("무기별로 다름", sig.length >= 4 && new Set(sig).size === sig.length,
   }
 }
 
-/* ⑨ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */
+/* ⑨ **낀 무기가 외형에 보이는가.**
+ * ⚠ 몸에서 주 무기를 떼고 덧그림으로 옮겼다. 검과 도끼를 낀 같은 자리의 픽셀이
+ *   달라야 "무기가 보인다" 가 성립한다. 덧그림 파일이 있다는 것은 통과가 아니다. */
+{
+  const a = await arena({ mon: "orc", calm: true, weapon: "sword", armor: "common" });
+  if (!a) row("무기 외형", false, "판을 못 만들었다");
+  else {
+    await sleep(240);
+    const px = `window.__pix(window.__peek().x, window.__peek().y, 2)`;
+    const sw = await ev(px);
+    await arena({ mon: "orc", calm: true, weapon: "axe", armor: "common" });
+    await sleep(240);
+    const ax = await ev(px);
+    row("무기 외형", sw.hash !== ax.hash,
+      "검 → 도끼 · 밝은 픽셀 " + sw.lit + " → " + ax.lit);
+  }
+}
+
+/* ⑩ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */
 {
   for (let i = 0; i < 6; i++) {
     const a = await arena({ weapon: "sword", hp: 99999, ail: i % 2 ? "poison" : "bleed" });

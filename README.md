@@ -25,6 +25,7 @@ tools/arena.mjs       규칙만 돌리는 검사들이 함께 쓰는 판 (두 �
 tools/mob-check.mjs   몬스터 행동 (속도 · 원거리 · 도망의 끝 · 소환 상한)
 tools/kite-check.mjs  붙었다 떨어지는 춤 (쿨다운이 공짜가 되지 않는가 · 도망 값)
 tools/fx-check.mjs    타격감 (무기별 궤적 · 피해 숫자 · 섬광 · 상태이상 색 · 히트스톱)
+tools/deco-check.mjs  구역 장식이 바닥에 묻히지 않는가 (밝기 차를 숫자로)
 tools/verify.mjs  전체 회귀 검사 (로직 + 직업별 밸런스 + 화면)
 wrangler.toml     Cloudflare 배포 (정적 자산 Worker · public/ 만 올린다)
 ```
@@ -48,6 +49,7 @@ node tools/anim-check.mjs              # 부드러운 이동만 따로 (보간·
 node tools/mob-check.mjs               # 몬스터 행동만 따로 (속도·원거리·도망·소환)
 node tools/kite-check.mjs              # 붙었다 떨어지는 춤만 따로 (기회 공격·도망 값)
 node tools/fx-check.mjs                # 타격감만 따로 (캔버스 픽셀을 직접 읽는다)
+node tools/deco-check.mjs              # 구역 장식 대비만 따로
 node tools/fx-check.mjs --shots out    # 연출 장면을 png 로 뽑아 본다
 
 npx wrangler deploy                    # 운영 배포

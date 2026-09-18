@@ -517,7 +517,8 @@
       var c = list[i];
       html += '<button class="cls-card" data-cls="' + c.id + '">' +
         '<span class="cls-key">' + (i + 1) + "</span>" +
-        '<canvas class="cls-art" width="96" height="96" data-sprite="' + c.sprite + '"></canvas>' +
+        '<canvas class="cls-art" width="96" height="96" data-sprite="' + c.sprite +
+          '" data-weapon="' + ((c.startWeapon && c.startWeapon.kind) || "") + '"></canvas>' +
         '<span class="cls-name">' + c.name + "</span>" +
         '<span class="cls-title">' + c.title + " · " + c.age + "</span>" +
         '<span class="cls-story">' + c.story + "</span>" +
@@ -536,10 +537,17 @@
     var arts = els.classes.querySelectorAll(".cls-art");
     for (var a = 0; a < arts.length; a++) {
       var cv = arts[a];
-      var baked = window.SPRITES.bake(cv.getAttribute("data-sprite"));
       var x = cv.getContext("2d");
       x.imageSmoothingEnabled = false;
-      x.drawImage(baked, 0, 0, 32, 32, 0, 0, 96, 96);
+      x.drawImage(window.SPRITES.bake(cv.getAttribute("data-sprite")), 0, 0, 32, 32, 0, 0, 96, 96);
+      /* ⚠ 몸에서 주 무기를 뗐으므로 카드에도 **시작 무기**를 얹어야 한다.
+       *   안 얹으면 고르기 화면에서만 셋이 빈손이라 어떤 직업인지 덜 읽힌다. */
+      /* ⚠ startWeapon 은 {kind, tier} **객체**다. 통째로 넣으면
+       *   "w_[object Object]" 가 되고 bake 가 null 을 주어 drawImage 가 터진다
+       *   (문법은 멀쩡하고 화면만 통째로 안 뜬다 — 실제로 그렇게 죽였다). */
+      var wk = cv.getAttribute("data-weapon");
+      var wb = wk ? window.SPRITES.bake("w_" + wk) : null;
+      if (wb) x.drawImage(wb, 0, 0, 32, 32, 0, 0, 96, 96);
     }
   }
 

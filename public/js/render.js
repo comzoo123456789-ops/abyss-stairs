@@ -231,6 +231,29 @@
   }
   global.ARMOR_ART = armorArt;
 
+  /* 손에 든 무기 덧그림 이름.
+   * ⚠ 무기 종류 id 가 곧 이름이다(sword·axe·dagger·staff·bow·spear).
+   *   data.js 의 WEAPON_KINDS 와 **같은 id** 를 쓴다 — 표를 베껴 적지 말 것.
+   * ⚠ 맨손이면 주먹을 그린다. 아무것도 안 그리면 오른손이 뭉텅 비어 보인다. */
+  function weaponArt(p) {
+    var k = p && p.weapon && p.weapon.weaponKind;
+    return "w_" + (k || "fist");
+  }
+  global.WEAPON_ART = weaponArt;
+
+  /* 몸 → 갑옷 → 무기. 세 자리(지도·상단 초상·사이드바 초상)가 **같은 순서**로
+   * 그려야 한다. 한 곳만 순서가 다르면 거기서만 무기가 어깨에 가린다. */
+  function drawFigure(ctx, p, sprite, frame, tint, x, y) {
+    /* ⚠ bake 는 이름이 틀리면 **null 을 준다.** 그대로 drawImage 에 넘기면
+     *   그리기가 통째로 터져 화면이 안 뜬다 — 하나씩 확인하고 넘긴다. */
+    var body = S.bake(sprite, frame, tint);
+    if (body) ctx.drawImage(body, x, y);
+    var a = armorArt(p) && S.bake(armorArt(p), 0, tint);
+    if (a) ctx.drawImage(a, x, y);
+    var w = S.bake(weaponArt(p), 0, tint);
+    if (w) ctx.drawImage(w, x, y);
+  }
+
   Renderer.prototype.tintOf = function (e) {
     if (this.isWhite(e)) return WHITE_TINT;
     if (!e.ail) return null;
@@ -806,11 +829,9 @@
     glow.addColorStop(1, "rgba(255, 226, 150, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(pxp - TILE, pyp - TILE, TILE * 3, TILE * 3);
-    ctx.drawImage(S.bake(g.player.sprite || "warrior", frameOf(pv),
-                         this.tintOf(g.player)), pxp, pyp);
-    /* 갑옷 등급이 어깨로 보인다 — 장비를 껴도 외형이 안 변하던 것을 고친다 */
-    var eqa = armorArt(g.player);
-    if (eqa) ctx.drawImage(S.bake(eqa, 0, this.tintOf(g.player)), pxp, pyp);
+    /* 몸 → 갑옷 → 무기. 장비를 껴도 외형이 안 변하던 것을 고친다 */
+    drawFigure(ctx, g.player, g.player.sprite || "warrior", frameOf(pv),
+               this.tintOf(g.player), pxp, pyp);
 
     /* 4-b) 피격 표시 — 맞은 자리에 짧게 튀는 빛. 로그를 안 봐도 뭔가 맞았음을 안다 */
     for (i = 0; i < this.hits.length; i++) {
@@ -1081,10 +1102,8 @@
       var x = art.getContext("2d");
       x.imageSmoothingEnabled = false;
       x.clearRect(0, 0, 32, 32);
-      x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
-      /* 갑옷 등급이 초상에도 보인다 — 지도와 초상이 다르면 어느 쪽이 나인지 흔들린다 */
-      var eqp = armorArt(g.player);
-      if (eqp) x.drawImage(S.bake(eqp), 0, 0);
+      /* 몸 → 갑옷 → 무기. 지도와 **같은 순서**여야 한다 */
+      drawFigure(x, g.player, art.getAttribute("data-sprite"), 0, null, 0, 0);
     }
   };
 
@@ -1217,10 +1236,8 @@
     if (art) {
       var x = art.getContext("2d");
       x.imageSmoothingEnabled = false;
-      x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
-      /* 갑옷 등급이 초상에도 보인다 — 지도와 초상이 다르면 어느 쪽이 나인지 흔들린다 */
-      var eqp = armorArt(g.player);
-      if (eqp) x.drawImage(S.bake(eqp), 0, 0);
+      /* 몸 → 갑옷 → 무기. 지도와 **같은 순서**여야 한다 */
+      drawFigure(x, g.player, art.getAttribute("data-sprite"), 0, null, 0, 0);
     }
   };
 

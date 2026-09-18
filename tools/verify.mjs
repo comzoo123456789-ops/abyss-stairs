@@ -948,6 +948,19 @@ for (const [label, args] of SCREENS) {
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 구역 장식이 바닥에 묻히지 않는가 — 팔레트를 만질 때마다 다시 잰다
+{
+  const rz = spawnSync(process.execPath, [path.join(ROOT, "tools", "deco-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rz.stdout.match(/✘/g) || []).length;
+  if (rz.status !== 0) fails++;
+  const line = rz.stdout.split(String.fromCharCode(10)).find(l => l.startsWith("묻히는 장식")) || "";
+  console.log("장식 대비".padEnd(20), ok(rz.status === 0),
+    (line.replace(/^묻히는 장식s*[✔✘]?s*/, "묻히는 것 ") || ("문제 " + bad + "건")) + why(rz));
+  if (bad) rz.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 타격감 — 연출이 실제로 캔버스에 그려지는가(무기별 궤적 · 숫자 · 섬광 · 색 · 히트스톱)
 {
   const rf = spawnSync(process.execPath, [path.join(ROOT, "tools", "fx-check.mjs")],
