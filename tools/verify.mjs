@@ -47,6 +47,21 @@ for (const f of fs.readdirSync(JS)) {
 }
 console.log("문법        :", ok(synBad === 0), fs.readdirSync(JS).length + "개 파일");
 
+// 1-b) 캐시 무효화 — public 의 js/css 를 고치고 index.html 의 ?v= 를 안 올리면
+//    **이미 접속한 사람에게는 옛 파일이 그대로 나간다.** 배포는 성공하고 화면 검사도
+//    통과하는데(점검기는 늘 새 브라우저다) 정작 쓰던 사람만 안 바뀐다 — 화면에
+//    아무 단서가 없는 종류다. 실제로 구역 배포에서 한 번 빠뜨렸다.
+{
+  const rc = spawnSync(process.execPath, [path.join(ROOT, "tools", "cache-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const line = rc.stdout.split(String.fromCharCode(10)).find(l => l.startsWith("버전 값")) || "";
+  if (rc.status !== 0) fails++;
+  console.log("캐시 무효화 :", ok(rc.status === 0),
+    line.replace(/^버전 값[^:]*:/, "버전").replace(/\s+/g, " ").trim());
+  if (rc.status !== 0) rc.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 2) 던전 연결성 + 보물방 진입 가능성
 let unreachable = 0, treasureSealed = 0, treasureCount = 0;
 for (let s = 1; s <= 200; s++) {
