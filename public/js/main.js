@@ -197,7 +197,10 @@
     view.drawStats(els.stats);
     view.drawInventory(els.inv);
     view.drawLog(els.log);
-    els.seed.textContent = "#" + game.seed.toString(16).toUpperCase();
+    /* 일일 모드에서는 씨앗 숫자가 아무 뜻이 없다(모두 같다) — 날짜를 보여 준다 */
+    els.seed.textContent = (game.mode === "daily" && window.DAILY)
+      ? window.DAILY.dayLabel(window.DAILY.dayKey())
+      : "#" + game.seed.toString(16).toUpperCase();
     /* 스킬 버튼은 매번 다시 그려지므로 그때마다 배선한다 */
     els.stats.querySelectorAll("[data-skill]").forEach(function (b) {
       b.addEventListener("click", function () {
@@ -333,6 +336,138 @@
       "</dl>";
     els.end.hidden = false;
     saveBest(g.score());
+    writeLedger(g);
+  }
+
+  /* ── 장부 한 줄 ───────────────────────────────────────
+   *
+   * 이게 공유판이다. 세계관이 "이름 없이 몇 층까지 갔는가만 남는다" 이므로
+   * 공유판과 세계관이 같은 말을 한다.
+   * ⚠ 일일 모드는 여기서 **딱 한 번** 기록된다. 다시 적지 않는다(daily.js 의 record
+   *   가 같은 날 항목을 덮어쓰지 않는다) — 덮어쓰면 죽고 다시 해서 좋은 기록만
+   *   남기는 것이 되어 하루 한 번이라는 약속이 무의미해진다. */
+  function runResult(g) {
+    return {
+      day: window.DAILY ? window.DAILY.dayKey() : "",
+      mode: g.mode || "free",
+      seed: g.seed,
+      cls: g.cls.name,
+      depth: g.depth, won: !!g.won, score: g.score(),
+      kills: g.kills, crit: g.stats().crit, level: g.player.level, turn: g.turn,
+      maxDepth: window.DATA.MAX_DEPTH,
+      /* ⚠ host 만 적으면 카톡·디스코드에서 **링크가 안 걸린다** — 그러면 공유판을
+       *   본 사람이 게임에 못 온다(공유판을 만든 이유의 절반이 사라진다). */
+      url: location.origin || "https://abyss-stairs.bhmoon.workers.dev"
+    };
+  }
+
+  function writeLedger(g) {
+    if (!window.DAILY) return;
+    var r = runResult(g);
+    /* 시작할 때 잡아 둔 자리를 채운다. 이미 닫혔으면 그대로 둔다. */
+    if (r.mode === "daily") r = window.DAILY.finish(r) || r;
+    var text = window.DAILY.shareText(r);
+    els.ledgerText.textContent = text;
+    /* ⚠ 딱지에 날짜를 또 적으면 바로 아래 첫 줄과 똑같아 두 번 읽힌다.
+     *   여기는 **무엇을 하는 자리인지**를 적는다. */
+    els.ledgerLabel.textContent = r.mode === "daily"
+      ? "베껴서 공유할 장부" : "베껴서 공유할 기록";
+    els.ledgerNote.textContent = r.mode === "daily"
+      ? "오늘 몫은 끝났다 · " + window.DAILY.untilText(window.DAILY.msUntilNextDay()) +
+        " 뒤에 새 층이 배치된다" + streakText()
+      : "같은 씨앗을 적어 두면 같은 던전을 다시 만들 수 있다";
+    els.ledger.hidden = false;
+    setupShare(els.ledgerCopy, els.ledgerShare, text);
+  }
+
+  function streakText() {
+    var s = window.DAILY.streak();
+    return s >= 2 ? " · 연속 " + s + "일" : "";
+  }
+
+  /* 베끼기 — 클립보드가 막힌 브라우저가 있어서 대비가 필요하다.
+   * ⚠ navigator.clipboard 는 **보안 맥락(https)에서만** 있다. 로컬 파일로 열면
+   *   없다 — 그때는 숨은 textarea + execCommand 로 떨어진다.
+   * ⚠ 눌렀는데 아무 표시가 없으면 사람은 안 된 줄 안다. 반드시 글자를 바꿔 알린다. */
+  function setupShare(copyBtn, shareBtn, text) {
+    copyBtn.textContent = "장부 베끼기";
+    copyBtn.onclick = function () {
+      copyText(text, function (ok) {
+        copyBtn.textContent = ok ? "베꼈다 ✓" : "직접 골라 복사하세요";
+        setTimeout(function () { copyBtn.textContent = "장부 베끼기"; }, 2200);
+      });
+    };
+    /* 휴대폰에는 기본 공유 창이 있다 — 있으면 그쪽이 훨씬 편하다 */
+    var canShare = !!(navigator.share);
+    shareBtn.hidden = !canShare;
+    if (canShare) {
+      shareBtn.onclick = function () {
+        navigator.share({ text: text }).catch(function () { /* 사람이 취소한 것 */ });
+      };
+    }
+  }
+
+  function copyText(text, done) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(function () { done(true); })
+        .catch(function () { done(fallbackCopy(text)); });
+      return;
+    }
+    done(fallbackCopy(text));
+  }
+
+  function fallbackCopy(text) {
+    try {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      var ok = document.execCommand("copy");
+      document.body.removeChild(ta);
+      return !!ok;
+    } catch (err) { return false; }
+  }
+
+  /* ── 시작 화면의 모드 ─────────────────────────────────
+   * ⚠ 오늘 몫을 썼으면 **여기서도 장부를 베낄 수 있어야 한다.** 끝 화면을 닫은
+   *   뒤에는 공유할 방법이 없어진다(그러면 공유판이 있는 뜻이 절반 사라진다). */
+  function showDailyDone() {
+    var e = window.DAILY && window.DAILY.entryFor(window.DAILY.dayKey());
+    if (!e) { els.dailyDone.hidden = true; return; }
+    var text = window.DAILY.shareText(e);
+    els.ddTitle.textContent = window.DAILY.dayLabel(e.day) + "의 장부는 이미 적혔다";
+    els.ddUntil.textContent = window.DAILY.untilText(window.DAILY.msUntilNextDay()) +
+                              " 뒤 새 층" + streakText();
+    els.ddText.textContent = text;
+    els.dailyDone.hidden = false;
+    setupShare(els.ddCopy, els.ddShare, text);
+  }
+
+  function setMode(next) {
+    mode = next;
+    var cards = els.modes.querySelectorAll("[data-mode]");
+    for (var i = 0; i < cards.length; i++)
+      cards[i].classList.toggle("is-on", cards[i].getAttribute("data-mode") === next);
+    var done = !!(window.DAILY && window.DAILY.doneToday());
+    els.dailyDone.hidden = !(next === "daily" && done);
+    if (!els.dailyDone.hidden) showDailyDone();
+    els.startHint.innerHTML = (next === "daily" && done)
+      ? "오늘 몫은 끝났다 — <b>자유 탐사</b>로는 계속할 수 있다"
+      : (next === "daily"
+          ? "직업을 고르면 <b>오늘의 던전</b>으로 내려간다 · <b>시작하면 오늘 몫을 쓴다</b>(중단해도 거기까지가 장부에 남는다)"
+          : "직업을 고르면 시작한다 · 휴대폰은 <b>칸을 눌러</b> 움직인다");
+  }
+
+  function refreshDailyNote() {
+    if (!window.DAILY || !els.modeDailyNote) return;
+    var d = window.DAILY;
+    var s = d.streak();
+    els.modeDailyNote.textContent = d.dayLabel(d.dayKey()) + " · 모두 같은 던전" +
+      (d.doneToday() ? " · 오늘 몫 끝" : " · 하루 한 번") + (s >= 2 ? " · 연속 " + s + "일" : "");
   }
 
   /* 최고점만 로컬에 남긴다. 세이브는 두지 않는다 —
@@ -389,16 +524,43 @@
   function showStart() {
     els.end.hidden = true;
     els.start.hidden = false;
+    /* ⚠ 판이 끝나면 오늘 몫이 소진된다 — 다시 읽지 않으면 "하루 한 번" 안내가
+     *   옛 상태로 남아 눌렀을 때만 막히는 것처럼 보인다. */
+    refreshDailyNote();
+    setMode(mode);
   }
 
-  function newGame(classId) {
+  /* ── 모드 ─────────────────────────────────────────────
+   * "daily" 하루의 장부 — 날짜에서 씨앗을 뽑아 **모두가 같은 던전**을 하루 한 번.
+   * "free"  자유 탐사   — 매번 새 씨앗, 횟수 제한 없음.
+   * ⚠ 기본은 daily 다. 세계관이 장부이므로 그쪽이 이 게임의 본래 모습이고,
+   *   공유판이 사람을 데려오는 입구다. */
+  var mode = "daily";
+
+  function newGame(classId, forceMode) {
+    var use = forceMode || mode;
+    /* ⚠ 오늘 몫을 이미 썼으면 **시작하지 않는다.** 여기서 막지 않으면 직업 카드를
+     *   눌러 하루에 여러 번 돌 수 있어 "하루 한 번" 이 무의미해진다. */
+    if (use === "daily" && window.DAILY && window.DAILY.doneToday()) {
+      showDailyDone();
+      return false;
+    }
+    mode = use;
     els.start.hidden = true;
     els.end.hidden = true;
+    els.ledger.hidden = true;
     game = new window.Game(classId);
+    if (use === "daily" && window.DAILY) game.reset(window.DAILY.seedToday(), classId);
+    game.mode = use;
+    /* ⚠ 오늘 몫은 **여기서** 쓴다(끝날 때가 아니라). 끝날 때 적으면 판이 나쁘게
+     *   흘러갈 때 새로고침하고 다시 시작할 수 있어 "하루 한 번" 이 말뿐이 된다. */
+    if (use === "daily" && window.DAILY) window.DAILY.begin(runResult(game));
     view.game = game;
+    view.goalMark = null;
     lastHp = game.player.hp;
     view.resize();
     refresh();
+    return true;
   }
 
   /* 소리는 **M 키로만** 켜고 끈다 — 헤더 버튼을 지웠다(좁은 화면에서 제목과
@@ -430,6 +592,21 @@
     els.shopBuy = document.getElementById("shopBuy");
     els.shopSell = document.getElementById("shopSell");
     els.shopGold = document.getElementById("shopGold");
+    els.modes = document.getElementById("modes");
+    els.modeDailyNote = document.getElementById("modeDailyNote");
+    els.dailyDone = document.getElementById("dailyDone");
+    els.ddTitle = document.getElementById("ddTitle");
+    els.ddUntil = document.getElementById("ddUntil");
+    els.ddText = document.getElementById("ddText");
+    els.ddCopy = document.getElementById("ddCopy");
+    els.ddShare = document.getElementById("ddShare");
+    els.ledger = document.getElementById("ledger");
+    els.ledgerLabel = document.getElementById("ledgerLabel");
+    els.ledgerText = document.getElementById("ledgerText");
+    els.ledgerNote = document.getElementById("ledgerNote");
+    els.ledgerCopy = document.getElementById("ledgerCopy");
+    els.ledgerShare = document.getElementById("ledgerShare");
+    els.startHint = document.getElementById("startHint");
 
     var canvas = document.getElementById("view");
     game = new window.Game("warrior");     /* 시작 화면 뒤에 깔릴 판 — 고르면 새로 만든다 */
@@ -437,6 +614,12 @@
     lastHp = game.player.hp;
 
     drawClasses();
+    els.modes.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-mode]");
+      if (b) setMode(b.getAttribute("data-mode"));
+    });
+    refreshDailyNote();
+    setMode("daily");
     els.classes.addEventListener("click", function (e) {
       var btn = e.target.closest(".cls-card");
       if (btn) newGame(btn.getAttribute("data-cls"));
@@ -707,7 +890,30 @@
     window.__travel = function () {
       return travel ? { goal: travel.goal, left: travel.path.length - travel.i } : null;
     };
-    window.__start = function (id) { newGame(id); };
+    /* ⚠ 기본을 **자유 탐사**로 둔다. 기존 화면 검사가 전부 __start 로 판을 켜는데
+     *   일일 모드로 켜면 두 번째 검사부터 "오늘 몫 끝" 에 막혀 통째로 빨개진다.
+     *   일일 모드는 아래 창구로 따로 검사한다. */
+    window.__start = function (id, useMode) { return newGame(id, useMode || "free"); };
+    window.__mode = function () { return mode; };
+    /* 판을 끝낸다 — 장부가 적히는지 보려면 죽어야 하는데, 실제로 죽을 때까지
+     * 돌리면 씨앗마다 시간이 달라 검사가 흔들린다. 끝 화면이 뜨는 길은 하나뿐이라
+     * (refresh 에서 game.over 를 본다) 같은 자리를 쓴다. */
+    window.__endRun = function (won) {
+      game.over = true; game.won = !!won;
+      refresh();
+      return { over: game.over, won: game.won };
+    };
+    window.__setMode = function (v) { setMode(v); return mode; };
+    window.__ledger = function () {
+      return { shown: !els.ledger.hidden, text: els.ledgerText.textContent,
+               label: els.ledgerLabel.textContent, note: els.ledgerNote.textContent,
+               doneShown: !els.dailyDone.hidden, doneText: els.ddText.textContent };
+    };
+    /* 일일 기록을 비운다 — 검사가 "오늘 몫" 을 쓰기 전 상태에서 시작할 수 있게 */
+    window.__clearDaily = function () {
+      try { localStorage.removeItem("rl_ledger"); } catch (err) {}
+      refreshDailyNote(); setMode(mode);
+    };
     /* 점검기가 창을 닫을 창구 — 상점·레벨업이 열려 있으면 모든 행동이 막히므로
      * 자동 주행이 거기서 멈춘다. 게임 로직은 이 함수들을 쓰지 않는다. */
     /* 점검기가 창을 실제 경로로 띄울 창구 — 화면 모양을 눈으로 보려면 필요하다 */

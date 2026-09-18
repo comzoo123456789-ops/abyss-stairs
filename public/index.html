@@ -105,6 +105,33 @@
       <p class="tag">10층까지 내려가 군주를 쓰러뜨리면 먹힌 이름들이 돌아온다.</p>
     </div>
 
+    <!-- 모드 — 「하루의 장부」가 기본이다.
+         세계관이 장부이므로(내려간 사람은 이름이 지워지고 몇 층까지 갔는가만 남는다)
+         모두가 같은 던전을 하루 한 번 도는 것이 이 게임의 본래 모습이다. -->
+    <h3>어떻게 내려갈까</h3>
+    <div class="modes" id="modes">
+      <button class="mode-card is-on" data-mode="daily" type="button">
+        <b>하루의 장부</b>
+        <em id="modeDailyNote">모두 같은 던전 · 하루 한 번</em>
+      </button>
+      <button class="mode-card" data-mode="free" type="button">
+        <b>자유 탐사</b>
+        <em>매번 새 던전 · 몇 번이든</em>
+      </button>
+    </div>
+
+    <!-- 오늘 몫을 이미 쓴 경우. ⚠ 여기서도 장부를 베낄 수 있어야 한다 —
+         끝 화면을 닫은 뒤에는 공유할 방법이 없어진다. -->
+    <div class="daily-done" id="dailyDone" hidden>
+      <div class="dd-head"><b id="ddTitle">오늘의 장부는 적혔다</b><span id="ddUntil"></span></div>
+      <pre class="ledger-text" id="ddText"></pre>
+      <div class="ledger-acts">
+        <button id="ddCopy" class="primary" type="button">장부 베끼기</button>
+        <button id="ddShare" class="ghost" type="button" hidden>공유</button>
+      </div>
+      <p class="hint">다시 하려면 위에서 <b>자유 탐사</b>를 고른다.</p>
+    </div>
+
     <h3>누가 내려갈까</h3>
     <div class="classes" id="classes"></div>
 
@@ -125,7 +152,7 @@
     <p class="warn-line">⚠ <b>죽으면 끝이다.</b> 세이브도 되돌리기도 없다. 대신 매번 던전이 새로 만들어진다.
       물약은 <b>마셔 봐야</b> 무엇인지 알고, 바닥에는 <b>숨은 함정</b>이 있다.</p>
 
-    <p class="hint">직업을 고르면 시작한다 · 휴대폰은 <b>칸을 눌러</b> 움직인다(방향 패드는 접을 수 있다)</p>
+    <p class="hint" id="startHint">직업을 고르면 시작한다 · 휴대폰은 <b>칸을 눌러</b> 움직인다(방향 패드는 접을 수 있다)</p>
   </div>
 </div>
 
@@ -165,6 +192,18 @@
   <div class="card">
     <h2 id="endTitle"></h2>
     <div id="endBody"></div>
+
+    <!-- 장부 한 줄 — 이게 공유판이다. 「몇 층까지 갔는가」만 남는 세계관과 같은 말을 한다. -->
+    <div class="ledger" id="ledger" hidden>
+      <div class="ledger-label" id="ledgerLabel">장부에 남은 것</div>
+      <pre class="ledger-text" id="ledgerText"></pre>
+      <div class="ledger-acts">
+        <button id="ledgerCopy" class="primary" type="button">장부 베끼기</button>
+        <button id="ledgerShare" class="ghost" type="button" hidden>공유</button>
+      </div>
+      <p class="hint" id="ledgerNote"></p>
+    </div>
+
     <p class="hint">Enter 또는 R 로 다시 시작</p>
   </div>
 </div>
@@ -217,6 +256,8 @@
           <li><b>2층마다 상인</b>이 있다. 걸어가면 물건과 스킬을 사고, 가방을 팔 수 있다.</li>
           <li><b>치명타</b>가 터진다. 확률과 배수를 아이템·레벨업으로 올린다.</li>
           <li><b>중독·출혈</b>은 턴마다 갉아먹는다. 상태이상 확률을 올리면 때릴 때 걸린다.</li>
+          <li><b>하루의 장부</b>는 모두가 같은 던전을 하루 한 번 도는 것이다. 한국 시간 자정에 새 층이 배치된다. 끝나면 장부 한 줄이 나오고 그걸 베껴 공유한다.</li>
+          <li><b>자유 탐사</b>는 매번 새 던전이고 횟수 제한이 없다.</li>
           <li><b>10층</b>에 심연의 군주가 있다. 쓰러뜨리면 먹힌 이름들이 돌아온다 — 그게 승리다.</li>
         </ul>
       </div>
@@ -230,6 +271,7 @@
 <script src="js/sprites-art.js?v=10"></script>
 <script src="js/sound.js?v=10"></script>
 <script src="js/data.js?v=10"></script>
+<script src="js/daily.js?v=10"></script>
 <script src="js/items.js?v=10"></script>
 <script src="js/dungeon.js?v=10"></script>
 <script src="js/game.js?v=10"></script>

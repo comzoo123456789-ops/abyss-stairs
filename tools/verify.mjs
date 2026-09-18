@@ -131,6 +131,94 @@ console.log("보물방      :", ok(treasureSealed === 0),
     " · 안 본 칸에 길 내줌 " + nullOnUnseen);
 }
 
+// 2-c) 하루의 장부 — 날짜·씨앗·공유판
+//    ⚠ 이 기능의 약속은 둘이다: **모두가 같은 던전** · **하루 한 번**.
+//      앞엣것이 깨지면 공유판이 비교가 안 되어 공유할 이유가 사라지고,
+//      뒤엣것이 깨지면 좋은 기록만 남기게 되어 장부가 거짓이 된다.
+{
+  const src = fs.readFileSync(path.join(JS, "daily.js"), "utf8");
+  const box = {};
+  const dctx = vm.createContext({ Date, Math, JSON, Array, String, console, globalThis: box });
+  vm.runInContext(src, dctx, { filename: "daily.js" });
+  const DAILY = box.DAILY;
+
+  /* 한국 시간 기준으로 날짜가 갈리는가 — 자정 경계를 직접 밟는다.
+   * ⚠ 브라우저 시간대에 맡기면 같은 날짜에 사람마다 다른 던전이 나온다. */
+  const kstEdge = DAILY.dayKey(Date.UTC(2026, 8, 18, 14, 59)) === "2026-09-18" &&
+                  DAILY.dayKey(Date.UTC(2026, 8, 18, 15,  1)) === "2026-09-19";
+  /* 같은 날은 하루 안에서 언제 불러도 같은 씨앗이어야 한다 */
+  let sameDay = true;
+  for (let hh = 0; hh < 24; hh++) {
+    const t = Date.UTC(2026, 8, 17, 15, 0) + hh * 3600000;   /* 9/18 00:00 KST 부터 24시간 */
+    if (DAILY.dayKey(t) !== "2026-09-18") { sameDay = false; break; }
+    if (DAILY.seedToday(t) !== DAILY.seedOf("2026-09-18")) { sameDay = false; break; }
+  }
+  /* 이웃한 날의 씨앗이 닮지 않는가 — 날짜를 그대로 숫자로 쓰면 닮는다.
+   * 1년치를 뽑아 ① 중복 ② 상위 비트가 안 흔들리는 경우를 본다. */
+  const seeds = [], seen = new Set();
+  let dup = 0, lowDelta = 0;
+  for (let i = 0; i < 365; i++) {
+    const k = DAILY.dayKey(Date.UTC(2026, 0, 1, 3, 0) + i * 86400000);
+    const s = DAILY.seedOf(k);
+    if (seen.has(s)) dup++;
+    seen.add(s); seeds.push(s);
+    if (i > 0) {
+      /* 이웃 씨앗의 xor 에서 켜진 비트가 8개 미만이면 "닮았다" 로 본다 */
+      let x = (seeds[i] ^ seeds[i - 1]) >>> 0, bits = 0;
+      while (x) { bits += x & 1; x >>>= 1; }
+      if (bits < 8) lowDelta++;
+    }
+  }
+  /* 실제로 그 씨앗으로 층을 만들면 날마다 다른 층이 나오는가 */
+  const shapes = new Set();
+  for (let i = 0; i < 20; i++) {
+    const k = DAILY.dayKey(Date.UTC(2026, 8, 1, 3, 0) + i * 86400000);
+    const lv = D.generate(62, 38, 1, DAILY.seedOf(k));
+    shapes.add(lv.rooms.length + ":" + lv.downAt.x + "," + lv.downAt.y);
+  }
+  /* 같은 날 같은 씨앗으로 두 번 만들면 **같은 층**이어야 한다(그게 "모두 같은 던전") */
+  const a1 = D.generate(62, 38, 3, DAILY.seedOf("2026-09-18"));
+  const a2 = D.generate(62, 38, 3, DAILY.seedOf("2026-09-18"));
+  let identical = a1.tiles.length === a2.tiles.length;
+  for (let i = 0; identical && i < a1.tiles.length; i++) if (a1.tiles[i] !== a2.tiles[i]) identical = false;
+
+  console.log("일일 씨앗   :", ok(kstEdge && sameDay && dup === 0 && lowDelta === 0 &&
+                                shapes.size >= 18 && identical),
+    "한국시간 경계 " + (kstEdge ? "맞음" : "⚠틀림") + " · 하루 안 고정 " + (sameDay ? "맞음" : "⚠틀림") +
+    " · 1년 365일 중 중복 " + dup + " · 이웃과 닮은 씨앗 " + lowDelta +
+    " · 20일치 층 모양 " + shapes.size + "가지 · 같은 날 재생성 " + (identical ? "동일" : "⚠다름"));
+
+  /* 공유판 — 줄 수·칸 수·이모지 */
+  const mk = (depth, won) => DAILY.shareText({ day: "2026-09-18", mode: "daily", cls: "셰라",
+    depth, won, score: 5430, kills: 46, crit: 0.31, maxDepth: DATA.MAX_DEPTH, url: "x.dev" });
+  const lines = mk(7, false).split(String.fromCharCode(10));
+  /* 이모지는 서로게이트 쌍이라 length 로 세면 안 된다 — 코드포인트로 센다 */
+  const cells = [...lines[2]].length;
+  const won10 = [...mk(10, true)].join("");
+  const shapeOk = lines.length === 5 && cells === DATA.MAX_DEPTH &&
+                  lines[2].indexOf("🟨") >= 0 && lines[2].indexOf("⬛") >= 0 &&
+                  won10.indexOf("👑") >= 0 && mk(10, false).indexOf("🟥") >= 0;
+  /* 자유 탐사는 날짜를 쓰지 않는다 — "9월 18일의 장부" 라고 적으면 거짓이다 */
+  const freeHead = DAILY.shareText({ day: "2026-09-18", mode: "free", seed: 0x096ff20d, cls: "다인",
+    depth: 4, won: false, score: 900, kills: 9, crit: 0.1, maxDepth: DATA.MAX_DEPTH });
+  const freeOk = freeHead.indexOf("자유 탐사") >= 0 && freeHead.indexOf("장부") < 0 &&
+                 freeHead.indexOf("96FF20D") >= 0;
+  console.log("장부 공유판 :", ok(shapeOk && freeOk),
+    lines.length + "줄 · 칸 " + cells + "개(층 " + DATA.MAX_DEPTH + ") · 이모지 " +
+    (shapeOk ? "정상" : "⚠빠짐") + " · 자유 탐사 머리글 " + (freeOk ? "분리됨" : "⚠날짜를 쓴다"));
+
+  /* 연속 기록 — localStorage 없이도 죽지 않아야 한다(시크릿 모드) */
+  let noStorageOk = true;
+  try {
+    if (DAILY.readLedger().length !== 0) noStorageOk = false;
+    if (DAILY.doneToday() !== false) noStorageOk = false;
+    if (DAILY.streak() !== 0) noStorageOk = false;
+    DAILY.record({ day: "2026-09-18", depth: 3 });      /* 저장이 막혀도 예외가 없어야 한다 */
+  } catch (err) { noStorageOk = false; }
+  console.log("저장 막힘   :", ok(noStorageOk),
+    noStorageOk ? "localStorage 없이도 예외 없음(시크릿 모드)" : "⚠ 예외가 난다");
+}
+
 // 3) 조사
 const JOSA = [["굶주린 쥐", "를"], ["고블린", "을"], ["해골 병사", "를"], ["오크 전사", "를"],
               ["망령", "을"], ["동굴 트롤", "을"], ["심연의 군주", "를"], ["치유 물약", "을"],
@@ -564,6 +652,20 @@ for (const [label, args] of SCREENS) {
   const bad = (ra.stdout.match(/✘/g) || []).length;
   console.log("부드러운 이동".padEnd(20), ok(ra.status === 0), bad ? "문제 " + bad + "건" : "통과");
   if (bad) ra.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
+// 하루의 장부 — 하루 한 번 잠금은 화면·저장·모드가 함께 맞아야 성립한다.
+// ⚠ 논리 검사(위의 "일일 씨앗")는 씨앗이 같다는 것까지만 본다. 새로고침으로 다시
+//   시작할 수 있는 구멍이 실제로 있었고, 그건 브라우저에서만 잡힌다.
+{
+  const rd = spawnSync(process.execPath, [path.join(ROOT, "tools", "daily-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rd.stdout.match(/✘/g) || []).length;
+  if (rd.status !== 0) fails++;
+  console.log("하루의 장부".padEnd(20), ok(rd.status === 0),
+    bad ? "문제 " + bad + "건" : (rd.stdout.match(/✔/g) || []).length + "개 항목 통과");
+  if (bad) rd.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
 // 한 판을 끝까지 밟는다(종료 화면)
