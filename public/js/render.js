@@ -294,6 +294,8 @@
     var y1 = Math.min(lv.h - 1, y0 + this.rowsShown);
 
     var x, y, id, t, sx, sy;
+    /* 이 층이 어느 구역인가 — 돌 색과 장식이 여기서 갈린다 */
+    var zone = global.DATA.zoneAt(g.depth);
 
     /* 1) 지형. 문·계단은 바닥을 먼저 깔고 그 위에 올린다 —
      *    안 그러면 문 틈으로 검은 구멍이 보인다. */
@@ -306,15 +308,31 @@
         sy = y * TILE + oy;
         ctx.globalAlpha = lv.visible[id] ? 1 : 0.30;   /* 기억은 어둡게 */
         if (t === D.WALL) {
-          ctx.drawImage(S.terrain("wall", variantAt(x, y, S.WALL_VARIANTS)), sx, sy);
+          ctx.drawImage(S.terrain("wall", variantAt(x, y, S.WALL_VARIANTS), zone), sx, sy);
         } else {
-          ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS)), sx, sy);
+          ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), zone), sx, sy);
           if (t === D.DOOR) ctx.drawImage(S.bake("door"), sx, sy);
           else if (t === D.STAIRS) ctx.drawImage(S.bake("stairs"), sx, sy);
         }
       }
     }
     ctx.globalAlpha = 1;
+
+    /* 1-a) 구역 장식 — 바닥 바로 위, 함정·아이템보다 **아래**다.
+     * ⚠ 순서를 바꾸면 물웅덩이가 아이템을 덮는다. 장식은 언제나 맨 밑이다. */
+    if (lv.props && zone.props) {
+      for (y = y0; y <= y1; y++) {
+        for (x = x0; x <= x1; x++) {
+          id = lv.idx(x, y);
+          if (!lv.seen[id] || !lv.props[id]) continue;
+          var pname = zone.props[(lv.props[id] - 1) % zone.props.length];
+          if (!pname) continue;
+          ctx.globalAlpha = lv.visible[id] ? 1 : 0.30;
+          ctx.drawImage(S.bake("p_" + pname), x * TILE + ox, y * TILE + oy);
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
 
     /* 1-b) 드러난 함정. 숨은 함정(1)은 그리지 않는다 — 그리면 함정이 아니다. */
     for (y = y0; y <= y1; y++) {
@@ -531,8 +549,14 @@
    * 칸을 10개 찍어 현재 층을 채운다(장부의 눈금처럼). */
   Renderer.prototype.drawDepthBadge = function () {
     var g = this.game, ctx = this.ctx;
-    var max = global.DATA.MAX_DEPTH;
-    var w = 14 + max * 9, h = 40, x = 12, y = 12;
+    var DATA = global.DATA;
+    var max = DATA.MAX_DEPTH;
+    var zone = DATA.zoneAt(g.depth);
+    /* ⚠ 구역 이름이 들어가면서 상자가 넓어졌다 — 눈금 폭이 아니라 **글자 폭**으로
+     *   재야 한다(이름 길이가 구역마다 다르다). */
+    ctx.font = "600 11px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, sans-serif');
+    var nameW = ctx.measureText(zone.name).width;
+    var w = Math.max(14 + max * 9, nameW + 20), h = 54, x = 12, y = 12;
 
     ctx.fillStyle = "rgba(10,9,14,.82)";
     ctx.fillRect(x, y, w, h);
@@ -547,9 +571,18 @@
     ctx.fillStyle = "#c9a227";
     ctx.fillText(g.depth + " / " + max + "층", x + 38, y + 15);
 
-    /* 눈금 — 지나온 층은 채우고, 마지막 층은 붉게(군주가 있다) */
+    /* 구역 이름 — 어디까지 내려왔는지가 숫자만으로는 안 읽힌다 */
+    ctx.font = "600 11px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, sans-serif');
+    ctx.fillStyle = "#ded6c2";
+    ctx.fillText(zone.name, x + 8, y + 31);
+
+    /* 눈금 — 지나온 층은 채운다. **구역이 바뀌는 자리에 틈을 준다** —
+     * 그래야 열 칸이 다섯 구역으로 읽힌다(그냥 열 칸이면 그냥 열 칸이다). */
+    var zi = 0, gap = 0;
     for (var i = 1; i <= max; i++) {
-      var bx = x + 7 + (i - 1) * 9, by = y + 22, bw = 7, bh = 10;
+      var z = DATA.zoneAt(i);
+      if (i > 1 && z !== DATA.zoneAt(i - 1)) gap += 3;
+      var bx = x + 7 + (i - 1) * 8 + gap, by = y + 38, bw = 6, bh = 10;
       if (i <= g.depth) ctx.fillStyle = (i === max) ? "#c0453f" : "#c9a227";
       else ctx.fillStyle = (i === max) ? "rgba(192,69,63,.28)" : "rgba(139,132,119,.28)";
       ctx.fillRect(bx, by, bw, bh);

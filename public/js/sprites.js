@@ -224,10 +224,24 @@
     [[0, 0, 15, 9], [15, 0, 17, 23], [0, 9, 15, 23], [15, 23, 17, 9]]
   ];
 
-  function floorTile(v) {
+  /* 기본 팔레트 — 구역이 없을 때(그리고 data.js 가 없는 검사 환경에서) 쓰는 값.
+   * ⚠ 구역 팔레트는 **명도를 붙잡고 색상만 돌린다.** 바닥이 어두워지면 그 위의
+   *   도트가 안 보인다. */
+  var FLOOR_BASE = {
+    mortar: "#1e1b26", face: "#302b3a", lit: "#3a3446", dim: "#272233",
+    grain1: "#363040", grain2: "#2a2534", crack: "#241f2e",
+    peb1: "#423b4e", peb2: "#4a4257", peb3: "#332d3e"
+  };
+  var WALL_BASE = {
+    mortar: "#3c3846", face: "#585264", lit: "#6d6679", dim: "#433e4e",
+    grain1: "#615b6e", grain2: "#4e4859", moss: "#3f5040"
+  };
+
+  function floorTile(v, pal) {
+    var P = pal || FLOOR_BASE;
     var b = new Board(SIZE);
     var r = rnd(1000 + v * 7717);
-    var MORTAR = "#1e1b26", FACE = "#302b3a", LIT = "#3a3446", DIM = "#272233";
+    var MORTAR = P.mortar, FACE = P.face, LIT = P.lit, DIM = P.dim;
     b.rect(0, 0, SIZE, SIZE, MORTAR);
 
     var L = FLOOR_LAYOUTS[v % FLOOR_LAYOUTS.length];
@@ -242,25 +256,26 @@
     for (var s = 0; s < 90; s++) {
       var px = Math.floor(r() * SIZE), py = Math.floor(r() * SIZE);
       if (b.get(px, py) !== FACE) continue;
-      b.set(px, py, r() < 0.5 ? "#363040" : "#2a2534");
+      b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
     }
     /* 금 — 변종마다 다른 자리에 한 줄 */
     if (v % 2 === 0) {
       var cx = 5 + Math.floor(r() * 22), cy = 4 + Math.floor(r() * 20);
-      b.line(cx, cy, cx + 4 - Math.floor(r() * 8), cy + 5, "#241f2e");
+      b.line(cx, cy, cx + 4 - Math.floor(r() * 8), cy + 5, P.crack);
     }
     /* 아주 드물게 자갈 — 눈이 붙잡을 것이 하나쯤 있어야 바닥이 살아 있다 */
     if (v === 3) {
-      b.set(22, 7, "#423b4e"); b.set(23, 7, "#4a4257"); b.set(23, 8, "#332d3e");
-      b.set(9, 25, "#423b4e"); b.set(10, 25, "#4a4257");
+      b.set(22, 7, P.peb1); b.set(23, 7, P.peb2); b.set(23, 8, P.peb3);
+      b.set(9, 25, P.peb1); b.set(10, 25, P.peb2);
     }
     return b;
   }
 
-  function wallTile(v) {
+  function wallTile(v, pal) {
+    var P = pal || WALL_BASE;
     var b = new Board(SIZE);
     var r = rnd(2000 + v * 3313);
-    b.rect(0, 0, SIZE, SIZE, "#3c3846");       /* 줄눈(모르타르) */
+    b.rect(0, 0, SIZE, SIZE, P.mortar);        /* 줄눈(모르타르) */
     /* 벽돌 3단 — 단마다 반 칸 어긋나게 */
     var rows = [[0, 11], [11, 11], [22, 10]];
     for (var ri = 0; ri < rows.length; ri++) {
@@ -270,21 +285,21 @@
         var bw = Math.min(16, SIZE - Math.max(0, x)) - 2;
         var bx = Math.max(0, x) + 1;
         if (bw <= 1) continue;
-        b.rect(bx, y + 1, bw, h - 2, "#585264");
-        b.rect(bx, y + 1, bw, 1, "#6d6679");     /* 위 하이라이트 */
-        b.rect(bx, y + h - 2, bw, 1, "#433e4e");  /* 아래 그림자 */
+        b.rect(bx, y + 1, bw, h - 2, P.face);
+        b.rect(bx, y + 1, bw, 1, P.lit);         /* 위 하이라이트 */
+        b.rect(bx, y + h - 2, bw, 1, P.dim);      /* 아래 그림자 */
       }
     }
     /* 돌 표면 잡티 */
     for (var i = 0; i < 80; i++) {
       var px = Math.floor(r() * SIZE), py = Math.floor(r() * SIZE);
-      if (b.get(px, py) === "#585264") b.set(px, py, r() < 0.5 ? "#615b6e" : "#4e4859");
+      if (b.get(px, py) === P.face) b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
     }
     /* 이끼 — 아래쪽에만 살짝 */
     if (v === 1) {
       for (var m = 0; m < 26; m++) {
         var mx = Math.floor(r() * SIZE), my = 24 + Math.floor(r() * 8);
-        if (b.get(mx, my)) b.set(mx, my, "#3f5040");
+        if (b.get(mx, my)) b.set(mx, my, P.moss);
       }
     }
     return b;
@@ -306,13 +321,17 @@
   }
 
   var terrainCache = {};
-  function terrain(kind, variant) {
-    var key = kind + ":" + variant;
+  /* zone 은 data.js 의 ZONES 항목(없으면 기본 팔레트).
+   * ⚠ 캐시 열쇠에 **구역 id 를 반드시 넣는다.** 안 넣으면 1층에서 구운 타일이
+   *   10층까지 그대로 쓰여 색이 안 바뀐다(그리고 원인이 안 보인다). */
+  function terrain(kind, variant, zone) {
+    var zid = zone ? zone.id : "_";
+    var key = kind + ":" + variant + ":" + zid;
     if (terrainCache[key]) return terrainCache[key];
     var b;
-    if (kind === "floor") b = floorTile(variant % FLOOR_VARIANTS);
-    else if (kind === "wall") b = wallTile(variant % WALL_VARIANTS);
-    else b = floorTile(0);
+    if (kind === "floor") b = floorTile(variant % FLOOR_VARIANTS, zone && zone.floor);
+    else if (kind === "wall") b = wallTile(variant % WALL_VARIANTS, zone && zone.wall);
+    else b = floorTile(0, zone && zone.floor);
     terrainCache[key] = bakeBoard(b);
     return terrainCache[key];
   }

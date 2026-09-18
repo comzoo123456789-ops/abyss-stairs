@@ -124,6 +124,83 @@
   /* ── 레벨업 선택지 ────────────────────────────────────────
    * 매번 3개를 제시하고 하나를 고른다(Hades·Caves of Qud 방식).
    * 능력치와 스킬이 같은 풀에서 나오므로 "세로로 깊게" 와 "가로로 넓게" 가 경쟁한다. */
+  /* ── 구역 ─────────────────────────────────────────────
+   *
+   * 1층부터 10층까지 돌벽 하나로 똑같이 생겼었다. 열 층을 내려가는데 **내려가는
+   * 느낌이 없다** — 숫자만 올라갈 뿐이다. 두 층씩 묶어 다섯 구역으로 가른다.
+   *
+   * 세계관(관리소 장부)을 따라간다. 위쪽은 아직 사람 손이 닿은 곳이고,
+   * 내려갈수록 먼저 간 사람들의 흔적이 나오다가, 마지막에 군주의 것이 된다.
+   *
+   * ⚠ 규칙은 **하나도 안 바꾼다.** 구역은 색·장식·문구만 바꾼다. 여기서 몬스터나
+   *   난이도를 함께 건드리면 손잡이 하나에 두 가지가 달려 균형 조정이 불가능해진다
+   *   (보스 배수에서 이미 겪었다 — 0.16 → 0.30 하나로 승률이 95% → 10% 가 됐다).
+   * ⚠ 밝기를 구역마다 크게 바꾸지 말 것. 바닥이 어두워지면 그 위의 도트가 안 보인다 —
+   *   **색상만 돌리고 명도는 붙잡는다**(UI 팔레트를 갈색으로 돌릴 때와 같은 규칙).
+   */
+  var ZONES = [
+    { id: "office", from: 1, to: 2,
+      name: "관리소 아래", tag: "아직 사람 손이 닿은 곳",
+      enter: "관리소 아래. 벽에 아직 등불 자국이 남아 있다.",
+      props: ["crate", "lantern"],
+      floor: { mortar: "#1e1b26", face: "#302b3a", lit: "#3a3446", dim: "#272233",
+               grain1: "#363040", grain2: "#2a2534", crack: "#241f2e",
+               peb1: "#423b4e", peb2: "#4a4257", peb3: "#332d3e" },
+      wall:  { mortar: "#3c3846", face: "#585264", lit: "#6d6679", dim: "#433e4e",
+               grain1: "#615b6e", grain2: "#4e4859", moss: "#3f5040" } },
+
+    { id: "flood", from: 3, to: 4,
+      name: "물이 든 계단실", tag: "어딘가에서 물이 새어 든다",
+      enter: "물이 든 계단실. 발밑이 미끄럽고, 어디선가 물 떨어지는 소리가 난다.",
+      props: ["puddle", "moss"],
+      floor: { mortar: "#161d24", face: "#243038", lit: "#2d3b45", dim: "#1c262d",
+               grain1: "#2a3740", grain2: "#1f2a31", crack: "#1a2228",
+               peb1: "#33434d", peb2: "#3c4e59", peb3: "#27333b" },
+      wall:  { mortar: "#2c3a42", face: "#455a64", lit: "#57707c", dim: "#374750",
+               grain1: "#4d646f", grain2: "#3e5159", moss: "#3f5a45" } },
+
+    { id: "library", from: 5, to: 6,
+      name: "이름의 도서관", tag: "지워진 이름들이 쌓여 있다",
+      enter: "이름의 도서관. 장부가 천장까지 쌓여 있고, 펼쳐진 쪽은 전부 비어 있다.",
+      props: ["books", "papers"],
+      floor: { mortar: "#221c14", face: "#352c1f", lit: "#42381f", dim: "#2a2218",
+               grain1: "#3d3324", grain2: "#2e261a", crack: "#261f15",
+               peb1: "#4a3f2b", peb2: "#564931", peb3: "#3a3022" },
+      wall:  { mortar: "#413522", face: "#5f5033", lit: "#786540", dim: "#4a3e28",
+               grain1: "#6b5a39", grain2: "#54462d", moss: "#5a5230" } },
+
+    { id: "bones", from: 7, to: 8,
+      name: "뼈 무덤", tag: "먼저 내려간 사람들",
+      enter: "뼈 무덤. 밟을 때마다 무언가가 바스러진다 — 전부 사람 것이다.",
+      props: ["bones", "skull"],
+      floor: { mortar: "#201a1a", face: "#332a28", lit: "#3f3531", dim: "#291f1e",
+               grain1: "#3b312d", grain2: "#2c2422", crack: "#241c1b",
+               peb1: "#4a403a", peb2: "#574b44", peb3: "#372e2b" },
+      wall:  { mortar: "#3d3330", face: "#5c4f49", lit: "#75665e", dim: "#493d38",
+               grain1: "#67594f", grain2: "#4f4239", moss: "#5c5346" } },
+
+    { id: "lord", from: 9, to: 10,
+      name: "군주의 방", tag: "벽이 숨을 쉰다",
+      enter: "군주의 방. 벽이 따뜻하고, 어딘가 아주 느리게 뛰고 있다.",
+      props: ["blood", "vein"],
+      /* ⚠ 처음 값은 분홍으로 읽혔다(6배로 늘려 보고 알았다). 마른 피 쪽으로
+       *   채도를 내렸다 — 밝기는 그대로 두어 그 위의 도트가 묻히지 않게. */
+      floor: { mortar: "#1b1317", face: "#2b2024", lit: "#36282d", dim: "#231b1e",
+               grain1: "#32262a", grain2: "#261d20", crack: "#1f171b",
+               peb1: "#3f3135", peb2: "#4a393e", peb3: "#322629" },
+      wall:  { mortar: "#33252b", face: "#4d383e", lit: "#61474d", dim: "#3e2c31",
+               grain1: "#583f45", grain2: "#443137", moss: "#553739" } }
+  ];
+
+  /* 층 → 구역. ⚠ 못 찾으면 마지막 구역을 준다 — null 을 돌려주면 그리는 쪽이
+   *   통째로 빈 화면이 된다(있을 수 없는 일이라고 두지 말 것). */
+  function zoneAt(depth) {
+    for (var i = 0; i < ZONES.length; i++) {
+      if (depth >= ZONES[i].from && depth <= ZONES[i].to) return ZONES[i];
+    }
+    return ZONES[ZONES.length - 1];
+  }
+
   /* ── 유물 ─────────────────────────────────────────────
    *
    * 특성(PERKS)은 **숫자**를 올린다(공격 +3, 치명 +6%). 그것만으로는 판이 매번
@@ -391,6 +468,7 @@
     TREASURE_CHANCE: TREASURE_CHANCE, TREASURE_ITEMS: TREASURE_ITEMS, TREASURE_GUARDS: TREASURE_GUARDS,
     hasShop: hasShop, SHOP_ITEMS: SHOP_ITEMS, SHOP_SKILLS: SHOP_SKILLS, skillCost: skillCost,
     RELICS: RELICS, RELIC_CHANCE: RELIC_CHANCE,
+    ZONES: ZONES, zoneAt: zoneAt,
     monsterCount: monsterCount, itemCount: itemCount, trapCount: trapCount, trapDamage: trapDamage,
     pick: pick, byId: byId
   };

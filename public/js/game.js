@@ -332,6 +332,28 @@
       lv.traps[lv.idx(spot.x, spot.y)] = 1;
     }
 
+    /* 구역 장식 — 그 층이 어디인지 바닥이 말해 준다.
+     * ⚠ 계단·문·함정 칸은 피한다. 장식이 그 위에 깔리면 계단을 못 알아보거나
+     *   드러난 함정을 덮어 버린다(덮으면 밟는다 — 규칙은 그대로인데 화면만 거짓말한다).
+     * ⚠ 너무 많이 뿌리면 바닥이 시끄러워 몬스터·아이템이 안 보인다. 바닥 칸의 4% 다. */
+    var zone = DATA.zoneAt(this.depth);
+    if (zone.props && zone.props.length) {
+      lv.props.fill(0);
+      var floors = 0;
+      for (i = 0; i < lv.tiles.length; i++) if (lv.tiles[i] === D.FLOOR) floors++;
+      var want = Math.round(floors * 0.04);
+      for (i = 0; i < want; i++) {
+        spot = D.randomFloor(lv, this.rng, null, null);
+        if (!spot) continue;
+        var pid = lv.idx(spot.x, spot.y);
+        if (lv.tiles[pid] !== D.FLOOR) continue;
+        if (lv.traps[pid]) continue;
+        if (spot.x === lv.downAt.x && spot.y === lv.downAt.y) continue;
+        if (spot.x === lv.upAt.x && spot.y === lv.upAt.y) continue;
+        lv.props[pid] = 1 + Math.floor(this.rng() * zone.props.length);
+      }
+    }
+
     /* ── 층에 내려설 때 듣는 유물 ──
      * ⚠ 몬스터·함정·상인을 다 배치한 **뒤**에 둔다. 앞에 두면 군주의 눈이
      *   아직 없는 몬스터를 깨우고, 계단의 기억이 최대 체력이 바뀌기 전 값으로 회복한다. */
@@ -345,7 +367,11 @@
     }
 
     this.updateFov();
-    this.say("심연 " + this.depth + "층. 지형이 어제와 다르다.", "depth");
+    /* ⚠ 열 층이 전부 "지형이 어제와 다르다" 였다 — 내려가는 느낌이 없었다.
+     *   구역에 처음 들어설 때는 그 구역의 문구를, 그다음 층은 짧게. */
+    var firstOfZone = (this.depth === zone.from);
+    this.say("심연 " + this.depth + "층 · " + zone.name +
+             (firstOfZone ? " — " + zone.enter.replace(/^[^.]*. /, "") : ". 지형이 어제와 다르다."), "depth");
     if (lv.treasure) this.say("문으로 둘러싸인 방이 있다 — 먼저 내려간 누군가의 짐이다.", "item");
   };
 

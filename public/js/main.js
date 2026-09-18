@@ -884,6 +884,9 @@
         atk: game.power(), def: game.guard(),
         cls: game.cls.id,
         skills: game.player.skills.map(function (s) { return { id: s.id, rank: s.rank, cd: s.cd }; }),
+        /* 첫 스킬의 남은 쿨다운. ⚠ 점검기가 "스킬이 터졌나" 를 이 값으로 가른다 —
+         *   없으면 undefined 가 되어 성공 갈래가 통째로 죽는다(실제로 그랬다). */
+        cooldown: game.player.skills.length ? game.player.skills[0].cd : 0,
         crit: game.stats().crit, critMult: game.stats().critMult,
         ail: Object.keys(game.player.ail),
         perkOpen: !!game.pendingPerks, shopOpen: !!game.shop,
@@ -959,6 +962,17 @@
       return { open: gearOpen(), text: els.gearBody.textContent.replace(/s+/g, " ").trim() };
     };
     window.__relics = function () { return (game.player.relics || []).slice(); };
+    /* 구역을 눈으로 보려면 그 층까지 내려가야 한다 — 검사용 창구.
+     * ⚠ 게임 로직은 쓰지 않는다(__force·__putMonster 와 같은 자리). */
+    window.__lvl = function () { return game.level; };
+    window.__redraw = function () { view.draw(0); };
+    window.__toDepth = function (d) {
+      var guard = 0;
+      while (game.depth < d && guard++ < 30) game.descend();
+      game.player.hp = game.maxhp();
+      refresh();
+      return { depth: game.depth, zone: window.DATA.zoneAt(game.depth).name };
+    };
     window.__giveRelic = function (id) { return game.takeRelic(id); };
     window.__ledger = function () {
       return { shown: !els.ledger.hidden, text: els.ledgerText.textContent,

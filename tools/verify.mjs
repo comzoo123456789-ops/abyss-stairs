@@ -219,6 +219,71 @@ console.log("보물방      :", ok(treasureSealed === 0),
     noStorageOk ? "localStorage 없이도 예외 없음(시크릿 모드)" : "⚠ 예외가 난다");
 }
 
+// 2-c2) 구역 — 층마다 어디에 있는지가 갈리는가
+//    ⚠ 구역은 **색·장식·문구만** 바꾼다. 여기서 몬스터나 난이도를 함께 건드리면
+//      손잡이 하나에 두 가지가 달려 균형 조정이 불가능해진다(보스 배수에서 겪었다).
+//    ⚠ 장식이 계단·함정을 덮으면 화면이 거짓말을 한다 — 규칙은 그대로인데
+//      계단을 못 알아보거나 드러난 함정을 밟는다.
+{
+  /* 1~10층이 빠짐없이 어떤 구역에 들어가는가 */
+  let gaps = 0;
+  const zonesUsed = new Set();
+  for (let d = 1; d <= DATA.MAX_DEPTH; d++) {
+    const z = DATA.zoneAt(d);
+    if (!z || d < z.from || d > z.to) gaps++;
+    zonesUsed.add(z.id);
+  }
+  /* 팔레트 열쇠가 다 있는가 — 하나만 빠져도 그 색이 undefined 로 그려진다 */
+  const needF = ["mortar","face","lit","dim","grain1","grain2","crack","peb1","peb2","peb3"];
+  const needW = ["mortar","face","lit","dim","grain1","grain2","moss"];
+  let badPal = 0, badHex = 0;
+  for (const z of DATA.ZONES) {
+    for (const k of needF) if (!z.floor[k]) badPal++;
+    for (const k of needW) if (!z.wall[k]) badPal++;
+    for (const k in z.floor) if (!/^#[0-9a-fA-F]{6}$/.test(z.floor[k])) badHex++;
+    for (const k in z.wall) if (!/^#[0-9a-fA-F]{6}$/.test(z.wall[k])) badHex++;
+  }
+  /* 구역끼리 색이 실제로 다른가(같으면 나눈 뜻이 없다) */
+  const faces = new Set(DATA.ZONES.map(z => z.floor.face + z.wall.face));
+  /* 장식 이름이 전부 그림으로 있는가 */
+  const art = fs.readFileSync(path.join(JS, "sprites-art.js"), "utf8");
+  let noArt = 0;
+  for (const z of DATA.ZONES) for (const p of (z.props || []))
+    if (!art.includes('art("p_' + p + '"')) noArt++;
+
+  /* 실제로 뿌려 보고 규칙을 안 건드리는지 본다 */
+  let onWall = 0, onTrap = 0, onStairs = 0, placed = 0, floorTiles = 0;
+  for (let s = 0; s < 20; s++) {
+    const g = new Game("warrior");
+    g.reset((s * 7919 + 11) >>> 0, "warrior");
+    for (let depth = 1; depth <= DATA.MAX_DEPTH; depth++) {
+      if (depth > 1) g.descend();
+      const lv = g.level;
+      for (let i = 0; i < lv.props.length; i++) {
+        if (lv.tiles[i] === D.FLOOR) floorTiles++;
+        if (!lv.props[i]) continue;
+        placed++;
+        if (lv.tiles[i] === D.WALL) onWall++;
+        if (lv.traps[i]) onTrap++;
+        const x = i % lv.w, y = (i / lv.w) | 0;
+        if ((x === lv.downAt.x && y === lv.downAt.y) || (x === lv.upAt.x && y === lv.upAt.y)) onStairs++;
+      }
+    }
+  }
+  const density = placed / Math.max(1, floorTiles) * 100;
+  console.log("구역        :", ok(gaps === 0 && badPal === 0 && badHex === 0 &&
+                                faces.size === DATA.ZONES.length && noArt === 0 &&
+                                onWall === 0 && onTrap === 0 && onStairs === 0 &&
+                                density > 1 && density < 8),
+    DATA.ZONES.length + "구역 · 1~" + DATA.MAX_DEPTH + "층 빈 곳 " + gaps +
+    " · 팔레트 빠짐 " + badPal + " · 잘못된 색 " + badHex +
+    " · 색이 겹치는 구역 " + (DATA.ZONES.length - faces.size) +
+    " · 그림 없는 장식 " + noArt);
+  console.log("구역 장식   :", ok(onWall === 0 && onTrap === 0 && onStairs === 0),
+    placed + "개 뿌림(바닥의 " + density.toFixed(1) + "%) · 벽 위 " + onWall +
+    " · 함정 위 " + onTrap + " · 계단 위 " + onStairs);
+}
+
 // 2-d) 유물 — **규칙을 바꾸는** 것들이라 조용히 깨져도 화면에서는 안 보인다.
 //    ⚠ "유물을 얻었다" 는 로그만으로는 아무 것도 증명되지 않는다. 하나하나가
 //      실제로 규칙을 바꾸는지 직접 재고, **대가와 안전장치도 함께** 잰다
@@ -477,14 +542,45 @@ console.log("문구        :", ok(strayMd === 0), strayMd ? "마크다운 기호
   g.offerPerks();
   const count = g.pendingPerks ? g.pendingPerks.length : 0;
   /* ⚠ 일부 수치만 더해 비교하면 "금화 획득 +30%" 같은 선택에서 변화가 0 으로 나온다 —
-   *   그것도 유효한 선택이므로 능력치 전체와 스킬 목록을 함께 본다. */
-  const snap = () => JSON.stringify(g.stats()) + "|" + JSON.stringify(g.player.skills);
+   *   그것도 유효한 선택이므로 능력치 전체와 스킬 목록을 함께 본다.
+   * ⚠ **유물을 빠뜨리면 안 된다.** 유물은 규칙을 바꾸므로 대부분 stats() 가 그대로다 —
+   *   유물이 선택지에 섞이기 시작하자 이 검사가 "고른 뒤 변화 없음" 으로 빨개졌다.
+   *   제품이 아니라 검사의 전제가 낡은 것이었다(데모 계정으로 관문을 재던 것과 같은 종류). */
+  const snap = () => JSON.stringify(g.stats()) + "|" + JSON.stringify(g.player.skills) +
+                     "|" + JSON.stringify(g.player.relics || []);
+  const kind = g.pendingPerks && g.pendingPerks[0] ? g.pendingPerks[0].what : "?";
   const before = snap();
   g.choosePerk(0);
   const after = snap();
   const closed = !g.pendingPerks;
   console.log("레벨업 선택 :", ok(count === 3 && after !== before && closed),
-    count + "개 제시 · 고른 뒤 변화 " + (after !== before ? "있음" : "없음") + " · 창 " + (closed ? "닫힘" : "⚠열림"));
+    count + "개 제시 · 첫 칸은 " + kind + " · 고른 뒤 변화 " + (after !== before ? "있음" : "없음") +
+    " · 창 " + (closed ? "닫힘" : "⚠열림"));
+
+  /* 세 갈래(능력치·스킬·유물)가 **전부** 반영되는지 따로 본다 —
+   * 한 갈래만 골라 확인하면 나머지가 조용히 죽어도 모른다. */
+  {
+    const kinds = { perk: 0, skillnew: 0, skillup: 0, relic: 0 };
+    let applied = 0, tried = 0;
+    for (let s = 0; s < 120; s++) {
+      const gg = new Game("warrior");
+      gg.reset((s * 31337 + 7) >>> 0, "warrior");
+      gg.offerPerks();
+      if (!gg.pendingPerks) continue;
+      const c0 = gg.pendingPerks[0];
+      kinds[c0.what] = (kinds[c0.what] || 0) + 1;
+      const s0 = JSON.stringify(gg.stats()) + JSON.stringify(gg.player.skills) +
+                 JSON.stringify(gg.player.relics || []);
+      gg.choosePerk(0);
+      const s1 = JSON.stringify(gg.stats()) + JSON.stringify(gg.player.skills) +
+                 JSON.stringify(gg.player.relics || []);
+      tried++;
+      if (s1 !== s0) applied++;
+    }
+    console.log("  선택 반영 :", ok(applied === tried && kinds.relic > 0 && kinds.perk > 0),
+      tried + "회 중 반영 " + applied + " · 갈래별 " +
+      Object.keys(kinds).map(k => k + " " + kinds[k]).join(" · "));
+  }
 }
 
 // 11) 상점 — 물건이 차고, 사면 금화가 줄고 물건이 들어오는가

@@ -292,7 +292,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const feat = await ev(`(()=>{
     const before = window.__peek();
     const btn = document.querySelector("[data-skill]");
-    return { cdBefore: before.cooldown, btnReady: btn ? !btn.disabled : null,
+    return { cdBefore: before.cooldown, logLen: document.querySelectorAll("#log .m").length,
+             btnReady: btn ? !btn.disabled : null,
              btnText: btn ? btn.textContent.replace(/s+/g," ").trim() : "(없음)",
              traps: before.traps, treasure: before.treasure, bag: before.bag };
   })()`);
@@ -304,7 +305,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const st = window.__peek();
     const btn = document.querySelector("[data-skill]");
     const last = document.querySelector("#log .m:last-child");
-    return { cd: st.cooldown, disabled: btn ? btn.disabled : null,
+    return { cd: st.cooldown, logLen: document.querySelectorAll("#log .m").length,
+             disabled: btn ? btn.disabled : null,
              text: btn ? btn.textContent.replace(/s+/g," ").trim() : "",
              log: last ? last.textContent.trim() : "" };
   })()`);
@@ -723,10 +725,23 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         (pad.skillsBelowActs ? " · 스킬이 행동 아래" : " · ⚠스킬이 행동 아래가 아니다")
       : "넓은 화면 — 한 줄 배치(정상) · " + pad.geo);
   }
+  /* 스킬을 눌렀을 때 일어날 수 있는 일은 둘뿐이다.
+   *   ① 터졌다  → 쿨다운이 생기고 버튼이 잠긴다
+   *   ② 거절됐다 → 쿨다운이 그대로고 이유가 기록에 남는다("닿는 적이 없다")
+   * ⚠ 예전 판정은 `__peek().cooldown` 을 봤는데 그 값이 **없었다** — undefined > 0 이
+   *   늘 false 라 ① 갈래가 죽은 코드였고, 스킬이 실제로 터진 판이 오히려 실패로
+   *   읽혔다(마법사 검사가 가끔 빨개진 이유). 창구에 값을 싣고 둘 다 제대로 가른다. */
+  const fired = typeof feat2.cd === "number" && feat2.cd > 0;
+  /* ⚠ 거절을 **문구로 맞히지 않는다.** 처음엔 /닿는|없다|준비/ 로 봤는데 실제 문구가
+   *   "허공에서 흩어졌다." 라 안 걸렸다 — 문구는 언제든 바뀐다. 거절도 행동이므로
+   *   **기록이 한 줄 늘었는지**로 본다. 그건 문구가 바뀌어도 그대로다. */
+  const refused = feat2.logLen > feat.logLen;
   const abilityWorks = (feat.btnText !== "(없음)") &&
-    (feat2.cd > 0 ? feat2.disabled === true : /준비|없다|닿는/.test(feat2.log) || feat2.disabled === false);
+    (fired ? feat2.disabled === true : (refused || feat2.disabled === false));
   console.log("직업 능력    :", ok(abilityWorks), feat.btnText + " → " +
-    (feat2.cd > 0 ? "쿨 " + feat2.cd + "턴 · 버튼 " + (feat2.disabled ? "잠김" : "안 잠김") : "거절(닿는 적 없음)"));
+    (fired ? "터짐 · 쿨 " + feat2.cd + "턴 · 버튼 " + (feat2.disabled ? "잠김" : "⚠안 잠김")
+           : "거절 · 기록 " + feat.logLen + " → " + feat2.logLen +
+             " · \"" + (feat2.log || "(기록 없음)") + "\""));
   console.log("함정·보물방  :", ok(true), "이 층 함정 " + feat.traps + "개 · 보물방 " + (feat.treasure ? "있음" : "없음"));
   console.log("미식별 물약  :", ok(potions.looks.length >= potions.names.length),
     "물약 " + potions.names.length + "종 · 겉모습 후보 " + potions.looks.length + "개");
