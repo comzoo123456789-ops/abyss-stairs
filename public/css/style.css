@@ -12,12 +12,18 @@
    *   같은 명도를 유지한 채 색상만 갈색으로 돌렸다(명도를 바꾸면 대비 검사가
    *   깨지고 캔버스의 회색 돌과도 어긋난다).
    * ⚠ 채도를 더 올리지 말 것. 갈색이 진해지면 UI 가 던전보다 화려해진다. */
-  --bg: #0b0907;
-  --panel: #191510;
-  --panel-2: #221c15;
-  --line: #352c22;
+  /* ⚠ 2026-09-18 UI 제안서 팔레트로 올렸다. 진단이 "배경-패널 대비가 약함"
+   *   이었고, 그 답이 패널과 테두리를 **밝히는** 것이다. 특히 --line 은
+   *   #352c22 → #4a3826 으로 눈에 띄게 올렸다 — 구역 구분이 테두리 하나에
+   *   기대고 있었는데 그 선이 안 보였다.
+   * ⚠ --bg 를 캔버스 바닥색과 함께 옮겨야 한다. 한쪽만 밝히면 던전이
+   *   화면에 뚫린 구멍처럼 보인다(render.js 의 배경 칠도 같이 고쳤다). */
+  --bg: #120e0a;
+  --panel: #1c1611;
+  --panel-2: #241b14;
+  --line: #4a3826;
   --ink: #ded6c2;
-  --ink-dim: #928772;
+  --ink-dim: #9d8f77;
 
   /* 종이결 — 바깥 파일 없이 SVG 난류로 만든다(요청 0건) */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E");
@@ -25,14 +31,22 @@
    * ⚠ 처음엔 3px·#3f3426 이라 **아무도 못 알아봤다**(어두운 배경에 어두운 선).
    *   놋쇠색 톱니 + 안쪽 마른 잉크선 두 겹으로 갈았다. */
   --torn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' preserveAspectRatio='none'%3E%3Cpath d='M7 10 L28 4 L44 12 L62 3 L84 9 L103 3 L126 11 L146 5 L155 9 L156 32 L151 54 L157 72 L150 96 L156 118 L152 140 L157 153 L133 156 L110 150 L88 157 L66 151 L43 157 L22 150 L6 156 L3 133 L9 111 L2 88 L8 66 L3 43 L6 24 Z' fill='none' stroke='%237a6336' stroke-width='5'/%3E%3Cpath d='M11 14 L28 8 L44 16 L62 7 L84 13 L103 7 L126 15 L145 9 L152 13 L153 32 L148 54 L154 72 L147 96 L153 118 L149 140 L153 150 L133 152 L110 146 L88 153 L66 147 L43 153 L22 146 L9 152 L7 133 L13 111 L6 88 L12 66 L7 43 L10 24 Z' fill='none' stroke='%23c9a227' stroke-width='1.1' opacity='.42'/%3E%3C/svg%3E");
-  --gold: #c9a227;
-  --hp: #c0453f;
-  --xp: #4a7ab0;
+  --gold: #d9a441;
+  --hp: #c0392b;
+  --xp: #3d6e8f;
   --good: #6ec06e;
   --bad: #e06a6a;
-  --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
-  --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+
+  /* ── 서체 ────────────────────────────────────────────
+   * 픽셀 비트맵 하나로 통일한다. 캐릭터·타일이 도트인데 글자만 산세리프면
+   * 화면이 두 세계로 쪼개진다(제안서 진단 1번).
+   * ⚠ Galmuri11 은 **11px 격자**로 그려진 비트맵이다. 글자 크기를 11 의 배수
+   *   (11 · 22)로 두면 픽셀이 딱 떨어지고, 어중간한 값(12.5px)이면 뭉갠다.
+   * ⚠ 대체 글꼴을 끝까지 적어 둔다. CDN 이 죽거나 오프라인이어도 게임은 돈다. */
+  --sans: "Galmuri11", "Pretendard Variable", Pretendard, -apple-system,
           "Segoe UI", "Malgun Gothic", sans-serif;
+  --mono: "GalmuriMono11", "Galmuri11", ui-monospace, Consolas, "D2Coding", monospace;
+  --title: "Press Start 2P", "Galmuri11", var(--sans);
 }
 
 * { box-sizing: border-box; }
@@ -44,7 +58,10 @@ html, body {
   color: var(--ink);
   font-family: var(--sans);
   overflow: hidden;
-  -webkit-font-smoothing: antialiased;
+  /* ⚠ 픽셀 서체는 **안티앨리어싱을 끈다.** 켜 두면 11px 비트맵 가장자리가
+   *   흐려져 도트 스프라이트 옆에서 혼자 뭉개 보인다. */
+  -webkit-font-smoothing: none;
+  font-smooth: never;
 }
 
 button { font-family: inherit; cursor: pointer; }
@@ -83,14 +100,24 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 12px;
   color: var(--ink-dim);
 }
+/* ⚠ 씨앗이 **두 번 흐려져** 있었다: 11px 작은 글씨에 opacity .7 을 또 곱했다.
+ *   이미 어두운 --ink-dim 위에 흐림이 겹쳐 사실상 안 보였다(제안서 지적).
+ *   흐림을 걷고 각진 뱃지에 담아 배경과 분리한다. */
+.top-meta > * {
+  border: 2px solid var(--line);
+  background: var(--panel);
+  padding: 3px 8px;
+  line-height: 1.5;
+}
 .top-meta b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
-.seedline { font-size: 11px; opacity: .7; }
+.seedline { font-size: 11px; color: var(--ink-dim); }
+.seedline b { color: var(--gold); }
 
 .ghost {
   background: transparent;
   border: 1px solid var(--line);
   color: var(--ink-dim);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 5px 11px;
   font-size: 12px;
   transition: .12s;
@@ -158,7 +185,7 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 10px;
   padding: 1px 5px;
   border: 1px solid;
-  border-radius: 999px;
+  border-radius: 0;
   font-family: var(--mono);
 }
 
@@ -240,7 +267,7 @@ button { font-family: inherit; cursor: pointer; }
   image-rendering: pixelated;
   background: #0e0c12;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 0;
   padding: 3px;
   box-sizing: content-box;
 }
@@ -270,7 +297,7 @@ button { font-family: inherit; cursor: pointer; }
   margin-bottom: 5px;
   background: #0d0b11;
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 0;
   overflow: hidden;
 }
 .meter i {
@@ -315,7 +342,7 @@ button { font-family: inherit; cursor: pointer; }
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 0;
   margin: 8px 0;
   overflow: hidden;
 }
@@ -356,7 +383,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 8px 10px;
   background: #15131b;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 0;
   color: var(--ink-dim);
   text-align: left;
   overflow: hidden;
@@ -374,7 +401,7 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 11px;
   text-align: center;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 1px 0;
   background: rgba(0,0,0,.35);
 }
@@ -400,7 +427,7 @@ button { font-family: inherit; cursor: pointer; }
   text-align: left;
   background: var(--panel-2);
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 0;
   padding: 5px 8px;
   color: var(--ink);
   transition: .1s;
@@ -425,7 +452,7 @@ button { font-family: inherit; cursor: pointer; }
 .inv-item .dot {
   display: inline-block;
   width: 8px; height: 8px;
-  border-radius: 50%;
+  border-radius: 0;
   margin-right: 5px;
   vertical-align: baseline;
   box-shadow: 0 0 0 1px rgba(0,0,0,.5);
@@ -433,14 +460,37 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ── 기록 ─────────────────────────────────────────────── */
 
+/* ⚠ 배경이 없어 던전 타일 위에서 글자가 묻었다(제안서 지적). 고정 패널을 깐다.
+ * ⚠ 그리고 **지나간 줄은 흐리게, 최신 줄은 밝고 크게.** 전투 중에 눈이 마지막
+ *   한 줄만 찾는데 일곱 줄이 같은 밝기면 그걸 못 고른다. */
 .log {
   flex: 1 1 auto;
   overflow-y: auto;
   font-size: 12px;
   line-height: 1.55;
   min-height: 90px;
+  background: var(--panel);
+  border: 2px solid var(--line);
+  padding: 6px 8px;
 }
-.log .m { margin: 0 0 2px; color: var(--ink-dim); }
+.log .m { margin: 0 0 2px; color: var(--ink-dim); opacity: .62; }
+/* 갈래 표 — 짧은 말 하나로 무슨 일인지 먼저 읽힌다 */
+.log .m .tag {
+  display: inline-block;
+  min-width: 30px;
+  margin-right: 6px;
+  padding: 0 3px;
+  font-size: 10px;
+  color: var(--ink-dim);
+  border: 1px solid var(--line);
+  text-align: center;
+  vertical-align: 1px;
+  opacity: .9;
+}
+.log .m.bad .tag, .log .m.crit .tag { border-color: #7a3630; color: #d08a82; }
+.log .m.good .tag { border-color: #3f6b3f; color: #8fc98f; }
+.log .m.depth .tag, .log .m.win .tag { border-color: #7a6336; color: var(--gold); }
+.log .m:last-child { opacity: 1; font-size: 13px; }
 .log .m.good  { color: var(--good); }
 .log .m.bad   { color: var(--bad); }
 .log .m.hit   { color: #d8cfa8; }
@@ -505,7 +555,7 @@ body.is-touch .pad { display: grid; }
 .dpad button, .acts button {
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--ink);
   font-size: 16px;
   touch-action: manipulation;
@@ -528,7 +578,7 @@ body.is-touch .pad { display: grid; }
   grid-area: 1 / 1;
   background: transparent;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--ink-dim);
   font-size: 13px;
   padding: 0;
@@ -579,7 +629,7 @@ body.pad-folded .side { max-height: 24vh; }
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 28px 30px;
   max-width: 420px;
   width: 100%;
@@ -611,7 +661,7 @@ body.pad-folded .side { max-height: 24vh; }
   gap: 1px;
   background: var(--line);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   overflow: hidden;
 }
 .card dl > * { min-width: 0; }
@@ -682,7 +732,7 @@ body.pad-folded .side { max-height: 24vh; }
   padding: 14px 12px 12px;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   text-align: center;
   transition: .12s;
@@ -696,14 +746,14 @@ body.pad-folded .side { max-height: 24vh; }
   font-size: 10px;
   color: var(--gold);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 0;
   padding: 0 4px;
 }
 .cls-art {
   image-rendering: pixelated;
   width: 96px; height: 96px;
   background: radial-gradient(circle at 50% 42%, #221f2b 0%, #14121a 70%);
-  border-radius: 6px;
+  border-radius: 0;
 }
 .cls-name { font-size: 16px; font-weight: 700; }
 .cls-title { font-size: 10.5px; letter-spacing: .04em; color: var(--gold); }
@@ -733,7 +783,7 @@ kbd {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-bottom-width: 2px;
-  border-radius: 4px;
+  border-radius: 0;
   padding: 2px 6px;
   white-space: nowrap;
 }
@@ -743,7 +793,7 @@ kbd {
   padding: 10px 12px;
   background: #1d1620;
   border-left: 3px solid var(--bad);
-  border-radius: 0 5px 5px 0;
+  border-radius: 0;
   font-size: 12px;
   line-height: 1.6;
   color: var(--ink-dim);
@@ -761,7 +811,7 @@ kbd {
   font-weight: 700;
   font-size: 13px;
   padding: 11px;
-  border-radius: 6px;
+  border-radius: 0;
 }
 .primary:hover { filter: brightness(1.08); }
 
@@ -852,7 +902,7 @@ kbd {
   font-family: var(--mono);
   padding: 2px 6px;
   border: 1px solid;
-  border-radius: 10px;
+  border-radius: 0;
   background: rgba(0,0,0,.3);
 }
 
@@ -868,7 +918,7 @@ kbd {
   padding: 6px 8px;
   background: #15131b;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 0;
   color: var(--ink-dim);
   text-align: left;
   overflow: hidden;
@@ -882,7 +932,7 @@ kbd {
 }
 .skill .k {
   font-family: var(--mono); font-size: 10.5px; text-align: center;
-  border: 1px solid var(--line); border-radius: 3px; padding: 1px 0;
+  border: 1px solid var(--line); border-radius: 0; padding: 1px 0;
   background: rgba(0,0,0,.35);
 }
 .skill .n { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -903,7 +953,7 @@ kbd {
 .build {
   display: flex; flex-wrap: wrap; gap: 1px;
   background: var(--line); border: 1px solid var(--line);
-  border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+  border-radius: 0; overflow: hidden; margin-bottom: 8px;
 }
 .build > * { min-width: 0; }
 .build span {
@@ -932,7 +982,7 @@ kbd {
   padding: 16px 13px 14px;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink);
   text-align: left;
   transition: .12s;
@@ -941,7 +991,7 @@ kbd {
 .perk-key {
   position: absolute; top: 7px; right: 8px;
   font-family: var(--mono); font-size: 10px; color: var(--gold);
-  border: 1px solid var(--line); border-radius: 3px; padding: 0 4px;
+  border: 1px solid var(--line); border-radius: 0; padding: 0 4px;
 }
 .perk-tag { font-size: 9.5px; letter-spacing: .1em; color: var(--ink-dim); }
 .perk-title { font-size: 15px; font-weight: 700; line-height: 1.3; }
@@ -971,7 +1021,7 @@ kbd {
   padding: 7px 10px;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 0;
   color: var(--ink);
   text-align: left;
   transition: .1s;
@@ -981,7 +1031,7 @@ kbd {
 .shop-kind {
   grid-area: kind; align-self: center;
   font-size: 9px; letter-spacing: .06em; color: var(--ink-dim);
-  border: 1px solid var(--line); border-radius: 3px; padding: 1px 0; text-align: center;
+  border: 1px solid var(--line); border-radius: 0; padding: 1px 0; text-align: center;
 }
 .shop-nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
 .shop-ds {
@@ -993,6 +1043,17 @@ kbd {
   font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--gold);
   white-space: nowrap;
 }
+/* ⚠ 등급색이 인라인 style 로만 붙어 있어 **테두리에는 못 썼다**(제안서 지적).
+ *   클래스로 빼면 글자색과 테두리를 함께 잡을 수 있다. 값은 data.js 의
+ *   RARITY 와 **같아야 한다** — 두 벌이 되면 조용히 어긋난다. */
+.rar-common { color: #b5afa1; }
+.rar-magic  { color: #5b8ec4; }
+.rar-rare   { color: #d8c24a; }
+.rar-relic  { color: #e0742a; }
+.shop-row.rar-magic  { border-color: #3c5f84; }
+.shop-row.rar-rare   { border-color: #8a7b2e; }
+.shop-row.rar-relic  { border-color: #94491c; }
+
 .shop-row.poor { opacity: .5; }
 .shop-row.poor .shop-cost { color: var(--bad); }
 .shop-row.sold { opacity: .32; }
@@ -1302,7 +1363,7 @@ kbd {
   padding: 10px 12px;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 0;
   color: var(--ink-dim);
   background-image: var(--grain);
   background-blend-mode: overlay;
@@ -1324,7 +1385,7 @@ kbd {
   padding: 11px 12px;
   border: 1px solid var(--line);
   border-left: 3px solid var(--gold);
-  border-radius: 6px;
+  border-radius: 0;
   background: rgba(201,162,39,.05);
 }
 .daily-done[hidden] { display: none; }
@@ -1343,7 +1404,7 @@ kbd {
   margin: 14px 0 12px;
   padding: 11px 12px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   background: rgba(0,0,0,.28);
   text-align: left;
 }
@@ -1407,7 +1468,7 @@ kbd {
   margin-top: 8px;
   padding: 6px 8px;
   background: rgba(0,0,0,.24);
-  border-radius: 5px;
+  border-radius: 0;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -1435,7 +1496,7 @@ kbd {
   padding: 4px 7px;
   border: 1px solid #4a3620;
   border-left: 2px solid #e0742a;
-  border-radius: 4px;
+  border-radius: 0;
   background: rgba(224,116,42,.05);
 }
 .relic-row b { font-size: 12px; color: #e0a054; font-weight: 600; }
@@ -1460,7 +1521,7 @@ kbd {
   gap: 1px 8px;
   padding: 7px 9px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--panel-2);
 }
 .gear-slot > * { min-width: 0; }
@@ -1469,7 +1530,7 @@ kbd {
   font-size: 10px;
   color: var(--ink-dim);
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 0;
   text-align: center;
   padding: 2px 0;
 }

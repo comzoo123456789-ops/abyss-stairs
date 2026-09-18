@@ -7,9 +7,25 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>심연의 계단</title>
 <meta name="description" content="10층 아래 심연의 군주를 쓰러뜨리는 턴제 던전 크롤러.">
-<link rel="stylesheet" href="css/style.css?v=16">
+<!-- 픽셀 서체.
+     ⚠ PDF 제안은 Press Start 2P + VT323 이었는데 **둘 다 한글 글리프가 없다.**
+       화면이 전부 한글이라 그대로 쓰면 한글만 대체 글꼴로 빠져 오히려 두 세계로
+       쪼개진다(고치려던 바로 그 문제다). 그래서 본문은 **갈무리11**(한글 픽셀
+       비트맵, OFL)로 통일하고, Press Start 2P 는 한글이 없는 짧은 라틴 제목에만 쓴다.
+     ⚠ font-display: swap 이라 CDN 이 죽어도 게임은 바로 뜬다. 대체 글꼴을
+       끝까지 적어 둘 것 — 파일을 더블클릭해 오프라인으로 여는 길이 살아 있어야 한다. -->
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
+<link rel="stylesheet" href="css/style.css?v=17">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
+<script>
+  /* 캔버스에 글자를 그릴 때 쓰는 서체. CSS 변수는 캔버스가 못 읽으므로 여기서 준다.
+     ⚠ CSS 의 --sans 와 **같아야 한다.** 두 벌이 되면 화면 안팎의 글자가 달라진다. */
+  window.TOAST_FONT = '"Galmuri11", "Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
+</script>
 <body>
 
 <div class="app">
@@ -286,15 +302,15 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=16"></script>
-<script src="js/sprites-art.js?v=16"></script>
-<script src="js/sound.js?v=16"></script>
-<script src="js/data.js?v=16"></script>
-<script src="js/daily.js?v=16"></script>
-<script src="js/items.js?v=16"></script>
-<script src="js/dungeon.js?v=16"></script>
-<script src="js/game.js?v=16"></script>
-<script src="js/render.js?v=16"></script>
-<script src="js/main.js?v=16"></script>
+<script src="js/sprites.js?v=17"></script>
+<script src="js/sprites-art.js?v=17"></script>
+<script src="js/sound.js?v=17"></script>
+<script src="js/data.js?v=17"></script>
+<script src="js/daily.js?v=17"></script>
+<script src="js/items.js?v=17"></script>
+<script src="js/dungeon.js?v=17"></script>
+<script src="js/game.js?v=17"></script>
+<script src="js/render.js?v=17"></script>
+<script src="js/main.js?v=17"></script>
 </body>
 </html>

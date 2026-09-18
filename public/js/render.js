@@ -540,7 +540,9 @@
     }
     ox = Math.round(ox); oy = Math.round(oy);
 
-    ctx.fillStyle = "#08070b";
+    /* ⚠ CSS 의 --bg 와 같은 값이어야 한다. 한쪽만 밝히면 던전이 화면에
+     *   뚫린 구멍처럼 보인다. */
+    ctx.fillStyle = "#120e0a";
     ctx.fillRect(0, 0, this.viewW, this.viewH);
 
     var x0 = Math.max(0, Math.floor(this.cam.x / TILE));
@@ -1178,12 +1180,33 @@
     el.innerHTML = html;
   };
 
+/* 기록 한 줄 앞에 붙는 갈래 표. 색만으로는 무슨 일인지 안 읽힌다 —
+   * 짧은 말 하나를 앞에 두면 훑어보는 눈이 원하는 줄을 바로 찾는다.
+   * ⚠ 톤 이름은 game.js 의 say() 가 정한다. 여기 없는 톤은 뱃지를 안 붙인다 —
+   *   모르는 톤에 아무 말이나 붙이면 거짓말이 된다. */
+  /* 등급을 **클래스**로 돌려준다. 인라인 색으로는 글자색밖에 못 바꾼다 —
+   * 테두리까지 등급색으로 두려면 클래스여야 한다(제안서 지적).
+   * ⚠ 클래스 이름의 등급 id 는 data.js 의 RARITY 와 같다. 값을 여기 베껴
+   *   적지 말 것 — 색은 style.css 한 곳에만 둔다. */
+  function rarCls(it) {
+    var r = it && (it.rarity || (it.src && it.src.rarity));
+    return r ? " rar-" + r : "";
+  }
+
+  var LOG_TAG = {
+    hit: "전투", bad: "피해", good: "처치", crit: "치명",
+    item: "획득", warn: "주의", depth: "층", level: "성장", win: "승리"
+  };
+
   Renderer.prototype.drawLog = function (el) {
     var log = this.game.log;
     var start = Math.max(0, log.length - 70);
     var html = "";
     for (var i = start; i < log.length; i++) {
-      html += '<p class="m ' + log[i].tone + '">' + esc(log[i].text) + "</p>";
+      var tag = LOG_TAG[log[i].tone];
+      html += '<p class="m ' + log[i].tone + '">' +
+              (tag ? '<span class="tag">' + tag + "</span>" : "") +
+              esc(log[i].text) + "</p>";
     }
     el.innerHTML = html;
     el.scrollTop = el.scrollHeight;
@@ -1247,11 +1270,13 @@
         lines = g.itemLines(row.item);
         col = row.item.color || g.itemColor(row.item) || null;
       }
-      html += '<button class="shop-row' + (row.sold ? " sold" : (can ? "" : " poor")) +
+      html += '<button class="shop-row' + (row.item ? rarCls(row.item) : "") +
+        (row.sold ? " sold" : (can ? "" : " poor")) +
         '" data-buy="' + i + '"' + (row.sold || !can ? " disabled" : "") + ">" +
         '<span class="shop-kind">' +
           (row.what === "skill" ? "스킬" : (row.what === "relic" ? "유물" : "물건")) + "</span>" +
-        '<span class="shop-nm"' + (col ? ' style="color:' + esc(col) + '"' : "") + ">" + esc(name) + "</span>" +
+        '<span class="shop-nm' + (row.item ? rarCls(row.item) : "") + '"' +
+          (col && !row.item ? ' style="color:' + esc(col) + '"' : "") + ">" + esc(name) + "</span>" +
         '<span class="shop-ds">' + lines.map(esc).join(" · ") + "</span>" +
         '<span class="shop-cost">' + (row.sold ? "판매됨" : row.cost + " 금") + "</span>" +
         "</button>";
@@ -1263,9 +1288,9 @@
       var it = g.player.inventory[i];
       var price = Math.max(4, Math.round((it.cost || 10) * 0.42));
       var worn = it.slot && g.player[it.slot] === it;
-      html += '<button class="shop-row sell" data-sell="' + i + '">' +
+      html += '<button class="shop-row sell' + rarCls(it) + '" data-sell="' + i + '">' +
         '<span class="shop-kind">' + (worn ? "착용" : "가방") + "</span>" +
-        '<span class="shop-nm"' + (it.color ? ' style="color:' + esc(it.color) + '"' : "") + ">" +
+        '<span class="shop-nm' + rarCls(it) + '">' +
         esc(g.itemName(it)) + "</span>" +
         '<span class="shop-ds">' + g.itemLines(it).map(esc).join(" · ") + "</span>" +
         '<span class="shop-cost">+' + price + " 금</span>" +
