@@ -59,6 +59,14 @@ Chrome 경로는 `tools/check.mjs` 맨 위 `CHROME` 상수에 있다. 설치 패
 ⚠ **배포는 파일이 올라간 것으로 끝나지 않는다.** `--url` 로 배포본을 다시 재서 화면이
 정말 도는지 확인한다 — 업로드 성공과 게임이 돌아가는 것은 다른 얘기다.
 
+⚠ **배포 직후 `curl` 로 `?v=` 를 확인하면 옛 값이 나올 수 있다.** CDN 이 index.html 을
+잠깐 들고 있다. 실제로 올라간 것이 v16 인데 v15 로 보여서 "배포가 안 됐다" 로 오진했다.
+캐시를 우회해서 본다:
+
+```bash
+curl -s "https://abyss-stairs.bhmoon.workers.dev/?cb=$RANDOM" | grep -o '?v=[0-9]*' | sort -u
+```
+
 ## 다른 컴퓨터에서 이어서 작업하기
 
 ```bash
