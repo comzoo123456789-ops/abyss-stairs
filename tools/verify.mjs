@@ -78,7 +78,7 @@ console.log("문법        :", ok(synBad === 0), fs.readdirSync(JS).length + "�
 }
 
 // 2) 던전 연결성 + 보물방 진입 가능성
-let unreachable = 0, treasureSealed = 0, treasureCount = 0;
+let unreachable = 0, treasureSealed = 0, treasureCount = 0, deepCount = 0, deepSealed = 0;
 for (let s = 1; s <= 200; s++) {
   for (let depth = 1; depth <= DATA.MAX_DEPTH; depth++) {
     const lv = D.generate(62, 38, depth, (s * 2654435761 + depth) >>> 0);
@@ -97,6 +97,11 @@ for (let s = 1; s <= 200; s++) {
       }
     }
     if (!seen[lv.downAt.y * lv.w + lv.downAt.x]) unreachable++;
+    /* ⚠ 깊은 계단도 **걸어서 닿아야 한다.** 못 닿으면 선택지가 아니라 장식이다. */
+    if (lv.deepAt) {
+      deepCount++;
+      if (!seen[lv.deepAt.y * lv.w + lv.deepAt.x]) deepSealed++;
+    }
     if (lv.treasure) {
       treasureCount++;
       const t = lv.treasure;
@@ -111,6 +116,8 @@ for (let s = 1; s <= 200; s++) {
 console.log("던전 연결성 :", ok(unreachable === 0), 200 * DATA.MAX_DEPTH + "개 층 · 계단 못 가는 층 " + unreachable + "개");
 console.log("보물방      :", ok(treasureSealed === 0),
   treasureCount + "개 생성 · 들어갈 수 없는 방 " + treasureSealed + "개");
+console.log("깊은 계단   :", ok(deepSealed === 0),
+  deepCount + "개 생성(층마다 하나가 목표) · 걸어서 못 닿음 " + deepSealed + "개");
 
 // 2-b) 탭 이동의 길찾기 — 이어진 길만 내놓는가
 //    ⚠ 화면 검사는 "걸었다" 까지만 본다. 길 자체가 옳은지(칸마다 인접 · 벽 없음 ·
@@ -857,12 +864,16 @@ function play(seed, clsId) {
     const key = it => g.depth + ":" + it.x + "," + it.y;
     const desperate = hurt < 0.3 && inv(it => g.identified[it.id] && it.effect === "heal") < 0;
     let goals, toStairs = false;
+    /* 어느 계단으로 갈까 — **체력이 넉넉하면 깊은 쪽**을 고른다. 사람이 하는
+     *   판단을 그대로 흉내 낸다. 한쪽만 쓰면 그 선택지가 밸런스에 안 잡힌다. */
+    const wantDeep = lv.deepAt && hurt > 0.7 && g.depth < DATA.MAX_DEPTH - 1;
+    const exit = wantDeep ? lv.deepAt : lv.downAt;
     if (desperate && g.depth < DATA.MAX_DEPTH) { goals = [lv.downAt]; toStairs = true; }
     else if (g.merchant && g.gold >= 60 && !shopped.has(g.depth)) goals = [g.merchant];
     else if (g.items.some(it => !skip.has(key(it)))) goals = g.items.filter(it => !skip.has(key(it)));
     else if (g.monsters.length) goals = g.monsters;
-    else { goals = [lv.downAt]; toStairs = true; }
-    if (toStairs && lv.at(p.x, p.y) === D.STAIRS) { if (g.descendIfStairs()) { stuck = 0; continue; } }
+    else { goals = [exit]; toStairs = true; }
+    if (toStairs && g.isStairs(p.x, p.y)) { if (g.descendIfStairs()) { stuck = 0; continue; } }
 
     const step = bfsStep(g, p.x, p.y, goals);
     if (!step) {

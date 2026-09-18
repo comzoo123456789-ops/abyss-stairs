@@ -136,7 +136,7 @@
   /* 발 밑에 뭔가 있으면 도착하면서 처리한다 — 한 번 더 누르게 하면 번거롭다 */
   function arriveAt(x, y) {
     if (game.itemAt(x, y)) { game.pickUp(); afterAction(); return; }
-    if (game.level.at(x, y) === window.DUNGEON.STAIRS) { game.descendIfStairs(); afterAction(); }
+    if (game.isStairs(x, y)) { game.descendIfStairs(); afterAction(); }
   }
 
   /* 누른 칸을 해석한다. 붙어 있으면 한 걸음(=적이면 공격), 멀면 걸어간다. */
@@ -149,7 +149,7 @@
 
     if (dx === 0 && dy === 0) {                 /* 제자리 — 줍기·내려가기·쉬기 */
       if (game.itemAt(p.x, p.y)) game.pickUp();
-      else if (game.level.at(p.x, p.y) === window.DUNGEON.STAIRS) game.descendIfStairs();
+      else if (game.isStairs(p.x, p.y)) game.descendIfStairs();
       else game.wait();
       afterAction();
       return;
@@ -304,7 +304,7 @@
       e.preventDefault();
       var fp = game.player;
       if (!game.itemAt(fp.x, fp.y) &&
-          game.level.at(fp.x, fp.y) === window.DUNGEON.STAIRS) game.descendIfStairs();
+          game.isStairs(fp.x, fp.y)) game.descendIfStairs();
       else game.pickUp();
       afterAction();
       return;
@@ -929,7 +929,9 @@
         seed: game.seed,
         started: els.start.hidden,
         stairs: { x: game.level.downAt.x, y: game.level.downAt.y },
-        onStairs: game.level.at(game.player.x, game.player.y) === window.DUNGEON.STAIRS,
+        onStairs: game.isStairs(game.player.x, game.player.y),
+        onDeep: game.level.at(game.player.x, game.player.y) === window.DUNGEON.DEEP,
+        deep: game.level.deepAt ? { x: game.level.deepAt.x, y: game.level.deepAt.y } : null,
         traps: (function () { var n = 0, t = game.level.traps; for (var i = 0; i < t.length; i++) if (t[i]) n++; return n; })(),
         treasure: !!game.level.treasure
       };

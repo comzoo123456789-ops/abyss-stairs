@@ -545,6 +545,7 @@
           var col;
           if (lv.blocked(tx, ty)) col = "#3a3129";
           else if (t === D.STAIRS) col = "#d9a441";
+          else if (t === D.DEEP) col = "#e0742a";
           else if (t === D.DOOR) col = "#8a6a33";
           else col = lv.visible[id] ? "#6b6055" : "#453d34";
           mx.fillStyle = col;
@@ -698,6 +699,7 @@
           ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), zone), sx, sy);
           if (t === D.DOOR) ctx.drawImage(S.bake("door"), sx, sy);
           else if (t === D.STAIRS) ctx.drawImage(S.bake("stairs"), sx, sy);
+          else if (t === D.DEEP) ctx.drawImage(S.bake("deep"), sx, sy);
         }
       }
     }

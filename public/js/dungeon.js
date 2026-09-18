@@ -7,7 +7,9 @@
 (function (global) {
   "use strict";
 
-  var WALL = 0, FLOOR = 1, DOOR = 2, STAIRS = 3;
+  /* ⚠ DEEP 은 **두 번째 계단**이다. STAIRS 로 같이 두면 어느 쪽을 밟았는지
+   *   구별할 수가 없다 — 칸 종류를 따로 둔다(그리기·길찾기·검사가 다 이걸 본다). */
+  var WALL = 0, FLOOR = 1, DOOR = 2, STAIRS = 3, DEEP = 4;
 
   /* ── 씨앗 있는 난수 ──────────────────────────────────────
    * Math.random 을 그대로 쓰면 같은 층을 두 번 볼 수 없다.
@@ -38,6 +40,7 @@
     this.rooms = [];
     this.upAt = null;
     this.downAt = null;
+    this.deepAt = null;
     this.treasure = null;
   }
 
@@ -208,6 +211,26 @@
     lv.downAt = { x: far.cx, y: far.cy };
     lv.tiles[lv.idx(far.cx, far.cy)] = STAIRS;
 
+    /* 깊은 계단 — **두 번째 길**. 더 험한 층으로 내려가는 대신 더 가져간다.
+     * ⚠ 시작 방과 평범한 계단 **둘 다에서 먼** 방에 둔다. 셋이 몰려 있으면
+     *   고르는 것이 아니라 둘 중 가까운 것을 밟는 것이 된다.
+     * ⚠ 방이 셋 미만이면 안 둔다. 억지로 두면 같은 방에 계단 둘이 생긴다. */
+    if (lv.rooms.length >= 3) {
+      var deep = null, dbest = -1;
+      for (var q = 1; q < lv.rooms.length; q++) {
+        var r = lv.rooms[q];
+        if (r === far) continue;
+        var d1 = Math.abs(r.cx - first.cx) + Math.abs(r.cy - first.cy);
+        var d2 = Math.abs(r.cx - far.cx) + Math.abs(r.cy - far.cy);
+        var score = Math.min(d1, d2);          /* 둘 중 가까운 쪽을 최대로 */
+        if (score > dbest) { dbest = score; deep = r; }
+      }
+      if (deep && dbest >= 6) {
+        lv.deepAt = { x: deep.cx, y: deep.cy };
+        lv.tiles[lv.idx(deep.cx, deep.cy)] = DEEP;
+      }
+    }
+
     return lv;
   }
 
@@ -309,7 +332,7 @@
   }
 
   global.DUNGEON = {
-    WALL: WALL, FLOOR: FLOOR, DOOR: DOOR, STAIRS: STAIRS,
+    WALL: WALL, FLOOR: FLOOR, DOOR: DOOR, STAIRS: STAIRS, DEEP: DEEP,
     makeRng: makeRng,
     generate: generate,
     randomFloor: randomFloor,

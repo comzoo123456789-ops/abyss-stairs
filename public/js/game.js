@@ -290,7 +290,18 @@
       this.say("이름들이 웅웅거린다. 이 층에 군주가 있다.", "bad");
     }
 
-    var mcount = DATA.monsterCount(this.depth);
+    /* 깊은 계단으로 내려왔으면 **더 험하고 더 많다.**
+     * ⚠ 값은 실측으로 정한다(아래 표 참조). 몬스터만 늘리면 벌이고, 물건만
+     *   늘리면 공짜다 — 둘을 같이 올려야 **거래**가 된다.
+     * ⚠ 플래그는 여기서 지운다. 안 지우면 그 뒤 모든 층이 험해진다. */
+    var deep = !!this.deepNext;
+    this.deepNext = false;
+    /* ⚠ 이 층이 깊은 층인지 **spawn 이 봐야 한다**(엘리트 확률이 두 배다).
+     *   지역 변수로만 두면 엘리트가 안 걸린다. */
+    this.deepFloor = deep;
+    if (deep) this.say("깊은 계단이었다. 공기가 더 무겁다.", "bad");
+
+    var mcount = Math.round(DATA.monsterCount(this.depth) * (deep ? 1.7 : 1));
     for (i = 0; i < mcount; i++) {
       def = DATA.pick(DATA.MONSTERS, this.depth, this.rng);
       if (!def) continue;
@@ -299,7 +310,7 @@
       this.monsters.push(this.spawn(def, spot.x, spot.y));
     }
 
-    var icount = DATA.itemCount(this.depth);
+    var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1));
     for (i = 0; i < icount; i++) {
       spot = freeSpot(null);
       if (!spot) continue;
@@ -496,7 +507,11 @@
     var hp = def.hp * sc.hp, atk = def.atk * sc.atk, dfn = def.def * sc.def, xp = def.xp;
     var name = def.name, elite = null;
 
-    if (!noElite && !def.boss && this.rng() < DATA.eliteChance(this.depth)) {
+    /* ⚠ 깊은 층은 **엘리트가 두 배**다. 마릿수만 늘리면 경험치와 금화가 같이
+     *   늘어 오히려 이득이 된다(실측: 늘 깊은 계단을 타는 쪽이 더 나았다).
+     *   위험은 "수" 가 아니라 "질" 로 줘야 거래가 성립한다. */
+    var ec = DATA.eliteChance(this.depth) * (this.deepFloor ? 2 : 1);
+    if (!noElite && !def.boss && this.rng() < ec) {
       elite = DATA.ELITES[Math.floor(this.rng() * DATA.ELITES.length)];
       hp *= elite.hp; atk *= elite.atk; xp = Math.round(xp * elite.xp);
       if (elite.def) dfn *= elite.def;
@@ -730,7 +745,11 @@
 
     var it = this.itemAt(nx, ny);
     if (it) this.say(josa(this.itemName(it), "이", "가") + " 발 밑에 있다. (Space 로 줍기)", "item");
-    if (this.level.at(nx, ny) === D.STAIRS) this.say("아래로 내려가는 계단이다. (Space 로 내려가기)", "depth");
+    /* ⚠ 어느 계단인지 **밟기 전에** 알려야 선택이 된다. 내려간 뒤에 알면
+     *   그건 선택이 아니라 사고다. */
+    var st = this.level.at(nx, ny);
+    if (st === D.STAIRS) this.say("아래로 내려가는 계단이다. (Space 로 내려가기)", "depth");
+    else if (st === D.DEEP) this.say("깊은 계단이다. 아래가 더 험하지만 더 많다. (Space 로 내려가기)", "warn");
 
     return this.act(true);
   };
@@ -794,15 +813,27 @@
     return this.act(true);
   };
 
+  /* 계단 위인가 — **두 종류를 한 곳에서** 판정한다.
+   * ⚠ 쓰는 쪽이 각자 `=== D.STAIRS` 를 적으면 깊은 계단을 한 곳에서만
+   *   빠뜨려도 거기서만 안 내려간다(조용히 틀리는 종류다). */
+  Game.prototype.isStairs = function (x, y) {
+    var t = this.level.at(x, y);
+    return t === D.STAIRS || t === D.DEEP;
+  };
+
   Game.prototype.descendIfStairs = function () {
     if (this.over || this.busy()) return false;
-    if (this.level.at(this.player.x, this.player.y) !== D.STAIRS) {
+    var t = this.level.at(this.player.x, this.player.y);
+    if (t !== D.STAIRS && t !== D.DEEP) {
       this.say("여기엔 계단이 없다.", "warn"); sfx("deny"); return false;
     }
     if (this.depth >= DATA.MAX_DEPTH) {
       this.say("더 아래는 없다. 군주를 쓰러뜨려야 한다.", "warn"); sfx("deny"); return false;
     }
     sfx("stairs");
+    /* ⚠ **어느 계단으로 내려왔는지**를 들고 간다. 다음 층 배치가 이걸 본다.
+     *   descend() 안에서 지우므로 여기서만 세운다. */
+    this.deepNext = (t === D.DEEP);
     this.descend();
     return this.act(true);
   };
