@@ -670,6 +670,21 @@ console.log("문구        :", ok(strayMd === 0), strayMd ? "마크다운 기호
   console.log("무작위 내구 :", ok(crashes === 0), "120판 · 예외 " + crashes + "건");
 }
 
+// 13-b) 붙었다 떨어지는 춤 — 0 피해로 쿨다운을 돌릴 수 있는가.
+/* ⚠ **밸런스 검사가 이것을 못 잡는다.** 아래 AI 는 붙으면 반드시 때리고 물러나는
+ *   일이 없어서, 기회 공격을 넣기 전후로 360판 결과가 소수점까지 같았다. 사람은
+ *   물러난다 — 그래서 따로 돌린다. 값은 tools/kite-check.mjs 안에 적혀 있다. */
+{
+  const rk = spawnSync(process.execPath, [path.join(ROOT, "tools", "kite-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const lines = rk.stdout.split(String.fromCharCode(10));
+  const pick = (head) => (lines.find(l => l.startsWith(head)) || "").split(":").slice(1).join(":").trim();
+  if (rk.status !== 0) fails++;
+  console.log("붙었다 떨어지기:", ok(rk.status === 0),
+    [pick("춤이 공짜인가"), pick("도망 값"), pick("때릴 때")].filter(Boolean).join(" · "));
+  if (rk.status !== 0) lines.filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 14) 밸런스 — 빌드를 쌓으며 내려가는 AI 의 직업별 승률
 /* 상인은 길을 막지 않는다(밟으면 들어가면서 상점이 열린다) — 그래서 여기서도
  * 특별 취급하지 않는다. 예전에 상인을 막았을 때는 상인이 유일한 통로를 가로막는

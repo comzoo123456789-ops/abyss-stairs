@@ -508,6 +508,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       tapCheck = {
         goal: far, started: !!midTravel, stopOnMonster: stopOnMonster, moved: Math.abs(t1.x - t0.x) + Math.abs(t1.y - t0.y),
         turns: t1.turn - t0.turn,
+        foes: t0.foes, hp0: t0.hp, hp1: t1.hp,
         stoppedByKey: !!beforeKey && !afterKey,
         hadTravel: !!beforeKey, center: center.ok, centerWant: center.want, centerGot: center.got
       };
@@ -776,10 +777,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     //  적을 못 심었으면(시야 안에 빈 칸이 없음) 그 항목은 판정하지 않는다 —
     //  검사 못 한 것을 통과로도 실패로도 세지 않는다.
     const smOk = !sm || !sm.set || !sm.put || sm.stopped;
-    const ok2 = tapCheck.started && tapCheck.moved >= 2 && tapCheck.turns >= 2 &&
-                tapCheck.center && smOk && (!tapCheck.hadTravel || tapCheck.stoppedByKey);
+    /* ⚠ 옆에 적이 붙어 있으면 **한 칸 가고 멈추는 것이 정답이다.** 첫 걸음에
+     *   기회 공격을 맞고 "맞으면 멈춘다" 규칙이 걸린다. 그때 "여러 칸 걸어야
+     *   한다" 로 재면 멀쩡한 제품을 고장으로 부른다(실제로 그렇게 빨개졌다).
+     *   상황을 가려서 **각자 맞는 것**을 본다. */
+    const nearFoe = tapCheck.foes > 0;
+    const hurt = tapCheck.hp1 < tapCheck.hp0;
+    const ok2 = nearFoe
+      ? (tapCheck.moved >= 1 && hurt && tapCheck.center)
+      : (tapCheck.started && tapCheck.moved >= 2 && tapCheck.turns >= 2 &&
+         tapCheck.center && smOk && (!tapCheck.hadTravel || tapCheck.stoppedByKey));
     tapPass = ok2;
     console.log("탭 이동      :", ok(ok2),
+      (nearFoe ? "옆에 적 " + tapCheck.foes + "마리 — 한 대 맞고 멈춰야 정상 · 체력 " +
+                   tapCheck.hp0 + "→" + tapCheck.hp1 + " · " : "") +
       "목적지 " + tapCheck.goal.x + "," + tapCheck.goal.y + "(" + tapCheck.goal.d + "칸) → " +
       tapCheck.moved + "칸 이동 · 턴 +" + tapCheck.turns +
       (tapCheck.started ? " · 자동 이동 시작됨" : " · ⚠자동 이동이 안 걸렸다") +

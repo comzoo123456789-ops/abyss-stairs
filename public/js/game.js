@@ -624,8 +624,12 @@
 
     if (this.level.blocked(nx, ny)) return false;
 
+    /* 붙어 있는 적은 **떠나기 전에** 센다. 옮기고 나서 세면 이미 아무도 안 붙어 있다. */
+    var foes = this.adjacentFoes(this.player.x, this.player.y);
     this.player.x = nx;
     this.player.y = ny;
+    this.opportunity(foes, nx, ny);
+    if (this.over) return true;
 
     /* 상인 칸을 밟으면 상점이 열린다.
      * ⚠ 예전에는 상인이 **길을 막고** 밟으면 턴을 안 쓴 채 상점만 열었다. 그러면
@@ -644,6 +648,42 @@
     if (this.level.at(nx, ny) === D.STAIRS) this.say("아래로 내려가는 계단이다. (Enter 로 내려가기)", "depth");
 
     return this.act(true);
+  };
+
+  /* 붙어 있는 적 — 깨어 있고 기절하지 않은 놈만. */
+  Game.prototype.adjacentFoes = function (x, y) {
+    var out = [];
+    for (var i = 0; i < this.monsters.length; i++) {
+      var m = this.monsters[i];
+      if (m.hp <= 0 || !m.awake || m.ail.stun) continue;
+      if (manhattan(m.x, m.y, x, y) === 1) out.push(m);
+    }
+    return out;
+  };
+
+  /* 기회 공격 — 붙어 있던 적에게서 걸어서 물러나면 한 대 맞는다.
+   *
+   * ⚠ 이것이 없으면 **쿨다운이 공짜가 된다.** 이동이 4방향이라 대각선에 선 놈은
+   *   못 때리고(stepMonster 의 근접 판정이 맨해튼 1 이다), 몬스터의 한 턴은
+   *   "때리거나 걷거나" 둘 중 하나다. 그래서 붙은 적 앞에서 위아래로만 오가면
+   *   상대는 매 턴 다시 붙는 데에만 턴을 쓰고 영영 못 때린다 —
+   *   실측 100턴 동안 **0 피해로 스킬 20번**. tools/kite-check.mjs 가 지킨다.
+   * ⚠ 물러나는 것을 막지는 않는다. **값을 매길 뿐이다** — 도망은 여전히 통하고
+   *   한 칸마다 한 대를 낸다. 막아 버리면 불리한 싸움을 접을 방법이 사라진다.
+   * ⚠ 걸어서 물러날 때만이다. 스킬로 자리를 옮기는 것(돌진)과 층 이동은 move() 를
+   *   안 타므로 안 걸린다. 지금 돌진은 **달려드는** 기술이라 도망 수단은 아니다 —
+   *   물러서는 스킬이 생기면 그것이 이 규칙의 출구가 된다.
+   * ⚠ 4방향에서는 붙은 적 옆에서 **어디로 가든** 맨해튼 2 가 된다. 그래도 조건을
+   *   "붙어 있다가 걸었다" 로 적지 않고 거리를 다시 본다 — 나중에 대각선이
+   *   생기더라도 이 규칙이 저절로 맞는다. */
+  Game.prototype.opportunity = function (foes, nx, ny) {
+    for (var i = 0; i < foes.length; i++) {
+      var m = foes[i];
+      if (m.hp <= 0 || m.ail.stun) continue;
+      if (manhattan(m.x, m.y, nx, ny) === 1) continue;   /* 아직 붙어 있으면 아니다 */
+      this.attack(m, this.player, josa(m.name, "이", "가") + " 물러서는 틈을 노렸다.");
+      if (this.over) return;
+    }
   };
 
   Game.prototype.springTrap = function (x, y) {
@@ -894,7 +934,7 @@
     return Math.max(1.1, st.critMult);
   };
 
-  Game.prototype.attack = function (who, target) {
+  Game.prototype.attack = function (who, target, note) {
     this.fx("lunge", who.x, who.y, Math.sign(target.x - who.x), Math.sign(target.y - who.y));
 
     if (who === this.player) {
@@ -950,7 +990,7 @@
     }
     if (d > 0) {
       this.player.hp -= d;
-      this.say(who.name + "의 공격. " + d + " 피해.", "bad");
+      this.say((note || (who.name + "의 공격.")) + " " + d + " 피해.", "bad");
       sfx("hurt");
       /* 유물: 가시 갑옷 — 받은 만큼 되돌려 준다.
        * ⚠ 반사로 적이 죽으면 kill() 을 타야 경험치·금화가 들어온다 — damage() 를

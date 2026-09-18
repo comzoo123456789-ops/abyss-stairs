@@ -121,16 +121,22 @@ function bfsStep(map, sx, sy, tx, ty) {
 }
 const dirKey = (dx, dy) => dx > 0 ? "ArrowRight" : dx < 0 ? "ArrowLeft" : dy > 0 ? "ArrowDown" : "ArrowUp";
 
+/* ⚠ 계단까지 걸어가는 동안 **맞아 죽으면 이 검사는 못 돈다.** 기회 공격이
+ *   생긴 뒤 실제로 그랬다(48걸음에서 끊겼다). 여기서 보려는 것은 층 이동
+ *   애니메이션이지 전투 생존이 아니다 — 길을 비우고 잰다. */
+await ev("window.__clearMonsters()");
 let map = await ev("window.__map()");
 let st = await ev("window.__peek()");
 const depth0 = st.depth;
 let guard = 0;
+let lastSt = null;
 while (!st.onStairs && guard++ < 900 && !st.over) {
   const step = bfsStep(map, st.x, st.y, st.stairs.x, st.stairs.y);
   if (!step) break;
   await tap(dirKey(step[0], step[1]));
   await sleep(22);
   st = await ev("window.__peek()");
+  lastSt = st;
 }
 let snap = null;
 if (st.onStairs) {
@@ -147,7 +153,8 @@ console.log("⑤ 층 이동 스냅 :",
   snap ? (snap.depth0 + "층 → " + snap.p.depth + "층 · 보이는 자리 " +
           snap.v.vx + "," + snap.v.vy + " = 논리 " + snap.p.x + "," + snap.p.y +
           " · 보간 " + (snap.v.moving ? "함(⚠ 지도를 미끄러져 간다)" : "안 함"))
-       : "계단에 못 닿아 검사 못 함 (guard=" + guard + ")");
+       : "계단에 못 닿아 검사 못 함 (guard=" + guard + " · " +
+         (lastSt && lastSt.over ? "걸어가다 죽었다" : "길이 끊겼다") + ")");
 
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ 실패 " + fails + "건");
 ws.close(); ch.kill(); srv.close();

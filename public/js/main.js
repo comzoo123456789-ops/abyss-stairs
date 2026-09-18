@@ -894,6 +894,9 @@
         weapon: game.player.weapon ? game.player.weapon.name : null,
         rarity: game.player.weapon ? game.player.weapon.rarity : null,
         monsters: game.monsters.length, items: game.items.length,
+        /* 지금 붙어 있는 적 수. 점검기가 **기회 공격이 터질 상황인지** 알아야
+         * "한 칸 가고 멈췄다" 를 고장으로 오진하지 않는다(실제로 오진했다). */
+        foes: game.adjacentFoes(game.player.x, game.player.y).length,
         bag: game.player.inventory.length,
         seed: game.seed,
         started: els.start.hidden,
@@ -940,6 +943,11 @@
       }
       return null;
     };
+    /* 점검기 전용 — 지금 층의 적을 치운다.
+      * ⚠ 「층 이동 스냅」 같은 검사는 계단까지 걸어가야 하는데, 기회 공격이 생긴
+      *   뒤로는 가는 길에 맞아 죽어 **검사 자체가 못 돌았다**. 애니메이션 검사가
+      *   전투 생존 검사를 겸할 이유가 없다. */
+     window.__clearMonsters = function () { game.monsters = []; refresh(); return true; };
     window.__travel = function () {
       return travel ? { goal: travel.goal, left: travel.path.length - travel.i } : null;
     };
