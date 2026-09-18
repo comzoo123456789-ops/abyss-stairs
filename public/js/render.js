@@ -223,6 +223,14 @@
   /* 그릴 때 입힐 색. 흰 섬광이 먼저고, 없으면 걸린 상태이상 색이다.
    * ⚠ 돌려주는 문자열은 **고정된 넷** 중 하나다(흰색 · 독 · 출혈 · 기절).
    *   알파를 시간에 따라 바꾸면 구운 판이 프레임마다 하나씩 늘어난다. */
+  /* 갑옷 등급 덧그림 이름. 일반 등급이면 없다.
+   * ⚠ 한 곳에서만 고른다. 지도·초상·장비창이 각자 고르면 조용히 어긋난다. */
+  function armorArt(p) {
+    var r = p && p.armor && p.armor.rarity;
+    return (r && r !== "common") ? "eq_" + r : null;
+  }
+  global.ARMOR_ART = armorArt;
+
   Renderer.prototype.tintOf = function (e) {
     if (this.isWhite(e)) return WHITE_TINT;
     if (!e.ail) return null;
@@ -800,6 +808,9 @@
     ctx.fillRect(pxp - TILE, pyp - TILE, TILE * 3, TILE * 3);
     ctx.drawImage(S.bake(g.player.sprite || "warrior", frameOf(pv),
                          this.tintOf(g.player)), pxp, pyp);
+    /* 갑옷 등급이 어깨로 보인다 — 장비를 껴도 외형이 안 변하던 것을 고친다 */
+    var eqa = armorArt(g.player);
+    if (eqa) ctx.drawImage(S.bake(eqa, 0, this.tintOf(g.player)), pxp, pyp);
 
     /* 4-b) 피격 표시 — 맞은 자리에 짧게 튀는 빛. 로그를 안 봐도 뭔가 맞았음을 안다 */
     for (i = 0; i < this.hits.length; i++) {
@@ -1071,6 +1082,9 @@
       x.imageSmoothingEnabled = false;
       x.clearRect(0, 0, 32, 32);
       x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
+      /* 갑옷 등급이 초상에도 보인다 — 지도와 초상이 다르면 어느 쪽이 나인지 흔들린다 */
+      var eqp = armorArt(g.player);
+      if (eqp) x.drawImage(S.bake(eqp), 0, 0);
     }
   };
 
@@ -1204,6 +1218,9 @@
       var x = art.getContext("2d");
       x.imageSmoothingEnabled = false;
       x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
+      /* 갑옷 등급이 초상에도 보인다 — 지도와 초상이 다르면 어느 쪽이 나인지 흔들린다 */
+      var eqp = armorArt(g.player);
+      if (eqp) x.drawImage(S.bake(eqp), 0, 0);
     }
   };
 

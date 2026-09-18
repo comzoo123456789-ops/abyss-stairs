@@ -310,7 +310,25 @@ row("무기별로 다름", sig.length >= 4 && new Set(sig).size === sig.length,
     "터짐 " + sst.blooms + "개 · 밝은 픽셀 " + before.lit + " → " + at.lit);
 }
 
-/* ⑧ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */
+/* ⑧ 갑옷 등급이 **외형을 바꾸는가**.
+ * ⚠ "덧그림 스프라이트를 만들었다" 는 통과가 아니다. 같은 자리에서 일반 갑옷과
+ *   유물 갑옷의 픽셀을 비교해 **정말 달라지는지** 본다. */
+{
+  const a = await arena({ mon: "orc", calm: true, armor: "common" });
+  if (!a) row("갑옷 외형", false, "판을 못 만들었다");
+  else {
+    await sleep(240);
+    const px = `window.__pix(window.__peek().x, window.__peek().y, 0)`;
+    const plain = await ev(px);
+    await arena({ mon: "orc", calm: true, armor: "relic" });
+    await sleep(240);
+    const deck = await ev(px);
+    row("갑옷 외형", plain.hash !== deck.hash && deck.lit !== plain.lit,
+      "일반 → 유물 · 밝은 픽셀 " + plain.lit + " → " + deck.lit);
+  }
+}
+
+/* ⑨ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */
 {
   for (let i = 0; i < 6; i++) {
     const a = await arena({ weapon: "sword", hp: 99999, ail: i % 2 ? "poison" : "bleed" });

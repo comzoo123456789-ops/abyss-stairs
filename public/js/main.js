@@ -982,6 +982,12 @@
       }
       if (opt.ail) game.applyAil(m, opt.ail, 0);
       if (opt.skill) game.player.skills = [{ id: opt.skill, rank: 1, cd: 0 }];
+      /* 갑옷 등급을 지정해 **외형이 바뀌는지** 잴 수 있게 한다 */
+      if (opt.armor) {
+        var rr = D.byId(D.RARITY, opt.armor);
+        game.player.armor = window.ITEMS.makeGear("armor", 1, function () { return 0.5; },
+                                                  { rarity: rr });
+      }
       /* 반격을 안 하게 재운다. 베기 궤적만 재려면 필요하다 —
        * ⚠ 맞으면 화면 전체에 붉은 막이 덮여 **밝은 픽셀이 무너진다.** 호가 넓은
        *   무기는 그걸 덮고도 남지만 창처럼 얇은 것은 막에 져서 오히려 어두워진다
