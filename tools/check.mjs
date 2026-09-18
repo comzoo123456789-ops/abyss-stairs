@@ -280,6 +280,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     endCheck.over = st.over;
     endCheck.depth = st.depth;
     endCheck.turn = st.turn;
+    /* ⚠ 끝까지 돌린 뒤에는 **종료 화면이 키를 다 먹는다**(Enter·R 만 받는다).
+     *   그 상태로 뒤의 검사를 이어 돌렸더니 도움말(? 키)·연타 확대·누르고 걷기가
+     *   전부 빨갰다 — 제품이 아니라 검사 순서가 문제였다. 한 판을 새로 켠다. */
+    await ev(`window.__start("${CLS}")`);
+    await sleep(160);
   }
 
   // ── 3-c) 새 기능이 실제로 도는가: 능력 쿨다운 · 함정 · 미식별 물약 ──
@@ -329,7 +334,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   //    ⚠ 대각선 키(YUBN)가 정말 죽었는지, 우클릭이 브라우저 메뉴만 띄우고
   //      끝나지 않는지는 화면에서 눌러 봐야 안다.
   //  ⚠ --play 뒤에는 게임이 끝나 있어 이동도 버리기도 거절된다 — 그때는 건너뛴다.
-  const canAct = !PLAY && !(await ev(`window.__peek().over`));
+  //  (--play 뒤에는 위에서 한 판을 새로 켰으므로 여기서도 조작이 먹는다)
+  const canAct = !(await ev(`window.__peek().over`));
   const diagBefore = await ev(`window.__peek()`);
   for (const k of ["y","u","b","n","w","a","s","d","h","j","k","l"]) {
     await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key: k, code: "Key" + k.toUpperCase(),
@@ -416,23 +422,56 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     heldTurns = hold2.turn - hold.turn;
   }
 
-  //  기록 패널이 실제로 화면 안에 보이는가
+  //  기록이 눈에 들어오는가.
+  //  ⚠ 판정이 화면 폭에 따라 **다르다**. 좁은 화면에서는 기록 패널을 아예 감췄고
+  //    (사용자 지시) 대신 캔버스 위 토스트가 그 일을 한다 — 그쪽에서 패널을
+  //    찾으면 "기록이 없다" 는 오진이 난다. 무엇으로 재는지를 화면이 정한다.
   const logBox = await ev(
     "(function(){" +
+    "  var panel = document.querySelector('.logpanel');" +
+    "  var shown = panel && getComputedStyle(panel).display !== 'none';" +
     "  var el = document.getElementById('log');" +
     "  var r = el.getBoundingClientRect();" +
     "  var lines = el.querySelectorAll('.m').length;" +
     "  var atBottom = Math.abs(el.scrollTop + el.clientHeight - el.scrollHeight) < 4;" +
-    "  return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height)," +
-    "           inView: r.top >= 0 && r.bottom <= innerHeight + 1 && r.height > 40," +
-    "           lines: lines, atBottom: atBottom," +
-    "           toasts: (window.__toasts ? window.__toasts() : -1) };" +
+    "  var toasts = window.__toasts ? window.__toasts() : -1;" +
+    "  return { mode: shown ? 'panel' : 'toast'," +
+    "           top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height)," +
+    "           inView: shown ? (r.top >= 0 && r.bottom <= innerHeight + 1 && r.height > 40) : lines > 0," +
+    "           lines: lines, atBottom: shown ? atBottom : true, toasts: toasts };" +
     "})()");
   // ── 4) 도움말이 열리고 닫히는가 ──
-  await ev(`document.getElementById("helpBtn").click()`);
+  //    ⚠ 헤더 버튼(소리·조작 패드·도움말)을 지웠으므로 **키**로 연다.
+  //      버튼을 누르는 검사를 그대로 두면 "도움말이 없어졌다" 로 나온다.
+  await S("Input.dispatchKeyEvent", { type: "keyDown", key: "?", code: "Slash", text: "?",
+                                      windowsVirtualKeyCode: 191, modifiers: 8 });
+  await S("Input.dispatchKeyEvent", { type: "keyUp", key: "?", code: "Slash",
+                                      windowsVirtualKeyCode: 191, modifiers: 8 });
+  await sleep(60);
   const helpOpen = await ev(`!document.getElementById("help").hidden`);
   await ev(`document.getElementById("helpClose").click()`);
   const helpClosed = await ev(`document.getElementById("help").hidden`);
+  //   없앤 버튼이 되살아나지 않았는지도 함께 본다(되살리면 헤더가 다시 터진다)
+  const deadBtns = await ev(`["soundBtn","padBtn","helpBtn"].filter(id=>document.getElementById(id))`);
+
+  // ── 4-b) 상단 상태줄 — 체력·경험이 **화면 맨 위**에 늘 보이는가 ──
+  //    ⚠ 전에는 사이드바 안에만 있어서 좁은 화면에서는 스크롤해야 보였다.
+  //      "있다" 가 아니라 **헤더 바로 아래에서, 화면 안에서** 보이는지를 잰다.
+  const hud = await ev(`(()=>{
+    const h = document.getElementById("hud");
+    if (!h) return { missing: true };
+    const r = h.getBoundingClientRect(), cs = getComputedStyle(h);
+    const bars = [...h.querySelectorAll(".meter")].map(m => ({
+      cls: m.className.replace("meter ",""),
+      w: Math.round(m.getBoundingClientRect().width),
+      fill: Math.round(parseFloat(m.querySelector("i").style.width) || 0),
+      txt: (m.querySelector("b")||{}).textContent || ""
+    }));
+    const cv = document.getElementById("view").getBoundingClientRect();
+    return { shown: cs.display !== "none", top: Math.round(r.top), h: Math.round(r.height),
+             aboveCanvas: r.bottom <= cv.top + 1, inView: r.top >= 0 && r.bottom <= innerHeight + 1,
+             bars, text: h.textContent.replace(/s+/g," ").trim().slice(0, 70) };
+  })()`);
 
   // ── 5) 가로 넘침 ──
   const overflow = await ev(`(()=>{
@@ -460,7 +499,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("그려진 픽셀  :", ok(canvas.litPct > 3), canvas.litPct + "% · 색 " + canvas.colors + "가지");
   console.log("키 입력      :", ok(moved && turned), (moved?"이동 ":"이동 안 함 ") + before.x+","+before.y+" → "+after.x+","+after.y + " · 턴 "+before.turn+" → "+after.turn);
   console.log("화면 갱신    :", ok(canvas2.hash !== canvas.hash), "픽셀 해시 " + (canvas2.hash!==canvas.hash ? "바뀜":"그대로(다시 안 그려짐)") + " · 밝은 픽셀 " + canvas.litPct + "% → " + canvas2.litPct + "%");
-  console.log("도움말       :", ok(helpOpen && helpClosed), helpOpen ? "열림·닫힘 정상" : "안 열림");
+  console.log("도움말(? 키) :", ok(helpOpen && helpClosed && deadBtns.length === 0),
+    (helpOpen ? "열림·닫힘 정상" : "안 열림") +
+    (deadBtns.length ? " · ⚠지운 버튼이 남아 있다: " + deadBtns.join(",") : " · 헤더 버튼 없음(정상)"));
+  console.log("상단 상태줄  :", ok(!hud.missing && hud.shown && hud.inView && hud.aboveCanvas &&
+                                   hud.bars.length >= 2 && hud.bars.every(b => b.w > 60)),
+    hud.missing ? "⚠ #hud 가 없다"
+      : "y" + hud.top + " 높이 " + hud.h + "px · 막대 " +
+        hud.bars.map(b => b.cls + " " + b.w + "px/" + b.fill + "%").join(" · ") +
+        (hud.aboveCanvas ? " · 캔버스 위(정상)" : " · ⚠캔버스보다 아래") +
+        (hud.inView ? "" : " · ⚠화면 밖"));
+  console.log("  상태줄 내용:", hud.text || "(빈칸)");
   console.log("가로 넘침    :", ok(!overflow.docScroll && overflow.count === 0),
               overflow.count + " 개" + (overflow.docScroll ? " · 문서 가로 스크롤 있음" : ""));
   overflow.sample.forEach(s => console.log("               " + s));
@@ -549,11 +598,38 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const btns=[...document.querySelectorAll(".pad button")];
       const cs=getComputedStyle(p);
       const small=btns.filter(b=>{const r=b.getBoundingClientRect();return r.width<40||r.height<40;});
+      /* 배치 — 사용자가 자리까지 지정했다(십자 맨 왼쪽 · 행동 한 줄 · 그 아래 QWER).
+       * "버튼이 있다" 로는 이걸 못 잡는다. 사각형을 재서 줄과 좌우를 확인한다. */
+      const box = e => e.getBoundingClientRect();
+      const dp = box(document.querySelector(".dpad"));
+      const ac = box(document.querySelector(".acts:not(.skillpad)"));
+      const sk = box(document.querySelector(".skillpad"));
+      const rowOf = list => {
+        const ys = list.map(e => Math.round(box(e).top));
+        return new Set(ys).size;                    /* 한 줄이면 1 */
+      };
       return { display:cs.display, count:btns.length, tooSmall:small.length, touchClass:document.body.classList.contains("is-touch"),
-               minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(b.getBoundingClientRect().width,b.getBoundingClientRect().height)))):0 };
+               minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(box(b).width,box(b).height)))):0,
+               narrow: innerWidth <= 620,
+               dpadLeftmost: dp.left <= ac.left + 1 && dp.left <= sk.left + 1,
+               actsRows: rowOf([...document.querySelectorAll(".acts:not(.skillpad) button")]),
+               skillRows: rowOf([...document.querySelectorAll(".skillpad button")]),
+               skillsBelowActs: sk.top >= ac.bottom - 2,
+               dpadSpansBoth: dp.top <= ac.top + 2 && dp.bottom >= sk.bottom - 2,
+               geo: "십자 x"+Math.round(dp.left)+"~"+Math.round(dp.right)+
+                    " · 행동 y"+Math.round(ac.top)+" · 스킬 y"+Math.round(sk.top) };
     })()`);
-    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=8 && pad.tooSmall===0),
+    /* 좁은 화면에서만 격자 배치를 요구한다 — 넓은 터치 화면은 한 줄이 정상이다 */
+    const padPlaced = !pad.narrow ||
+      (pad.dpadLeftmost && pad.actsRows === 1 && pad.skillRows === 1 &&
+       pad.skillsBelowActs && pad.dpadSpansBoth);
+    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=8 && pad.tooSmall===0 && padPlaced),
       "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
+    console.log("  패드 배치  :", ok(padPlaced), pad.narrow
+      ? pad.geo + " · 행동 " + pad.actsRows + "줄 · 스킬 " + pad.skillRows + "줄" +
+        (pad.dpadLeftmost ? " · 십자 맨 왼쪽" : " · ⚠십자가 왼쪽이 아니다") +
+        (pad.skillsBelowActs ? " · 스킬이 행동 아래" : " · ⚠스킬이 행동 아래가 아니다")
+      : "넓은 화면 — 한 줄 배치(정상) · " + pad.geo);
   }
   const abilityWorks = (feat.btnText !== "(없음)") &&
     (feat2.cd > 0 ? feat2.disabled === true : /준비|없다|닿는/.test(feat2.log) || feat2.disabled === false);
@@ -587,9 +663,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     heldTurns < 0 ? "열린 방향을 못 찾아 검사 못 함"
       : "600ms 에 " + heldTurns + "걸음 (OS 반복 20번을 그대로 받으면 20걸음)");
   console.log("기록 가시성  :", ok(logBox.inView && logBox.atBottom),
-    "패널 y" + logBox.top + "~" + logBox.bottom + " (높이 " + logBox.h + ") · " +
-    logBox.lines + "줄 · 맨 아래로 " + (logBox.atBottom ? "따라감" : "⚠안 따라감") +
-    (logBox.inView ? "" : " · ⚠화면 밖"));
+    logBox.mode === "panel"
+      ? "패널 y" + logBox.top + "~" + logBox.bottom + " (높이 " + logBox.h + ") · " +
+        logBox.lines + "줄 · 맨 아래로 " + (logBox.atBottom ? "따라감" : "⚠안 따라감") +
+        (logBox.inView ? "" : " · ⚠화면 밖")
+      : "좁은 화면 — 패널 없음(정상) · 캔버스 토스트로 띄운다 · 쌓인 기록 " +
+        logBox.lines + "줄" + (logBox.inView ? "" : " · ⚠기록이 비었다"));
   console.log("상태창       :", ui.stats);
   console.log("마지막 기록  :", ui.lastLog);
 

@@ -82,7 +82,10 @@
       it.reach = wk.reach || 1;
       it.hint = wk.hint;
       it.base = wk.base || {};
-      it.sprite = "sword";
+      /* ⚠ 무기 종류 id 가 곧 스프라이트 이름이다(sword·axe·dagger·staff·bow·spear).
+       *   전에는 전부 "sword" 를 썼는데, 그러면 바닥에 떨어진 것이 도끼인지 활인지
+       *   알 수 없어 종류를 나눈 의미가 사라진다. */
+      it.sprite = wk.id;
       /* 공격력 = 티어 기본 × 종류 배수 × 등급 배수 */
       it.power = Math.max(1, Math.round((2 + tier * 4.2 + depth * 0.5) * wk.atkMul * rar.mul));
       it.baseName = nameFrom(DATA.WEAPON_NAMES[wk.id], tier, rng);
@@ -91,7 +94,7 @@
       it.power = Math.max(1, Math.round((1 + tier * 2.1 + depth * 0.22) * rar.mul));
       it.baseName = nameFrom(DATA.ARMOR_NAMES, tier, rng);
     } else {
-      it.sprite = "armor";
+      it.sprite = "shield";      /* 보조 장비는 방패 — 갑옷과 실루엣이 달라야 한다 */
       it.power = Math.max(1, Math.round((1 + tier * 1.5 + depth * 0.16) * rar.mul));
       it.baseName = nameFrom(DATA.OFFHAND_NAMES, tier, rng);
     }

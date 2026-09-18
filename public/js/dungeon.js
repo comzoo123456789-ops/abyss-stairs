@@ -80,25 +80,49 @@
   }
 
   /* 방 경계에 걸친 복도 입구를 문으로 바꾼다 — 시야가 끊겨 층이 넓게 느껴진다. */
+  /* 문은 **진짜 병목**에만 세운다.
+   *
+   * ⚠ 예전에는 방 둘레에서 복도가 닿는 칸을 전부 후보로 잡고 45% 확률로 문을 만들었다.
+   *   복도가 방 벽을 **따라** 지나가면 그 줄이 통째로 후보가 되어 문이 3~5개 줄줄이
+   *   생겼다(사용자 신고: "왜 이리 문이 많이 나오는 거야"). 방 하나에 문이 넷 달린
+   *   그림은 던전이 아니라 창고처럼 보인다.
+   *
+   * 문이 설 자리는 "지나가려면 반드시 여기를 통과해야 하는 한 칸" 이다 —
+   * 좌우가 뚫려 있고 위아래가 벽이거나, 그 반대. 그리고 문 옆에 문을 두지 않는다. */
+  function isChoke(lv, x, y) {
+    if (lv.at(x, y) !== FLOOR) return false;
+    var l = !lv.blocked(x - 1, y), r = !lv.blocked(x + 1, y);
+    var u = !lv.blocked(x, y - 1), dn = !lv.blocked(x, y + 1);
+    return (l && r && !u && !dn) || (u && dn && !l && !r);
+  }
+
+  function nearDoor(lv, x, y) {
+    for (var j = -1; j <= 1; j++)
+      for (var i = -1; i <= 1; i++)
+        if (lv.at(x + i, y + j) === DOOR) return true;
+    return false;
+  }
+
   function placeDoors(lv, rng) {
-    for (var i = 0; i < lv.rooms.length; i++) {
-      var r = lv.rooms[i];
-      var edges = [];
-      var x, y;
-      for (x = r.x; x < r.x + r.w; x++) {
-        if (lv.at(x, r.y - 1) === FLOOR) edges.push([x, r.y - 1]);
-        if (lv.at(x, r.y + r.h) === FLOOR) edges.push([x, r.y + r.h]);
+    var cand = [];
+    for (var y = 1; y < lv.h - 1; y++) {
+      for (var x = 1; x < lv.w - 1; x++) {
+        if (isChoke(lv, x, y)) cand.push([x, y]);
       }
-      for (y = r.y; y < r.y + r.h; y++) {
-        if (lv.at(r.x - 1, y) === FLOOR) edges.push([r.x - 1, y]);
-        if (lv.at(r.x + r.w, y) === FLOOR) edges.push([r.x + r.w, y]);
-      }
-      for (var e = 0; e < edges.length; e++) {
-        if (rng() < 0.45) {
-          var p = edges[e];
-          if (lv.at(p[0], p[1]) === FLOOR) lv.tiles[lv.idx(p[0], p[1])] = DOOR;
-        }
-      }
+    }
+    /* 후보를 섞어 한쪽으로 몰리지 않게 한다 */
+    for (var s = cand.length - 1; s > 0; s--) {
+      var k = Math.floor(rng() * (s + 1));
+      var t = cand[s]; cand[s] = cand[k]; cand[k] = t;
+    }
+    /* 층에 문 3~5개면 충분하다. 확률만 두면 층마다 0개~열몇 개로 들쭉날쭉하다. */
+    var want = 3 + Math.floor(rng() * 3);
+    var placed = 0;
+    for (var c = 0; c < cand.length && placed < want; c++) {
+      var p = cand[c];
+      if (nearDoor(lv, p[0], p[1])) continue;
+      lv.tiles[lv.idx(p[0], p[1])] = DOOR;
+      placed++;
     }
   }
 
@@ -141,18 +165,30 @@
 
     placeDoors(lv, rng);
 
-    /* 보물방 — 시작 방이 아닌 가장 작은 방 하나를 골라 둘레를 전부 문으로 만든다.
-     * ⚠ 벽으로 막으면 안 된다. 들어갈 길이 없으면 아이템이 영영 안 닿는다
-     *   (생성기가 만든 방이라 복도가 한 방향에서만 온다). */
+    /* 보물방 — 시작 방이 아닌 가장 작은 방. **입구에만** 문을 단다.
+     * ⚠ 예전에는 둘레를 전부 문으로 바꿨다. 복도가 방 옆을 따라 지나가면 그 줄이
+     *   통째로 문이 되어 한 층에 문이 열 개씩 생겼다 — 그래서 문이 많아 보였다.
+     * ⚠ 벽으로 막지도 않는다. 들어갈 길이 없으면 아이템이 영영 안 닿는다. */
     lv.treasure = null;
     if (depth >= 2 && rng() < 0.4 && lv.rooms.length >= 4) {
       var cands = lv.rooms.slice(1).sort(function (a, b) { return a.w * a.h - b.w * b.h; });
       var tr = cands[0];
-      for (var ty = tr.y - 1; ty <= tr.y + tr.h; ty++) {
-        for (var tx = tr.x - 1; tx <= tr.x + tr.w; tx++) {
-          var edge = (ty === tr.y - 1 || ty === tr.y + tr.h || tx === tr.x - 1 || tx === tr.x + tr.w);
-          if (!edge || !lv.inside(tx, ty)) continue;
-          if (lv.at(tx, ty) === FLOOR || lv.at(tx, ty) === DOOR) lv.tiles[lv.idx(tx, ty)] = DOOR;
+      /* 방 안쪽 한 칸 테두리에서 '바깥과 이어지는 칸' 만 문으로 — 그게 입구다 */
+      var doors = 0;
+      for (var ty = tr.y; ty < tr.y + tr.h && doors < 2; ty++) {
+        for (var tx = tr.x; tx < tr.x + tr.w && doors < 2; tx++) {
+          var onEdge = (tx === tr.x || tx === tr.x + tr.w - 1 || ty === tr.y || ty === tr.y + tr.h - 1);
+          if (!onEdge || lv.at(tx, ty) !== FLOOR) continue;
+          /* 방 밖으로 통하는 이웃이 있는가 */
+          var opens = false;
+          for (var s2 = 0; s2 < 4; s2++) {
+            var nx2 = tx + [0, 0, -1, 1][s2], ny2 = ty + [-1, 1, 0, 0][s2];
+            if (nx2 >= tr.x && nx2 < tr.x + tr.w && ny2 >= tr.y && ny2 < tr.y + tr.h) continue;
+            if (!lv.blocked(nx2, ny2)) { opens = true; break; }
+          }
+          if (!opens || nearDoor(lv, tx, ty)) continue;
+          lv.tiles[lv.idx(tx, ty)] = DOOR;
+          doors++;
         }
       }
       lv.treasure = tr;

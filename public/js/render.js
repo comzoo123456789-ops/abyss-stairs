@@ -25,6 +25,14 @@
   /* 미식별 물약은 겉모습 색이 곧 정보다 — 색마다 한 번 구워 둔다.
    * ⚠ 색칠을 메인 캔버스에 `source-atop` 으로 하면 안 된다. 그 합성은 "이미 그려진
    *   곳" 전체에 걸리는데 배경을 불투명하게 칠해 둔 상태라 바닥까지 물든다. */
+  /* "#e0742a" + 투명도 → rgba(). 등급 빛에 쓴다 */
+  function hexA(hex, a) {
+    if (!hex) return "rgba(255,255,255," + a + ")";
+    var h = hex.replace("#", "");
+    var n2 = parseInt(h.length === 3 ? h.replace(/./g, "  var potionCache = {};  var potionCache = {};") : h, 16);
+    return "rgba(" + ((n2 >> 16) & 255) + "," + ((n2 >> 8) & 255) + "," + (n2 & 255) + "," + a + ")";
+  }
+
   var potionCache = {};
   function tintedPotion(color) {
     if (potionCache[color]) return potionCache[color];
@@ -283,6 +291,16 @@
       var it = g.items[i];
       if (!lv.visible[lv.idx(it.x, it.y)]) continue;
       var ix = it.x * TILE + ox, iy = it.y * TILE + oy;
+      /* 등급 빛 — 바닥에서도 좋은 물건이 눈에 걸려야 한다(주우러 갈 이유가 생긴다).
+       * ⚠ 일반 등급에는 안 깐다. 전부 빛나면 아무 것도 눈에 안 걸린다. */
+      if (it.slot && it.rarity && it.rarity !== "common") {
+        var rg = ctx.createRadialGradient(ix + TILE / 2, iy + TILE / 2, 2,
+                                          ix + TILE / 2, iy + TILE / 2, TILE * 0.95);
+        rg.addColorStop(0, hexA(it.color, it.rarity === "relic" ? 0.42 : 0.26));
+        rg.addColorStop(1, hexA(it.color, 0));
+        ctx.fillStyle = rg;
+        ctx.fillRect(ix - TILE / 2, iy - TILE / 2, TILE * 2, TILE * 2);
+      }
       var tint = g.itemColor ? g.itemColor(it) : null;
       ctx.drawImage(tint ? tintedPotion(tint) : S.bake(it.sprite), ix, iy);
     }
@@ -470,6 +488,52 @@
 
   function pct(v) { return Math.round(v * 100) + "%"; }
 
+  /* 상단 상태줄 — 체력 · 경험 · 층 · 금화 · 상태이상.
+   *
+   * ⚠ 화면이 아무리 좁아도 이 줄은 안 사라진다. 죽기 직전인 것을 모르고 한 칸
+   *   더 걷는 일이 없어야 한다. 방벽(ward)은 줄을 늘리지 않고 체력 칸에 "+N" 으로
+   *   붙인다 — 한 줄을 더 쓰면 좁은 화면에서 캔버스가 그만큼 줄어든다. */
+  Renderer.prototype.drawHud = function (el) {
+    var g = this.game, p = g.player, c = g.cls;
+    var DATA = global.DATA;
+    var t = DATA.XP_TABLE;
+    var need = p.level < t.length ? t[p.level] : p.xp;
+    var prev = t[p.level - 1] || 0;
+    var mx = g.maxhp();
+
+    var hpLabel = "체력" + (p.ward > 0 ? " +" + p.ward : "");
+    var ails = [];
+    for (var k in p.ail) {
+      var a = DATA.AILMENTS[k];
+      if (a) ails.push('<span style="border-color:' + a.color + ';color:' + a.color + '">' +
+                       a.name + p.ail[k].turns + "</span>");
+    }
+
+    el.innerHTML =
+      '<div class="hud-who">' +
+        '<canvas class="hud-art" width="32" height="32" data-sprite="' + esc(p.sprite) + '"></canvas>' +
+        '<div class="hud-name"><b>' + esc(c.name) + "</b><em>" + esc(c.title) + "</em></div>" +
+      "</div>" +
+      '<div class="hud-bars">' +
+        meter(p.hp, mx, "hp", hpLabel) +
+        meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험") +
+      "</div>" +
+      (ails.length ? '<div class="hud-ail">' + ails.join("") + "</div>" : "") +
+      '<div class="hud-num">' +
+        '<span><em>Lv</em><b>' + p.level + "</b></span>" +
+        '<span class="d"><b>' + g.depth + "</b>층</span>" +
+        '<span class="g"><b>' + g.gold.toLocaleString() + "</b>금</span>" +
+      "</div>";
+
+    var art = el.querySelector(".hud-art");
+    if (art) {
+      var x = art.getContext("2d");
+      x.imageSmoothingEnabled = false;
+      x.clearRect(0, 0, 32, 32);
+      x.drawImage(S.bake(art.getAttribute("data-sprite")), 0, 0);
+    }
+  };
+
   Renderer.prototype.drawStats = function (el) {
     var g = this.game, p = g.player, c = g.cls;
     var DATA = global.DATA;
@@ -491,9 +555,9 @@
       '<span class="who-gold">' + g.gold.toLocaleString() + "<i>금</i></span>" +
       "</div>";
 
-    html += meter(p.hp, mx, "hp", "체력");
-    if (p.ward > 0) html += meter(p.ward, mx, "ward", "방벽");
-    html += meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험");
+    /* ⚠ 체력·경험 막대는 여기 없다 — **상단 상태줄(drawHud)** 로 옮겼다.
+     *   휴대폰에서 사이드바를 스크롤해야 체력이 보이던 것이 문제였다.
+     *   같은 값을 두 군데서 그리면 한쪽만 고쳐져 어긋나므로 한쪽만 둔다. */
 
     /* 상태이상 — 지금 나를 갉아먹는 것이 제일 위에 보여야 한다 */
     var ails = [];

@@ -79,6 +79,7 @@
   function refresh() {
     view.draw(0);
     kick();
+    view.drawHud(els.hud);
     view.drawStats(els.stats);
     view.drawInventory(els.inv);
     view.drawLog(els.log);
@@ -283,14 +284,18 @@
     refresh();
   }
 
+  /* 소리는 **M 키로만** 켜고 끈다 — 헤더 버튼을 지웠다(좁은 화면에서 제목과
+   * 폭을 다투다 상태가 들어갈 자리가 없었다). 껐는지는 토스트로 알린다. */
   function toggleSound() {
     if (!window.SFX) return;
     var on = window.SFX.toggle();
-    els.soundBtn.textContent = on ? "소리" : "소리 끔";
-    els.soundBtn.classList.toggle("off", !on);
+    if (!game || !els.start.hidden) return;      /* 시작 화면 — 알릴 데가 없다 */
+    game.say(on ? "효과음을 켰다." : "효과음을 껐다.", "");
+    refresh();
   }
 
   function boot() {
+    els.hud = document.getElementById("hud");
     els.stats = document.getElementById("stats");
     els.inv = document.getElementById("inv");
     els.log = document.getElementById("log");
@@ -308,7 +313,6 @@
     els.shopBuy = document.getElementById("shopBuy");
     els.shopSell = document.getElementById("shopSell");
     els.shopGold = document.getElementById("shopGold");
-    els.soundBtn = document.getElementById("soundBtn");
 
     var canvas = document.getElementById("view");
     game = new window.Game("warrior");     /* 시작 화면 뒤에 깔릴 판 — 고르면 새로 만든다 */
@@ -391,17 +395,10 @@
     });
 
     document.getElementById("again").addEventListener("click", showStart);
-    document.getElementById("helpBtn").addEventListener("click", function () { els.help.hidden = false; });
     document.getElementById("helpClose").addEventListener("click", function () { els.help.hidden = true; });
-    els.soundBtn.addEventListener("click", toggleSound);
     els.help.addEventListener("click", function (e) {
       if (e.target === els.help) els.help.hidden = true;
     });
-
-    if (window.SFX && !window.SFX.isOn()) {
-      els.soundBtn.textContent = "소리 끔";
-      els.soundBtn.classList.add("off");
-    }
 
     /* 터치 기기면 방향 패드를 띄운다.
      * ⚠ CSS 의 `@media (pointer: coarse)` 에만 기대면 그 판정이 어긋나는 기기에서
@@ -411,20 +408,10 @@
                   (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
     if (isTouch) document.body.classList.add("is-touch");
 
-    var padBtn = document.getElementById("padBtn");
-    try {
-      if (localStorage.getItem("rl_pad") === "1") document.body.classList.add("pad-on");
-      if (localStorage.getItem("rl_pad") === "0") document.body.classList.add("pad-off");
-    } catch (err) { /* 저장이 막힌 브라우저 — 토글이 이번 판만 유지될 뿐이다 */ }
-
-    padBtn.addEventListener("click", function () {
-      var showing = getComputedStyle(document.querySelector(".pad")).display !== "none";
-      document.body.classList.remove("pad-on", "pad-off");
-      document.body.classList.add(showing ? "pad-off" : "pad-on");
-      try { localStorage.setItem("rl_pad", showing ? "0" : "1"); } catch (err) {}
-      view.resize();
-      refresh();
-    });
+    /* ⚠ 사람이 켜고 끄는 토글 버튼은 지웠다. 그래서 **전에 껐던 기록도 지운다** —
+     *   남겨 두면 그 브라우저에서는 패드가 영영 안 뜨는데 되돌릴 버튼이 없다
+     *   (휴대폰에는 키보드가 없으므로 조작 수단이 통째로 사라진다). */
+    try { localStorage.removeItem("rl_pad"); } catch (err) {}
 
     /* 패드 버튼은 touchstart 에서 바로 처리한다.
      *
@@ -509,6 +496,7 @@
         treasure: !!game.level.treasure
       };
     };
+    window.__toasts = function () { return view.toasts.length; };
     window.__start = function (id) { newGame(id); };
     /* 점검기가 창을 닫을 창구 — 상점·레벨업이 열려 있으면 모든 행동이 막히므로
      * 자동 주행이 거기서 멈춘다. 게임 로직은 이 함수들을 쓰지 않는다. */
