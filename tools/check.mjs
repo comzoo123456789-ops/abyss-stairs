@@ -26,7 +26,10 @@ const VH = parseInt(arg("--h", "900"), 10);
 const SHOT = arg("--shot", null);
 const PLAY = argv.includes("--play");
 const TOUCH = argv.includes("--touch");
-const CLS = arg("--cls", "warrior");   // 검사할 직업   // 터치 기기 흉내 — 방향 패드는 pointer:coarse 에서만 뜬다
+const CLS = arg("--cls", "warrior");   // 검사할 직업
+//  --url 을 주면 로컬 파일이 아니라 그 주소를 잰다 — 배포가 정말 그렇게 도는지 확인용.
+//  ⚠ 로컬만 재고 "배포됐다" 고 말하면 안 된다. 파일이 올라간 것과 화면이 도는 것은 다르다.
+const URL_ARG = arg("--url", null);
 
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -87,8 +90,9 @@ function cdp(ws) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const { srv, port } = await serve();
-  const base = "http://127.0.0.1:" + port + "/";
+  const srvObj = URL_ARG ? { srv: { close(){} }, port: 0 } : await serve();
+  const { srv } = srvObj;
+  const base = URL_ARG || ("http://127.0.0.1:" + srvObj.port + "/");
   const { ch, wsUrl, dir } = await launch();
   const ws = new WebSocket(wsUrl);
   await new Promise((r) => ws.addEventListener("open", r));

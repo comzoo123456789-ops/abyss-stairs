@@ -1,15 +1,25 @@
-# Cloudflare Pages 설정.
+# Cloudflare 배포 설정 — 정적 자산만 올리는 Worker.
 #
-# 배포되는 것은 public/ 뿐이다 — tools/ 는 검사 도구라 웹에 올리지 않는다.
-# 루트를 그대로 올리면 tools/check.mjs 가 누구에게나 내려가고,
-# 저장소를 비공개로 둔 의미가 반쯤 사라진다.
+# ⚠ Cloudflare 가 Pages 를 Workers 로 통합했다. 지금 wrangler 는
+#   `wrangler pages ...` 를 쓰면 "Pages, now part of Cloudflare Workers" 라며
+#   Workers 쪽으로 넘긴다. 그래서 Pages 프로젝트가 아니라 **정적 자산 Worker** 로 둔다.
+#   결과는 같고(주소 · 깃 연동 · 무료 한도) 명령이 하나로 줄어든다.
 #
-# 손으로 배포:  npx wrangler pages deploy
-#   (pages_build_output_dir 가 있으니 경로를 안 적어도 된다)
+# 배포:  npx wrangler deploy
 #
-# 대시보드에서 깃 연동을 걸어 두면 push 만으로 배포된다 — 그때도
-# "빌드 출력 디렉터리" 를 public 으로 두어야 같은 결과가 나온다.
+# ⚠ directory 를 "." 로 두지 말 것. 그러면 tools/ 의 검사 도구가 웹에 그대로
+#   내려가고 저장소를 비공개로 둔 의미가 반쯤 사라진다. 올리는 것은 public/ 뿐이다.
+#   (공간잇다에서 directory="." 때문에 `wrangler dev` 가 무한 리로드했던 적도 있다)
 
 name = "abyss-stairs"
-pages_build_output_dir = "public"
 compatibility_date = "2026-09-18"
+
+[assets]
+directory = "./public"
+
+# 없는 경로는 404 를 준다. 이 게임은 한 페이지짜리라 SPA 폴백이 필요 없다 —
+# 폴백을 켜면 오타 난 주소가 조용히 게임 화면으로 열려 오해를 만든다.
+not_found_handling = "none"
+
+[observability]
+enabled = true

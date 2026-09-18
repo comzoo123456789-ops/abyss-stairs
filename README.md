@@ -1,21 +1,31 @@
 # 심연의 계단
 
 10층 아래 심연의 군주를 쓰러뜨리는 **턴제 던전 크롤러**. 빌드 단계 없이 브라우저에서
-바로 돈다 — `index.html` 을 더블클릭하면 실행된다.
+바로 돈다 — `public/index.html` 을 더블클릭하면 실행된다.
+
+- 운영: https://abyss-stairs.bhmoon.workers.dev
+- 저장소: `comzoo123456789-ops/abyss-stairs` (**비공개**)
 
 ```
-index.html        화면 뼈대 + 시작 화면(직업 선택 · 조작 안내) + 도움말
-css/style.css     화면
-js/sprites.js     도트 스프라이트 (16×16 문자 그림 → 캔버스에 구워 씀)
-js/sound.js       효과음 — WebAudio 로 합성 (음원 파일 0개)
-js/data.js        직업 3종 · 몬스터 · 아이템 · 층별 생성량   ← 밸런스는 여기만 고친다
-js/dungeon.js     던전 생성 + 시야(재귀 그림자 던지기) + 보물방 + 함정 층
-js/game.js        턴 진행 · 전투 · 아이템 · 직업 능력 · 식별   ← 규칙은 여기만 고친다
-js/render.js      카메라 · 안개 · 사이드바 · 능력 버튼
-js/main.js        입력 · 부팅 · 시작 화면
+public/           ← 배포되는 것은 이 폴더뿐이다
+  index.html      화면 뼈대 + 시작 화면(직업 선택 · 조작 안내) + 도움말
+  css/style.css   화면
+  js/sprites.js   도트 스프라이트 (16×16 문자 그림 → 캔버스에 구워 씀)
+  js/sound.js     효과음 — WebAudio 로 합성 (음원 파일 0개)
+  js/data.js      직업 3종 · 몬스터 · 아이템 · 층별 생성량   ← 밸런스는 여기만 고친다
+  js/dungeon.js   던전 생성 + 시야(재귀 그림자 던지기) + 보물방 + 함정 층
+  js/game.js      턴 진행 · 전투 · 아이템 · 직업 능력 · 식별   ← 규칙은 여기만 고친다
+  js/render.js    카메라 · 안개 · 사이드바 · 능력 버튼
+  js/main.js      입력 · 부팅 · 시작 화면
 tools/check.mjs   실제 Chrome 으로 화면 점검 (콘솔 오류 · 레이아웃 · 조작 · 시작 화면)
 tools/verify.mjs  전체 회귀 검사 (로직 + 직업별 밸런스 + 화면)
+wrangler.toml     Cloudflare 배포 (정적 자산 Worker · public/ 만 올린다)
 ```
+
+**`tools/` 는 웹에 올리지 않는다.** `wrangler.toml` 의 `directory` 가 `./public` 이라
+검사 도구·README·설정은 배포에 안 들어간다(운영에서 전부 404 로 확인). `directory` 를
+`"."` 로 바꾸면 그 순간 검사 도구가 누구에게나 내려가고, 저장소를 비공개로 둔 의미가
+반쯤 사라진다.
 
 ## 명령
 
@@ -26,9 +36,47 @@ node tools/check.mjs --shot a.png      # 화면만 점검 + 스크린샷
 node tools/check.mjs --cls mage        # 특정 직업으로 점검
 node tools/check.mjs --touch --w 390 --h 844   # 아이폰 크기 · 터치 패드까지
 node tools/check.mjs --play            # 죽을 때까지 실제로 두드려 종료 화면 확인
+node tools/check.mjs --url https://abyss-stairs.bhmoon.workers.dev/   # 배포본을 잰다
+
+npx wrangler deploy                    # 운영 배포
 ```
 
-Chrome 경로는 `tools/check.mjs` 맨 위 `CHROME` 상수에 있다. 설치 패키지는 없다.
+Chrome 경로는 `tools/check.mjs` 맨 위 `CHROME` 상수에 있다. 설치 패키지는 없다
+(wrangler 는 `npx` 로 그때 받아 쓴다).
+
+⚠ **배포는 파일이 올라간 것으로 끝나지 않는다.** `--url` 로 배포본을 다시 재서 화면이
+정말 도는지 확인한다 — 업로드 성공과 게임이 돌아가는 것은 다른 얘기다.
+
+## 다른 컴퓨터에서 이어서 작업하기
+
+```bash
+git clone https://github.com/comzoo123456789-ops/abyss-stairs.git
+cd abyss-stairs
+# 그대로 public/index.html 을 열면 플레이된다. 설치할 것이 없다.
+
+node tools/verify.mjs        # 검사 (Chrome · Node 18+ 필요)
+npx wrangler login           # 배포하려면 이 컴퓨터에서 한 번만
+npx wrangler deploy
+```
+
+- **비공개 저장소다.** clone 할 때 GitHub 로그인(또는 토큰)을 한 번 물어본다.
+- **Chrome 경로가 컴퓨터마다 다르다.** 화면 검사가 "Chrome 가 30초 안에 뜨지 않았습니다"
+  로 멈추면 `tools/check.mjs` 의 `CHROME` 을 그 컴퓨터 경로로 바꾼다. 로직 검사
+  (`verify.mjs` 앞부분)는 Chrome 없이도 돈다.
+- 저장(세이브)은 없고 최고 점수만 브라우저 `localStorage` 에 남는다 — **컴퓨터마다 따로다.**
+
+### push 하면 자동 배포되게 하려면 (대시보드에서 한 번)
+
+Cloudflare 가 Pages 를 Workers 로 통합해서, 깃 연동은 **Workers Builds** 다.
+OAuth 로 GitHub 를 연결하는 절차라 명령줄로는 못 걸고 한 번은 눌러 줘야 한다.
+
+1. dash.cloudflare.com → **Compute (Workers)** → `abyss-stairs` → **Settings** → **Build**
+2. **Connect** 를 눌러 GitHub 계정(`comzoo123456789-ops`)을 연결하고 `abyss-stairs` 저장소 선택
+3. 설정값 — **Build command 는 비워 둔다**(빌드 단계가 없다) ·
+   Deploy command `npx wrangler deploy` · Root directory `/` · Production branch `main`
+
+그 뒤로는 `git push` 만 하면 배포된다. 연결하기 전에도 `npx wrangler deploy` 로
+언제든 손으로 배포할 수 있다 — 연동은 편의이고 필수가 아니다.
 
 ## 조작
 
