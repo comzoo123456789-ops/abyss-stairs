@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>심연의 계단</title>
+<meta name="description" content="10층 아래 심연의 군주를 쓰러뜨리는 턴제 던전 크롤러.">
+<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
+</head>
+<body>
+
+<div class="app">
+
+  <header class="top">
+    <h1>심연의 계단</h1>
+    <div class="top-meta">
+      <span>최고 점수 <b id="best">0</b></span>
+      <span class="seedline">씨앗 <b id="seed">#0</b></span>
+      <button id="soundBtn" class="ghost" title="효과음 켜기/끄기">소리</button>
+      <button id="padBtn" class="ghost">조작 패드</button>
+      <button id="helpBtn" class="ghost">도움말 ?</button>
+      <button id="again" class="ghost">새 게임</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <div class="viewport">
+      <canvas id="view"></canvas>
+    </div>
+
+    <aside class="side">
+      <section id="stats" class="panel stats"></section>
+
+      <section class="panel">
+        <h2>가방 <small>숫자키 또는 클릭</small></h2>
+        <div id="inv" class="inv"></div>
+      </section>
+
+      <section class="panel grow">
+        <h2>기록</h2>
+        <div id="log" class="log"></div>
+      </section>
+    </aside>
+  </main>
+
+  <!-- 터치 조작 -->
+  <nav class="pad" aria-label="이동">
+    <div class="dpad">
+      <button data-dir="-1,-1" aria-label="왼쪽 위">↖</button>
+      <button data-dir="0,-1" aria-label="위">↑</button>
+      <button data-dir="1,-1" aria-label="오른쪽 위">↗</button>
+      <button data-dir="-1,0" aria-label="왼쪽">←</button>
+      <button id="btnWait" aria-label="한 턴 쉬기">·</button>
+      <button data-dir="1,0" aria-label="오른쪽">→</button>
+      <button data-dir="-1,1" aria-label="왼쪽 아래">↙</button>
+      <button data-dir="0,1" aria-label="아래">↓</button>
+      <button data-dir="1,1" aria-label="오른쪽 아래">↘</button>
+    </div>
+    <div class="acts">
+      <button id="btnPick">줍기</button>
+      <button id="btnAbility">능력</button>
+      <button id="btnDown">내려가기</button>
+    </div>
+  </nav>
+
+</div>
+
+<!-- 시작 화면 — 직업 선택 + 조작 안내.
+     처음 켠 사람이 설명 없이 던져지지 않도록 조작을 여기서 한 번 보여 준다. -->
+<div id="start" class="overlay">
+  <div class="card start-card">
+    <div class="start-head">
+      <h2>심연의 계단</h2>
+      <p class="tag">던전 10층 아래에 <b>심연의 군주</b>가 있다. 내려가서 쓰러뜨린다.</p>
+    </div>
+
+    <h3>누구로 내려갈까</h3>
+    <div class="classes" id="classes"></div>
+
+    <h3>조작</h3>
+    <div class="guide">
+      <div class="guide-row"><kbd>방향키</kbd><kbd>WASD</kbd><span>움직인다. <b>적에게 걸어 들어가면 공격</b>이다 (공격 키는 없다)</span></div>
+      <div class="guide-row"><kbd>Y</kbd><kbd>U</kbd><kbd>B</kbd><kbd>N</kbd><span>대각선. 포위당했을 때 빠져나가는 유일한 길이다</span></div>
+      <div class="guide-row"><kbd>Space</kbd><span>발 밑의 물건을 <b>줍는다</b></span></div>
+      <div class="guide-row"><kbd>Enter</kbd><span>계단에서 <b>다음 층으로</b> 내려간다</span></div>
+      <div class="guide-row"><kbd>Q</kbd><span>직업 <b>능력</b>을 쓴다 (쿨다운이 있다)</span></div>
+      <div class="guide-row"><kbd>1</kbd>~<kbd>9</kbd><span>가방의 물건을 쓴다 (오른쪽 목록을 클릭해도 된다)</span></div>
+      <div class="guide-row"><kbd>.</kbd><span>한 턴 쉰다. <b>턴제</b>라 내가 움직여야 적도 움직인다</span></div>
+      <div class="guide-row"><kbd>?</kbd><span>언제든 도움말</span></div>
+    </div>
+
+    <p class="warn-line">⚠ <b>죽으면 끝이다.</b> 세이브도 되돌리기도 없다. 대신 매번 던전이 새로 만들어진다.
+      물약은 <b>마셔 봐야</b> 무엇인지 알고, 바닥에는 <b>숨은 함정</b>이 있다.</p>
+
+    <p class="hint">직업을 고르면 시작한다 · 휴대폰은 화면 아래 방향 패드로 조작</p>
+  </div>
+</div>
+
+<!-- 게임 종료 -->
+<div id="end" class="overlay" hidden>
+  <div class="card">
+    <h2 id="endTitle"></h2>
+    <div id="endBody"></div>
+    <p class="hint">Enter 또는 R 로 다시 시작</p>
+  </div>
+</div>
+
+<!-- 도움말 -->
+<div id="help" class="overlay" hidden>
+  <div class="card wide">
+    <h2>조작과 규칙</h2>
+
+    <div class="cols">
+      <div>
+        <h3>움직임</h3>
+        <table class="keys">
+          <tr><td>방향키 · WASD · HJKL</td><td>상하좌우</td></tr>
+          <tr><td>Y U B N · 숫자패드</td><td>대각선</td></tr>
+          <tr><td>. 또는 Numpad5</td><td>한 턴 쉬기</td></tr>
+        </table>
+
+        <h3>행동</h3>
+        <table class="keys">
+          <tr><td>Space</td><td>발 밑의 물건 줍기</td></tr>
+          <tr><td>Q</td><td>직업 능력</td></tr>
+          <tr><td>1 ~ 9</td><td>가방의 물건 쓰기</td></tr>
+          <tr><td>Enter 또는 &gt;</td><td>계단 내려가기</td></tr>
+          <tr><td>M</td><td>효과음 켜기/끄기</td></tr>
+          <tr><td>?</td><td>이 도움말</td></tr>
+        </table>
+      </div>
+
+      <div>
+        <h3>규칙</h3>
+        <ul class="rules">
+          <li><b>턴제다.</b> 내가 한 번 움직이면 적도 한 번 움직인다. 아무리 오래 생각해도 손해가 없다.</li>
+          <li><b>적에게 걸어 들어가면 공격이다.</b> 따로 공격 키가 없다.</li>
+          <li><b>죽으면 끝이다.</b> 세이브도 되돌리기도 없다. 대신 매번 던전이 새로 만들어진다.</li>
+          <li><b>물약은 마셔 봐야 안다.</b> 겉모습(색)은 판마다 바뀌고, 그중에는 독도 있다.</li>
+          <li><b>바닥에 숨은 함정</b>이 있다. 도적은 옆을 지나면 알아챈다.</li>
+          <li><b>문으로 둘러싸인 방</b>은 보물방이다. 좋은 물건이 있고 지키는 놈도 있다.</li>
+          <li>더 좋은 무기·갑옷은 주우면 자동으로 착용된다.</li>
+          <li><b>도망은 유효한 전술이다.</b> 체력이 낮으면 계단으로 달리는 편이 낫다.</li>
+          <li><b>10층</b>에 심연의 군주가 있다. 쓰러뜨리면 승리다.</li>
+        </ul>
+      </div>
+    </div>
+
+    <button id="helpClose" class="primary">닫기</button>
+  </div>
+</div>
+
+<script src="js/sprites.js?v=2"></script>
+<script src="js/sound.js?v=2"></script>
+<script src="js/data.js?v=2"></script>
+<script src="js/dungeon.js?v=2"></script>
+<script src="js/game.js?v=2"></script>
+<script src="js/render.js?v=2"></script>
+<script src="js/main.js?v=2"></script>
+</body>
+</html>

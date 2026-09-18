@@ -1,0 +1,613 @@
+/* 심연의 계단 — 화면.
+ *
+ * 색은 던전 캔버스의 도트 팔레트와 같은 계열로 맞췄다.
+ * UI 가 게임보다 화려하면 시선이 엉뚱한 데로 간다.
+ */
+
+:root {
+  --bg: #0a090d;
+  --panel: #16141c;
+  --panel-2: #1d1a24;
+  --line: #2c2834;
+  --ink: #d8d3c4;
+  --ink-dim: #8b8477;
+  --gold: #c9a227;
+  --hp: #c0453f;
+  --xp: #4a7ab0;
+  --good: #6ec06e;
+  --bad: #e06a6a;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "D2Coding", monospace;
+  --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+button { font-family: inherit; cursor: pointer; }
+
+.app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── 상단 ─────────────────────────────────────────────── */
+
+.top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.top h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: .06em;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.top-meta {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.top-meta b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.seedline { font-size: 11px; opacity: .7; }
+
+.ghost {
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  border-radius: 6px;
+  padding: 5px 11px;
+  font-size: 12px;
+  transition: .12s;
+}
+.ghost:hover { border-color: var(--gold); color: var(--gold); }
+
+/* ── 본체 ─────────────────────────────────────────────── */
+
+.stage {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+}
+
+.viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  position: relative;
+  background: #0a090d;
+  overflow: hidden;
+}
+#view { display: block; image-rendering: pixelated; }
+
+.side {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+  border-left: 1px solid var(--line);
+  min-height: 0;
+}
+
+.panel {
+  background: var(--panel);
+  padding: 12px 14px;
+  min-height: 0;
+}
+
+/* ⚠ 사이드바 패널은 **줄어들면 안 된다**.
+ *   flex 항목의 기본값(`flex-shrink: 1`)이라 사이드바에 max-height 가 걸린 상황에서
+ *   내용이 안 들어가면 상자만 찌그러지고 자식은 밖으로 새어 나와 아래 패널과 겹친다 —
+ *   실측 390px: `.stats` 상자 134px 에 내용 186px, `.equip`(y711~755) 위로 `.inv`(y728)
+ *   가 올라타 공격·방어·금화·처치 칸이 통째로 안 보였다.
+ *   ⚠ 이 규칙을 `@media (max-width:900px)` 안에만 뒀다가 **1440 터치 화면에서 같은
+ *   결함이 그대로 남았다**(그쪽도 `body.is-touch` 로 max-height 가 걸린다).
+ *   폭이 아니라 '사이드바 패널' 이라는 조건에 건다. */
+.side > .panel { flex-shrink: 0; }
+.panel.grow { flex: 1 0 auto; display: flex; flex-direction: column; }
+
+.panel h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.panel h2 small { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .65; }
+
+/* ── 능력치 ───────────────────────────────────────────── */
+
+.stat-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.stat-name .lv { font-size: 12px; color: var(--gold); font-family: var(--mono); }
+
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.stat-row > span {
+  flex: 0 0 28px;
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.bar {
+  flex: 1 1 auto;
+  position: relative;
+  height: 15px;
+  background: #0e0c12;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.bar i {
+  display: block;
+  height: 100%;
+  transition: width .18s ease-out;
+}
+.bar.hp i { background: linear-gradient(180deg, #d4574f, #9c332e); }
+.bar.xp i { background: linear-gradient(180deg, #5b8ec4, #35608f); }
+.bar b {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.9);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  margin: 10px 0 8px;
+  overflow: hidden;
+}
+.stat-grid > * { min-width: 0; }
+.stat-grid div {
+  background: var(--panel-2);
+  padding: 6px 9px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.stat-grid em { font-style: normal; font-size: 11px; color: var(--ink-dim); }
+.stat-grid b { font-family: var(--mono); font-size: 13px; }
+
+.equip > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 3px 0;
+  border-top: 1px solid var(--line);
+}
+.equip em { font-style: normal; color: var(--ink-dim); flex: 0 0 auto; }
+.equip b { font-weight: 500; text-align: right; }
+
+/* ── 직업 능력 ────────────────────────────────────────── */
+
+.ability {
+  display: grid;
+  grid-template-columns: 22px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 10px 0 0;
+  padding: 7px 9px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink-dim);
+  text-align: left;
+  transition: .12s;
+}
+.ability > * { min-width: 0; }
+.ability .k {
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 1px 0;
+}
+.ability .n { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ability .cd { font-size: 10.5px; font-family: var(--mono); white-space: nowrap; }
+.ability.ready { color: var(--ink); border-color: #4a5f3a; background: #1b2118; cursor: pointer; }
+.ability.ready .k { color: var(--good); border-color: #4a5f3a; }
+.ability.ready .cd { color: var(--good); }
+.ability.ready:hover { border-color: var(--good); }
+.ability[disabled] { opacity: .62; cursor: default; }
+
+/* ── 가방 ─────────────────────────────────────────────── */
+
+.inv { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+.inv .empty { font-size: 12px; color: var(--ink-dim); padding: 6px 0; }
+
+.inv-item {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  grid-template-areas: "key nm" "key ds";
+  gap: 0 8px;
+  text-align: left;
+  background: var(--panel-2);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: var(--ink);
+  transition: .1s;
+}
+.inv-item > * { min-width: 0; }
+.inv-item:hover { border-color: var(--gold); background: #23202b; }
+.inv-item.worn { border-color: #3d5a3d; }
+
+.inv-item .key {
+  grid-area: key;
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--gold);
+  text-align: center;
+}
+.inv-item .nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
+.inv-item .nm i { font-style: normal; font-size: 10px; color: var(--good); margin-left: 4px; }
+.inv-item .ds { grid-area: ds; font-size: 10.5px; color: var(--ink-dim); }
+.inv-item.unknown { border-style: dashed; border-color: #4a4356; }
+/* 미식별 물약의 색 점 — 바닥에 놓인 병과 가방 속 병을 눈으로 짝지으려면 색이 있어야 한다 */
+.inv-item .dot {
+  display: inline-block;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: baseline;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+}
+
+/* ── 기록 ─────────────────────────────────────────────── */
+
+.log {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.55;
+  min-height: 90px;
+}
+.log .m { margin: 0 0 2px; color: var(--ink-dim); }
+.log .m.good  { color: var(--good); }
+.log .m.bad   { color: var(--bad); }
+.log .m.hit   { color: #d8cfa8; }
+.log .m.item  { color: #8fb8d8; }
+.log .m.warn  { color: #c9a227; }
+.log .m.depth { color: var(--gold); font-weight: 600; border-top: 1px solid var(--line); padding-top: 4px; margin-top: 4px; }
+.log .m.level { color: #b98fd8; font-weight: 600; }
+.log .m.win   { color: var(--gold); font-weight: 700; }
+
+/* 스크롤바 — 기본 흰 막대가 어두운 화면에서 튄다 */
+.log::-webkit-scrollbar, .inv::-webkit-scrollbar { width: 6px; }
+.log::-webkit-scrollbar-thumb, .inv::-webkit-scrollbar-thumb {
+  background: #38333f; border-radius: 3px;
+}
+.log::-webkit-scrollbar-track, .inv::-webkit-scrollbar-track { background: transparent; }
+
+/* ── 터치 패드 ────────────────────────────────────────────
+ *
+ * ⚠ 표시 여부를 `@media (pointer: coarse)` 한 곳에만 걸면 안 된다.
+ *   그 판정이 어긋나는 기기(터치 노트북 · 트랙패드 붙은 태블릿)에서는 패드가
+ *   안 뜨는데 휴대폰에는 키보드가 없다 — 그러면 게임을 **아예 조작할 수 없다**.
+ *   그래서 ① 미디어쿼리 ② JS 터치 감지(body.is-touch) ③ 사람이 직접 켜는 토글
+ *   (body.pad-on) 셋 중 하나만 맞아도 뜬다. 모양은 여기서 한 번만 정한다. */
+
+.pad {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+body.is-touch .pad,
+body.pad-on .pad { display: flex; }
+body.pad-off .pad { display: none; }   /* 토글로 끈 경우가 항상 이긴다 */
+
+.dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 46px);
+  grid-template-rows: repeat(3, 42px);
+  gap: 4px;
+}
+.dpad > * { min-width: 0; }
+.dpad button, .acts button {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 16px;
+  -webkit-tap-highlight-color: transparent;
+}
+.dpad button:active, .acts button:active { background: var(--gold); color: #1a1509; }
+.acts { display: flex; flex-direction: column; gap: 6px; }
+.acts button { padding: 12px 16px; font-size: 13px; white-space: nowrap; }
+
+/* ── 오버레이 ─────────────────────────────────────────── */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(6, 5, 9, .88);
+  backdrop-filter: blur(3px);
+}
+.overlay[hidden] { display: none; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 28px 30px;
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.6);
+}
+.card.wide { max-width: 720px; text-align: left; }
+
+.card h2 { margin: 0 0 16px; font-size: 22px; letter-spacing: .04em; }
+.card h2.win { color: var(--gold); }
+.card h2.lose { color: var(--bad); }
+
+.score {
+  font-family: var(--mono);
+  font-size: 44px;
+  font-weight: 700;
+  color: var(--gold);
+  line-height: 1;
+  margin-bottom: 18px;
+}
+.score em { font-style: normal; font-size: 15px; margin-left: 5px; color: var(--ink-dim); }
+
+.card dl {
+  margin: 0 0 18px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.card dl > * { min-width: 0; }
+.card dl div {
+  background: var(--panel-2);
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.card dt { font-size: 11px; color: var(--ink-dim); }
+.card dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+
+.hint { font-size: 12px; color: var(--ink-dim); margin: 0; }
+
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.cols > * { min-width: 0; }
+
+.card h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+.card h3:not(:first-child) { margin-top: 20px; }
+
+.keys { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-bottom: 4px; }
+.keys td { padding: 4px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.keys td:first-child { font-family: var(--mono); color: var(--ink); width: 46%; padding-right: 10px; }
+.keys td:last-child { color: var(--ink-dim); }
+
+.rules { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.7; color: var(--ink-dim); }
+.rules li { margin-bottom: 6px; }
+.rules b { color: var(--ink); }
+
+/* ── 시작 화면 ────────────────────────────────────────── */
+
+.start-card { max-width: 820px; text-align: left; }
+.start-head { text-align: center; margin-bottom: 22px; }
+.start-head h2 { margin-bottom: 6px; color: var(--gold); font-size: 24px; }
+.tag { margin: 0; font-size: 13px; color: var(--ink-dim); }
+.tag b { color: var(--bad); }
+
+.classes {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.classes > * { min-width: 0; }   /* 1fr 은 min-content 아래로 안 줄어든다 — 안 두면 카드가 잘린다 */
+
+.cls-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 12px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: center;
+  transition: .12s;
+}
+.cls-card:hover { border-color: var(--gold); background: #23202b; transform: translateY(-2px); }
+
+.cls-key {
+  position: absolute;
+  top: 7px; left: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--gold);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.cls-art { image-rendering: pixelated; width: 64px; height: 64px; }
+.cls-name { font-size: 15px; font-weight: 700; }
+.cls-stats { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); }
+.cls-ability { font-size: 11px; color: #c9b98a; line-height: 1.45; }
+.cls-blurb { font-size: 10.5px; color: var(--ink-dim); line-height: 1.5; }
+
+.guide { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
+.guide-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+.guide-row span { flex: 1 1 auto; min-width: 0; }
+.guide-row b { color: var(--ink); }
+
+kbd {
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.warn-line {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: #1d1620;
+  border-left: 3px solid var(--bad);
+  border-radius: 0 5px 5px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-dim);
+}
+.warn-line b { color: var(--ink); }
+
+.start-card .hint { text-align: center; }
+
+.primary {
+  margin-top: 22px;
+  width: 100%;
+  background: var(--gold);
+  border: 0;
+  color: #1a1509;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 11px;
+  border-radius: 6px;
+}
+.primary:hover { filter: brightness(1.08); }
+
+/* ── 좁은 화면 ────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .stage { flex-direction: column; }
+  .side {
+    flex: 0 0 auto;
+    max-height: 34vh;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    overflow-y: auto;
+  }
+  .viewport { flex: 1 1 auto; min-height: 180px; }
+  /* 좁은 화면에서는 기록 패널도 남는 자리를 먹지 않는다 — 각자 제 높이로 쌓인다. */
+  .panel.grow { flex: 0 0 auto; }
+  .inv { max-height: 104px; }
+  .log { max-height: 108px; min-height: 0; }
+  .cols { grid-template-columns: 1fr; gap: 0; }
+
+  /* 시작 화면 — 좁은 화면에서는 직업 카드를 세로로 쌓고 설명을 줄인다.
+   * 3열을 유지하면 카드 폭이 100px 남짓이라 능력 설명이 글자 한둘씩 끊긴다. */
+  .classes { grid-template-columns: 1fr; gap: 8px; }
+  .cls-card { flex-direction: row; align-items: center; text-align: left; flex-wrap: wrap; padding: 10px 12px 10px 34px; }
+  .cls-art { width: 44px; height: 44px; flex: 0 0 auto; }
+  .cls-name { flex: 0 0 auto; margin-right: 6px; }
+  .cls-stats { flex: 1 1 auto; text-align: right; }
+  .cls-ability, .cls-blurb { flex: 1 1 100%; text-align: left; }
+  .start-card { padding: 20px 16px; }
+  .start-head h2 { font-size: 20px; }
+}
+
+/* 헤더가 좁은 화면에서 여러 줄로 터지는 것을 막는다.
+ * ⚠ 실측 390px: 제목이 "심연의 계 / 단", 버튼이 "새 게 / 임" 으로 갈라졌다(4줄).
+ *   최고 점수·씨앗은 종료 화면에 그대로 나오므로 여기서는 감춘다. */
+@media (max-width: 620px) {
+  .top { padding: 7px 10px; gap: 8px; }
+  .top h1 { font-size: 14px; white-space: nowrap; letter-spacing: .02em; }
+  .top-meta { gap: 6px; flex-shrink: 0; }
+  .top-meta > span { display: none; }
+  .ghost { padding: 6px 9px; font-size: 11.5px; white-space: nowrap; }
+}
+
+/* 터치 기기에서 방향 패드를 띄운다(위 .pad 항목의 세 조건 중 하나). */
+@media (pointer: coarse) {
+  body:not(.pad-off) .pad { display: flex; }
+  .side { max-height: 30vh; }
+}
+body.is-touch .side, body.pad-on .side { max-height: 30vh; }
+
+@media (max-width: 420px) {
+  .top { padding: 8px 12px; }
+  .top h1 { font-size: 14px; }
+  .seedline { display: none; }
+  .card { padding: 22px 18px; }
+}

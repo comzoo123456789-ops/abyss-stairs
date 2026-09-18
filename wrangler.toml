@@ -1,0 +1,15 @@
+# Cloudflare Pages 설정.
+#
+# 배포되는 것은 public/ 뿐이다 — tools/ 는 검사 도구라 웹에 올리지 않는다.
+# 루트를 그대로 올리면 tools/check.mjs 가 누구에게나 내려가고,
+# 저장소를 비공개로 둔 의미가 반쯤 사라진다.
+#
+# 손으로 배포:  npx wrangler pages deploy
+#   (pages_build_output_dir 가 있으니 경로를 안 적어도 된다)
+#
+# 대시보드에서 깃 연동을 걸어 두면 push 만으로 배포된다 — 그때도
+# "빌드 출력 디렉터리" 를 public 으로 두어야 같은 결과가 나온다.
+
+name = "abyss-stairs"
+pages_build_output_dir = "public"
+compatibility_date = "2026-09-18"

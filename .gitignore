@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+.dev.vars
+dist/
+
+# 스크린샷·측정 결과 같은 일회성 산출물 — 저장소에 남길 이유가 없다
+*.png
+!public/**/*.png
+shots/
+scratch/
+
+# OS·편집기
+Thumbs.db
+Desktop.ini
+.DS_Store
+.vscode/
+.idea/
