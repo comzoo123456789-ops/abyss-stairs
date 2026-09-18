@@ -5,12 +5,26 @@
  */
 
 :root {
-  --bg: #0a090d;
-  --panel: #16141c;
-  --panel-2: #1d1a24;
-  --line: #2c2834;
-  --ink: #d8d3c4;
-  --ink-dim: #8b8477;
+  /* ── 미술 방향: Darkest Dungeon 결 ─────────────────────
+   * 세계관이 「관리소 장부」다 — 내려간 사람은 이름이 지워지고 몇 층까지 갔는가만
+   * 장부에 남는다. 그래서 화면은 **그을린 양피지에 금물 잉크로 적은 장부**다.
+   * ⚠ 자보라(#16141c) 계열이었다. 잘못은 아니지만 종이로는 안 읽혔다 —
+   *   같은 명도를 유지한 채 색상만 갈색으로 돌렸다(명도를 바꾸면 대비 검사가
+   *   깨지고 캔버스의 회색 돌과도 어긋난다).
+   * ⚠ 채도를 더 올리지 말 것. 갈색이 진해지면 UI 가 던전보다 화려해진다. */
+  --bg: #0b0907;
+  --panel: #191510;
+  --panel-2: #221c15;
+  --line: #352c22;
+  --ink: #ded6c2;
+  --ink-dim: #928772;
+
+  /* 종이결 — 바깥 파일 없이 SVG 난류로 만든다(요청 0건) */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E");
+  /* 거친 테두리 — 자를 대고 그은 선이 아니라 손으로 찢은 결.
+   * ⚠ 처음엔 3px·#3f3426 이라 **아무도 못 알아봤다**(어두운 배경에 어두운 선).
+   *   놋쇠색 톱니 + 안쪽 마른 잉크선 두 겹으로 갈았다. */
+  --torn: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' preserveAspectRatio='none'%3E%3Cpath d='M7 10 L28 4 L44 12 L62 3 L84 9 L103 3 L126 11 L146 5 L155 9 L156 32 L151 54 L157 72 L150 96 L156 118 L152 140 L157 153 L133 156 L110 150 L88 157 L66 151 L43 157 L22 150 L6 156 L3 133 L9 111 L2 88 L8 66 L3 43 L6 24 Z' fill='none' stroke='%237a6336' stroke-width='5'/%3E%3Cpath d='M11 14 L28 8 L44 16 L62 7 L84 13 L103 7 L126 15 L145 9 L152 13 L153 32 L148 54 L154 72 L147 96 L153 118 L149 140 L153 150 L133 152 L110 146 L88 153 L66 147 L43 153 L22 146 L9 152 L7 133 L13 111 L6 88 L12 66 L7 43 L10 24 Z' fill='none' stroke='%23c9a227' stroke-width='1.1' opacity='.42'/%3E%3C/svg%3E");
   --gold: #c9a227;
   --hp: #c0453f;
   --xp: #4a7ab0;
@@ -1069,3 +1083,154 @@ kbd {
   .hud-num { gap: 7px; font-size: 10px; }
   .hud-num b { font-size: 12px; }
 }
+
+
+/* ══════════════════════════════════════════════════════════
+   미술 방향 — 「관리소 장부」 (Darkest Dungeon 결)
+   양피지 · 거친 테두리 · 붓글씨 제목.
+
+   ⚠ 이 절은 **배치를 바꾸지 않는다.** 폭·높이·padding·flex 는 위에서 실측으로
+     맞춘 값이다(390px 헤더 한 줄 · 버튼 42px · 사이드바 27vh …). 여기서 크기를
+     건드리면 그 측정이 통째로 무효가 된다 — 배경·테두리색·그림자·자간만 쓴다.
+   ⚠ 종이결·찢긴 테두리는 인라인 SVG 다. 이미지 파일을 쓰면 첫 화면에서
+     요청이 늘고, 캔버스 도트와 톤이 어긋난다.
+   ══════════════════════════════════════════════════════════ */
+
+/* 종이결 — 패널·카드·상태줄에 얇게 깐다.
+ * ⚠ 캔버스(#view)에는 절대 깔지 않는다. 도트가 흐려진다. */
+.top, .hud, .panel, .pad, .card {
+  background-image: var(--grain);
+  background-blend-mode: overlay;
+  background-size: 120px 120px;
+}
+
+/* 장부 표지 — 위아래에 금물 선 한 줄. 자보다 살짝 흐리게 둔다 */
+.top {
+  box-shadow: inset 0 -1px 0 rgba(201, 162, 39, .16), 0 2px 10px rgba(0, 0, 0, .55);
+}
+.hud {
+  box-shadow: inset 0 1px 0 rgba(0, 0, 0, .45), inset 0 -1px 0 rgba(201, 162, 39, .1);
+}
+
+/* 제목 — 붓으로 그은 밑줄.
+ * ⚠ border-bottom 으로 하면 자 댄 선이 된다. 굵기가 좌우로 변하는 그라디언트라야
+ *   붓 자국으로 읽힌다(가운데가 진하고 끝이 마른다). */
+.top h1 {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .8), 0 0 14px rgba(201, 162, 39, .18);
+  position: relative;
+}
+.top h1::after {
+  content: "";
+  position: absolute;
+  left: 0; right: -3px; bottom: -3px;
+  height: 2px;
+  background: linear-gradient(90deg,
+    rgba(201,162,39,0) 0%, rgba(201,162,39,.75) 18%,
+    rgba(201,162,39,.95) 52%, rgba(201,162,39,.35) 86%, rgba(201,162,39,0) 100%);
+  transform: skewX(-14deg);
+  pointer-events: none;
+}
+
+/* 패널 제목도 같은 붓 자국. h2 는 이미 border-bottom 을 쓰므로 그것만 지운다 */
+.panel h2 {
+  border-bottom: 0;
+  position: relative;
+  color: var(--gold);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, .7);
+}
+.panel h2::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(201,162,39,.55) 0%, rgba(201,162,39,.7) 40%,
+    rgba(201,162,39,.18) 78%, rgba(201,162,39,0) 100%);
+}
+
+/* 오버레이 카드 = 장부에서 찢어낸 한 장.
+ * ⚠ clip-path 로 찢으면 안 된다 — 안쪽 스크롤이 함께 잘려 상점 목록이 사라진다.
+ *   테두리를 border-image 로 갈아 **선만** 거칠게 만든다(상자 모양은 그대로). */
+.card {
+  border-color: transparent;
+  border-width: 6px;
+  border-style: solid;
+  border-image: var(--torn) 6 / 6px / 0 round;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, .78),
+              inset 0 0 90px rgba(0, 0, 0, .55),
+              inset 0 1px 0 rgba(222, 214, 194, .06);
+}
+/* 카드 안쪽 네 귀퉁이에 얼룩 — 종이가 낡은 자리 */
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120px 90px at 0% 0%, rgba(0,0,0,.42), transparent 70%),
+    radial-gradient(140px 100px at 100% 0%, rgba(0,0,0,.36), transparent 70%),
+    radial-gradient(150px 110px at 100% 100%, rgba(0,0,0,.44), transparent 70%),
+    radial-gradient(130px 95px at 0% 100%, rgba(0,0,0,.38), transparent 70%);
+}
+/* ⚠ ::before 를 깔면 부모가 static 일 때 화면 전체로 퍼진다 — 기준을 준다 */
+.card { position: relative; }
+.card > * { position: relative; }
+
+.card h2 {
+  color: var(--gold);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, .75);
+}
+
+/* 오버레이 뒷배경 — 종이 위에 등불 하나 놓은 느낌 */
+.overlay {
+  background:
+    radial-gradient(60% 55% at 50% 42%, rgba(30, 24, 16, .58), rgba(6, 5, 4, .9) 100%);
+}
+
+/* 버튼 — 눌러 박은 놋쇠 명판.
+ * ⚠ 높이·padding 은 건드리지 않는다(42px 기준을 실측으로 맞춰 뒀다). */
+.ghost {
+  background: linear-gradient(180deg, rgba(222,214,194,.055), rgba(0,0,0,.28));
+  box-shadow: inset 0 1px 0 rgba(222,214,194,.07), 0 1px 0 rgba(0,0,0,.5);
+}
+.ghost:hover {
+  background: linear-gradient(180deg, rgba(201,162,39,.16), rgba(0,0,0,.2));
+  color: var(--gold);
+}
+.dpad button, .acts button {
+  background: linear-gradient(180deg, #2a2318, #1b160f);
+  box-shadow: inset 0 1px 0 rgba(222,214,194,.08), 0 2px 0 rgba(0,0,0,.55);
+  text-shadow: 0 1px 0 rgba(0,0,0,.6);
+}
+
+/* 기록 — 장부 줄. 희미한 가로줄 위에 글씨가 얹힌다 */
+.log {
+  background-image: repeating-linear-gradient(180deg,
+    transparent 0, transparent 17px,
+    rgba(146, 135, 114, .11) 17px, rgba(146, 135, 114, .11) 18px);
+}
+
+/* 막대 — 잉크로 칠한 칸. 눈금을 얹어 장부처럼 보이게 한다 */
+.meter {
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 1px 0 rgba(222,214,194,.05);
+}
+.meter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    transparent 0, transparent 19px,
+    rgba(0, 0, 0, .17) 19px, rgba(0, 0, 0, .17) 20px);
+}
+
+/* 스킬 칸 · 가방 칸 — 종이에 찍은 도장 자리 */
+.skill, .inv-item, .ability, .perk, .shop-row, .cls-card {
+  background-image: var(--grain);
+  background-blend-mode: overlay;
+  background-size: 120px 120px;
+  box-shadow: inset 0 1px 0 rgba(222,214,194,.045);
+}
+
+/* 계급 강조 — 준비된 스킬은 잉크가 진하다 */
+.skill.ready, .ability.ready { box-shadow: inset 0 1px 0 rgba(222,214,194,.09), 0 0 0 1px rgba(110,192,110,.12); }
