@@ -12,10 +12,29 @@
   /* ── 상태 이상 ────────────────────────────────────────────
    * 즉발 피해만 있으면 "때린다/맞는다" 뿐이다. 지속 피해가 있으면
    * "지금 싸울까 빠질까" 라는 결정이 생긴다 — D&D 전투의 긴장 대부분이 여기서 온다. */
+/* 상태이상.
+   *
+   * ⚠ **수치를 깎는 것보다 행동을 바꾸는 쪽이 세다.** 같은 네 턴이라도 "공격력이
+   *   조금 준다" 는 안 읽히고 "등을 돌린다" 는 바로 읽힌다. 그래서 새로 넣는
+   *   넷 중 셋(둔화·실명·공포)은 **행동**을 바꾼다.
+   * ⚠ 몬스터와 플레이어에 **같은 이름이 다른 뜻**이 되지 않게 적어 둔다.
+   *   한쪽에만 뜻이 있는 것은 여기 주석에 명시한다.
+   *
+   *   perTurn  턴마다 깎는 체력
+   *   spd      속도를 이만큼 더한다(음수면 느려진다). 플레이어가 걸리면 상대적으로
+   *            몬스터가 빨라진다 — monsterTurn 의 pace 참조
+   *   sight    플레이어 시야 반경을 이만큼 더한다. 몬스터는 플레이어를 못 찾는다
+   *   flee     몬스터가 등을 돌린다. 플레이어는 공격력이 깎인다(atkMul)
+   *   takeMore 받는 피해가 이 비율만큼 는다(양쪽 다) */
   var AILMENTS = {
     poison: { name: "중독", turns: 4, perTurn: 4, color: "#6ec06e", tone: "bad" },
     bleed:  { name: "출혈", turns: 3, perTurn: 7, color: "#e05a5a", tone: "bad" },
-    stun:   { name: "기절", turns: 1, perTurn: 0, color: "#e8d44a", tone: "warn" }
+    burn:   { name: "화상", turns: 2, perTurn: 7, color: "#ff8c3a", tone: "bad" },
+    stun:   { name: "기절", turns: 1, perTurn: 0, color: "#e8d44a", tone: "warn" },
+    slow:   { name: "둔화", turns: 4, perTurn: 0, spd: -25, color: "#7fa8c9", tone: "warn" },
+    blind:  { name: "실명", turns: 3, perTurn: 0, sight: -4, color: "#9b8fb0", tone: "warn" },
+    fear:   { name: "공포", turns: 3, perTurn: 0, flee: true, atkMul: 0.7, color: "#c77fd8", tone: "warn" },
+    weak:   { name: "취약", turns: 4, perTurn: 0, takeMore: 0.18, color: "#d8a24a", tone: "warn" }
   };
 
   /* ── 무기 종류 ────────────────────────────────────────────
@@ -94,8 +113,8 @@
       desc: "주위 8칸의 모든 적을 공격력의 190%로 때린다" },
     { id: "throw",  name: "투척 단검", kind: "throw",  cd: 7,  power: 1.35, range: 5,
       desc: "5칸 안 가장 가까운 적에게 135% 피해" },
-    { id: "blast",  name: "화염 폭발", kind: "blast",  cd: 7,  power: 0,  range: 2, flat: [10, 6],
-      desc: "반경 2칸에 (10 + 레벨×6) 피해" },
+    { id: "blast", ail: "burn",  name: "화염 폭발", kind: "blast",  cd: 7,  power: 0,  range: 2, flat: [10, 6],
+      desc: "반경 2칸에 (10 + 레벨×6) 피해 + 화상" },
     { id: "charge", name: "돌진",      kind: "charge", cd: 6,  power: 1.6, range: 4,
       desc: "보이는 적에게 달려들어 160% 피해 + 기절" },
     { id: "venom",  name: "독 뿌리기", kind: "ail",    cd: 6,  power: 0.5, range: 2, ail: "poison",
@@ -106,10 +125,10 @@
       desc: "4칸 안 적에게 120% 피해, 그만큼 회복" },
     { id: "ward",   name: "방벽",      kind: "ward",   cd: 10, power: 0.30,
       desc: "최대 체력의 30%를 흡수하는 막 (다음 피해부터)" },
-    { id: "quake",  name: "지진",      kind: "quake",  cd: 11, power: 1.4, range: 3,
-      desc: "반경 3칸에 140% 피해 + 기절" },
-    { id: "hunt",   name: "저격",      kind: "snipe",  cd: 5,  power: 2.2, range: 8,
-      desc: "8칸 안 가장 먼 적에게 220% 피해 (치명타 확률 2배)" }
+    { id: "quake", ail: "slow",  name: "지진",      kind: "quake",  cd: 11, power: 1.4, range: 3,
+      desc: "반경 3칸에 140% 피해 + 기절 + 둔화" },
+    { id: "hunt", ail: "weak",   name: "저격",      kind: "snipe",  cd: 5,  power: 2.2, range: 8,
+      desc: "8칸 안 가장 먼 적에게 220% 피해 + 취약 (치명타 확률 2배)" }
   ];
 
   /* 스킬 단계 — 단계당 배수와 쿨다운 변화 */

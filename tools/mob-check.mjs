@@ -116,5 +116,74 @@ console.log("── 몬스터 행동 ──");
   }
 }
 
+/* ⑥ 상태이상이 **행동을 바꾸는가**.
+ * ⚠ 표에 적어 둔 것은 통과가 아니다. 둔화는 몇 대 덜 맞는지, 실명은 정말 못
+ *   다가오는지, 공포는 정말 등을 돌리는지, 취약은 정말 더 아픈지를 센다.
+ * ⚠ 대조군을 반드시 같이 잰다 — "50대 맞았다" 는 그 자체로는 아무 뜻이 없다. */
+console.log("");
+console.log("── 상태이상 ──");
+{
+  /* 둔화 — 느려진 만큼 덜 때린다 */
+  const a = makeArena(W, { mon: "orc" }), b = makeArena(W, { mon: "orc" });
+  stand(a, 50);
+  b.g.applyAil(b.m, "slow", 0);
+  let hit = 0;
+  for (let i = 0; i < 50; i++) { b.g.applyAil(b.m, "slow", 0); stand(b, 1); }
+  hit = b.swings();
+  row("둔화", hit < a.swings() * 0.75,
+    "보통 " + a.swings() + "대 · 둔화 " + hit + "대 (75% 미만이어야 한다)");
+}
+{
+  /* 실명 — 못 찾아 다가오지 못한다 */
+  const a = makeArena(W, { mon: "orc", at: 4 });
+  if (!a) row("실명", false, "판을 못 만들었다");
+  else {
+    const d0 = dist(a);
+    for (let i = 0; i < 10; i++) { a.g.applyAil(a.m, "blind", 0); stand(a, 1); }
+    row("실명", dist(a) >= d0 && a.swings() === 0,
+      "거리 " + d0 + " → " + dist(a) + " · 맞은 횟수 " + a.swings() + " (다가오지도 때리지도 못해야 한다)");
+  }
+}
+{
+  /* 공포 — 등을 돌린다. timid 가 없는 오크로 잰다(체력과 무관해야 한다) */
+  const a = makeArena(W, { mon: "orc", runLeft: 10 });
+  if (!a) row("공포", false, "판을 못 만들었다");
+  else {
+    const d0 = dist(a);
+    let peak = d0;
+    for (let i = 0; i < 10; i++) { a.g.applyAil(a.m, "fear", 0); stand(a, 1); peak = Math.max(peak, dist(a)); }
+    row("공포", peak > d0, "체력 가득한 오크 · 거리 " + d0 + " → 최대 " + peak);
+  }
+}
+{
+  /* 취약 — 같은 공격이 더 아프다 */
+  const a = makeArena(W, { mon: "orc", monHp: 100000 });
+  const hp0 = a.m.hp;
+  for (let i = 0; i < 40; i++) a.g.attack(a.g.player, a.m);
+  const plain = hp0 - a.m.hp;
+  const b = makeArena(W, { mon: "orc", monHp: 100000 });
+  const hp1 = b.m.hp;
+  for (let i = 0; i < 40; i++) { b.g.applyAil(b.m, "weak", 0); b.g.attack(b.g.player, b.m); }
+  const vuln = hp1 - b.m.hp;
+  row("취약", vuln > plain * 1.12,
+    "보통 " + plain + " · 취약 " + vuln + " (12% 이상 늘어야 한다)");
+}
+{
+  /* 화상 — 중독보다 아프고 짧다 */
+  const a = makeArena(W, { mon: "orc", monHp: 100000 });
+  a.g.applyAil(a.m, "burn", 0);
+  const hp0 = a.m.hp;
+  let t = 0;
+  while (a.m.ail.burn && t < 20) { a.g.tickAil(a.m, false); t++; }
+  const burned = hp0 - a.m.hp;
+  const b = makeArena(W, { mon: "orc", monHp: 100000 });
+  b.g.applyAil(b.m, "poison", 0);
+  const hp1 = b.m.hp;
+  let t2 = 0;
+  while (b.m.ail.poison && t2 < 20) { b.g.tickAil(b.m, false); t2++; }
+  row("화상", burned > 0 && t < t2,
+    "화상 " + t + "턴에 " + burned + " · 중독 " + t2 + "턴에 " + (hp1 - b.m.hp) + " (화상이 더 짧아야 한다)");
+}
+
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ " + fails + "건");
 process.exit(fails === 0 ? 0 : 1);

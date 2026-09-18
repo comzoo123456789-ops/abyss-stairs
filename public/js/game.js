@@ -213,7 +213,12 @@
   };
 
   Game.prototype.maxhp = function () { return Math.max(1, Math.round(this.stats().hpFlat)); };
-  Game.prototype.power = function () { return Math.max(1, Math.round(this.stats().atkFlat)); };
+  /* ⚠ 공포는 **내 공격력도** 깎는다. 몬스터에만 뜻이 있으면 같은 이름이 양쪽에서
+   *   다른 것이 되어 설명이 두 벌 필요해진다. */
+  Game.prototype.power = function () {
+    var f = ailHas(this.player, "flee") ? (DATA.AILMENTS.fear.atkMul || 1) : 1;
+    return Math.max(1, Math.round(this.stats().atkFlat * f));
+  };
   Game.prototype.guard = function () { return Math.max(0, Math.round(this.stats().defFlat)); };
 
   /* ── 아이템 이름 ─────────────────────────────────────── */
@@ -535,7 +540,11 @@
   };
 
   Game.prototype.updateFov = function () {
-    D.computeFov(this.level, this.player.x, this.player.y, FOV_RADIUS);
+    /* ⚠ 실명은 **시야 반경**을 줄인다. 화면을 어둡게 덮는 것이 아니라 정말 못 보는
+     *   것이라, 지도도 안 채워지고 원거리 몬스터도 못 본다 — 그게 무서운 이유다.
+     * ⚠ 2 밑으로는 안 내린다. 0 이면 제 발밑도 안 보여 조작이 불가능해진다. */
+    var sight = Math.max(2, FOV_RADIUS + ailSum(this.player, "sight"));
+    D.computeFov(this.level, this.player.x, this.player.y, sight);
     if (this.cls.trapSense) {
       var lv = this.level;
       for (var dy = -1; dy <= 1; dy++) {
@@ -619,6 +628,32 @@
   };
 
   /* 상태이상 — 턴마다 갉아먹는다. 걸어 둔 독이 일하는 것이 빌드의 즐거움이다. */
+  /* 걸린 상태이상들이 더해 주는 값 하나를 읽는다.
+   * ⚠ 쓰는 쪽이 각자 who.ail 을 뒤지면 **한 곳만 빠뜨려도 조용히 안 걸린다.**
+   *   둔화·실명·공포·취약이 전부 여기를 지난다. */
+  function ailSum(who, key) {
+    var sum = 0;
+    if (!who || !who.ail) return 0;
+    for (var k in who.ail) {
+      var st = who.ail[k];
+      if (!st || st.turns <= 0) continue;
+      var d = DATA.AILMENTS[k];
+      if (d && d[key]) sum += d[key];
+    }
+    return sum;
+  }
+  function ailHas(who, key) {
+    if (!who || !who.ail) return false;
+    for (var k in who.ail) {
+      var st = who.ail[k];
+      if (!st || st.turns <= 0) continue;
+      var d = DATA.AILMENTS[k];
+      if (d && d[key]) return true;
+    }
+    return false;
+  }
+  Game.prototype.ailSum = function (who, key) { return ailSum(who, key); };
+
   Game.prototype.tickAil = function (who, isPlayer) {
     var any = false;
     for (var key in who.ail) {
@@ -1038,7 +1073,12 @@
       return;
     }
 
-    var d = this.roll(who.atk, this.guard());
+    /* 공포에 질린 놈은 제대로 못 친다 */
+    var fmul = ailHas(who, "flee") ? (DATA.AILMENTS.fear.atkMul || 1) : 1;
+    var d = this.roll(Math.max(1, Math.round(who.atk * fmul)), this.guard());
+    /* 취약 — 내가 받는 피해도 는다(양쪽에 같은 뜻이어야 한다) */
+    var pv = ailSum(this.player, "takeMore");
+    if (pv > 0) d = Math.max(1, Math.round(d * (1 + pv)));
     /* 방벽이 먼저 깎인다 */
     if (this.player.ward > 0) {
       var absorb = Math.min(this.player.ward, d);
@@ -1069,6 +1109,11 @@
   };
 
   Game.prototype.damage = function (m, dmg, source, crit, ailed) {
+    /* 취약 — 받는 피해가 는다. **맞는 쪽에서 한 번만** 곱한다.
+     * ⚠ 때리는 쪽에서 곱하면 스킬·평타·상태이상마다 따로 곱해야 하고 한 곳을
+     *   빠뜨린다. 들어오는 문이 여기 하나라 여기서 곱하는 것이 맞다. */
+    var vuln = ailSum(m, "takeMore");
+    if (vuln > 0) dmg = Math.max(1, Math.round(dmg * (1 + vuln)));
     m.hp -= dmg;
     m.awake = true;
     this.fx(crit ? "crit" : "hit", m.x, m.y, 0, 0, { n: dmg, ail: ailed || null });
@@ -1300,6 +1345,11 @@
       var v = crit ? Math.round(amount * crit) : amount;
       if (crit) self.crits += 1;
       var ailed = null;
+      /* 스킬 고유 상태이상 — **확률 없이** 붙는다. 그게 그 스킬의 성격이다
+       * (화염 폭발은 태우고, 저격은 약점을 내고, 지진은 다리를 묶는다).
+       * ⚠ 무기가 굴리는 중독·출혈보다 **먼저** 붙인다. 뒤에 두면 무기 굴림이
+       *   터진 판에서만 스킬 효과가 덮여 사라진다. */
+      if (def.ail) { self.applyAil(target, def.ail, st.ailPower); ailed = def.ail; }
       if (st.ailChance > 0 && self.rng() < st.ailChance) {
         ailed = self.rng() < 0.5 ? "poison" : "bleed";
         self.applyAil(target, ailed, st.ailPower);
@@ -1475,11 +1525,18 @@
 
   Game.prototype.monsterTurn = function () {
     this.buildFlow();
+    /* 플레이어가 느려진 만큼 몬스터가 상대적으로 빨라진다.
+     * ⚠ 4 배를 넘기지 않는다. 값이 잘못 들어와도 한 턴에 몰살당하지 않는다. */
+    var pspd = Math.max(25, 100 + ailSum(this.player, "spd"));
+    var pace = Math.min(4, 100 / pspd);
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (m.hp <= 0) continue;
       if (m.ail.stun) continue;                 /* 기절한 놈은 한 턴 쉰다 */
-      m.energy += (m.spd || 100);
+      /* 둔화는 속도를 깎는다. 그리고 **플레이어가 느려지면 상대적으로 몬스터가
+       * 빨라진다** — 같은 한 턴에 더 많이 움직인다는 뜻이다. 한쪽만 구현하면
+       * "내가 느려졌는데 아무 일도 안 난다" 가 된다. */
+      m.energy += Math.max(10, (m.spd || 100) + ailSum(m, "spd")) * pace;
       var acts = 0;
       while (m.energy >= 100 && acts < MAX_ACTS) {
         m.energy -= 100;
@@ -1500,6 +1557,20 @@
       else return;
     }
     var dist = manhattan(m.x, m.y, p.x, p.y);
+
+    /* 실명 — 플레이어를 **못 찾는다.** 붙어 있으면 손에 잡히니 때리지만
+     * 다가오지도 던지지도 못한다. 도망칠 틈을 만드는 것이 이 상태의 값어치다. */
+    if (ailHas(m, "sight")) {
+      if (dist === 1) { this.attack(m, p); }
+      return;
+    }
+
+    /* 공포 — 등을 돌린다. timid 와 달리 **체력과 무관하고 brave 도 무시한다.**
+     * ⚠ 갈 곳이 없으면 그 자리에서 싸운다(구석에서 떨기만 하면 안 된다). */
+    if (ailHas(m, "flee")) {
+      var scared = this.stepAway(m);
+      if (scared) { m.x = scared.x; m.y = scared.y; return; }
+    }
 
     /* 소환 — 부르는 것이 곧 그 턴의 행동이다(부르고 때리면 두 배가 된다) */
     if (m.summon && this.turn - m.lastSummon >= m.summon.every &&

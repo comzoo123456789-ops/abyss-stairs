@@ -917,6 +917,14 @@
         /* 지금 붙어 있는 적 수. 점검기가 **기회 공격이 터질 상황인지** 알아야
          * "한 칸 가고 멈췄다" 를 고장으로 오진하지 않는다(실제로 오진했다). */
         foes: game.adjacentFoes(game.player.x, game.player.y).length,
+        /* 지금 **보이는** 적 수. 자동 이동은 못 보던 적이 나타나면 멈추는데,
+         * 점검기가 그걸 모르면 멀쩡히 멈춘 것을 고장으로 부른다(실제로 그랬다). */
+        foesSeen: (function () {
+          var n = 0;
+          for (var i = 0; i < game.monsters.length; i++)
+            if (game.isVisible(game.monsters[i].x, game.monsters[i].y)) n++;
+          return n;
+        })(),
         bag: game.player.inventory.length,
         seed: game.seed,
         started: els.start.hidden,

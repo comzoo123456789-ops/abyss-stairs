@@ -166,9 +166,13 @@
 
   /* 흰 섬광과 상태이상 색. **고정 문자열**이라 구운 판이 스프라이트당 넷을 안 넘는다. */
   var WHITE_TINT = "rgba(255,255,255,.86)";
+  /* ⚠ 색은 **고정된 몇 가지**만 쓴다(구운 판이 스프라이트당 그만큼 는다).
+   *   여덟 가지 상태이상을 다 물들이지 않고 **몸이 변하는 넷**만 고른다 —
+   *   나머지(둔화·실명·공포·취약)는 발밑 색 점과 상단 표로 알린다. */
   var AIL_TINT = {
     poison: "rgba(110,192,110,.42)",
     bleed:  "rgba(224,90,90,.36)",
+    burn:   "rgba(255,140,58,.44)",
     stun:   "rgba(232,212,74,.38)"
   };
   var WHITE_MS = 110;        /* 조사 기준 0.1초 */
@@ -257,6 +261,8 @@
   Renderer.prototype.tintOf = function (e) {
     if (this.isWhite(e)) return WHITE_TINT;
     if (!e.ail) return null;
+    /* 순서가 곧 우선순위다. 불이 붙었으면 그것부터 보여야 한다. */
+    if (e.ail.burn && e.ail.burn.turns > 0) return AIL_TINT.burn;
     if (e.ail.poison && e.ail.poison.turns > 0) return AIL_TINT.poison;
     if (e.ail.bleed && e.ail.bleed.turns > 0) return AIL_TINT.bleed;
     if (e.ail.stun && e.ail.stun.turns > 0) return AIL_TINT.stun;

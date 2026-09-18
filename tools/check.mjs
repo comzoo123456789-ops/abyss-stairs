@@ -509,6 +509,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         goal: far, started: !!midTravel, stopOnMonster: stopOnMonster, moved: Math.abs(t1.x - t0.x) + Math.abs(t1.y - t0.y),
         turns: t1.turn - t0.turn,
         foes: t0.foes, hp0: t0.hp, hp1: t1.hp,
+        seen0: t0.foesSeen, seen1: t1.foesSeen,
         stoppedByKey: !!beforeKey && !afterKey,
         hadTravel: !!beforeKey, center: center.ok, centerWant: center.want, centerGot: center.got
       };
@@ -782,16 +783,26 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
      *   제대로 걸린 것이다. 그때 "여러 칸 걸어야 한다" 로 재면 멀쩡한 제품을
      *   고장으로 부른다(붙은 적으로 한 번, 원거리로 한 번 그렇게 빨개졌다).
      * ⚠ 그래서 **맞았는가**로 가른다. 붙었는지만 보면 원거리를 놓친다. */
+    /* ⚠ 자동 이동이 멈추는 이유는 여섯이다(main.js travelTick 참조).
+     *   그중 **맞았다**와 **못 보던 적이 나타났다**는 멀쩡히 멈춘 것이다.
+     *   이 검사는 그 둘을 알아야 한다 — 모르면 규칙이 제대로 걸릴 때마다
+     *   제품을 고장으로 부른다(붙은 적으로 한 번, 원거리로 한 번, 새 적으로
+     *   한 번 그렇게 빨개졌다).
+     * ⚠ 그래서 문턱을 낮추는 것이 아니라 **왜 멈췄는지를 함께 본다.** */
     const hurt = tapCheck.hp1 < tapCheck.hp0;
+    const newFoe = tapCheck.seen1 > tapCheck.seen0;
     const nearFoe = tapCheck.foes > 0;
-    const ok2 = hurt
+    const stoppedRight = hurt || newFoe;
+    const ok2 = stoppedRight
       ? (tapCheck.moved >= 1 && tapCheck.center)
       : (tapCheck.started && tapCheck.moved >= 2 && tapCheck.turns >= 2 &&
          tapCheck.center && smOk && (!tapCheck.hadTravel || tapCheck.stoppedByKey));
     tapPass = ok2;
     console.log("탭 이동      :", ok(ok2),
       (hurt ? "걷다 맞아 멈춰야 정상(" + (nearFoe ? "옆에 적 " + tapCheck.foes + "마리" : "원거리") +
-              ") · 체력 " + tapCheck.hp0 + "→" + tapCheck.hp1 + " · " : "") +
+              ") · 체력 " + tapCheck.hp0 + "→" + tapCheck.hp1 + " · "
+            : (newFoe ? "못 보던 적이 나타나 멈춰야 정상 · 보이는 적 " +
+                        tapCheck.seen0 + "→" + tapCheck.seen1 + " · " : "")) +
       "목적지 " + tapCheck.goal.x + "," + tapCheck.goal.y + "(" + tapCheck.goal.d + "칸) → " +
       tapCheck.moved + "칸 이동 · 턴 +" + tapCheck.turns +
       (tapCheck.started ? " · 자동 이동 시작됨" : " · ⚠자동 이동이 안 걸렸다") +
