@@ -118,15 +118,26 @@
    *   ["swap", fromKey, toKey] · ["rim", {key:[lightKey,darkKey]}] · ["outline", key]
    */
   function art(name, pal, ops, opt) {
-    SPR[name] = { pal: pal, ops: ops, opt: opt || {}, baked: null };
+    SPR[name] = { pal: pal, ops: ops, opt: opt || {}, baked: {} };
   }
 
-  function draw(name) {
+  /* 걸음 프레임.
+   *
+   * 다리만 다른 그림을 통째로 한 벌 더 적는 건 낭비이고, 몸을 고치면 두 곳을
+   * 고쳐야 해서 반드시 어긋난다. 그래서 **프레임 필터**를 둔다:
+   *   ["f", 0]  → 이 뒤의 연산은 프레임 0 에서만 그린다(선 자세)
+   *   ["f", 1]  → 프레임 1 에서만(왼발)   ["f", 2] → 프레임 2 에서만(오른발)
+   *   ["f", null] → 다시 모든 프레임에서
+   * 몸통은 필터 밖에 두고 다리만 갈라 적으면 된다. */
+  function draw(name, frame) {
     var s = SPR[name];
     var b = new Board(SIZE);
     var P = s.pal;
+    var only = null;
     for (var i = 0; i < s.ops.length; i++) {
       var o = s.ops[i], k = o[0];
+      if (k === "f") { only = (o[1] === null || o[1] === undefined) ? null : o[1]; continue; }
+      if (only !== null && only !== frame) continue;
       if (k === "rect") b.rect(o[1], o[2], o[3], o[4], P[o[5]]);
       else if (k === "ell") b.ell(o[1], o[2], o[3], o[4], P[o[5]]);
       else if (k === "line") b.line(o[1], o[2], o[3], o[4], P[o[5]]);
@@ -143,11 +154,12 @@
     return b;
   }
 
-  function bake(name) {
+  function bake(name, frame) {
     var s = SPR[name];
     if (!s) return null;
-    if (s.baked) return s.baked;
-    var b = draw(name);
+    var f = frame || 0;
+    if (s.baked[f]) return s.baked[f];
+    var b = draw(name, f);
     var c = document.createElement("canvas");
     c.width = SIZE; c.height = SIZE;
     var x = c.getContext("2d");
@@ -159,8 +171,21 @@
         x.fillRect(i, y, 1, 1);
       }
     }
-    s.baked = c;
+    s.baked[f] = c;
     return c;
+  }
+
+  /* 이 스프라이트에 걸음 프레임이 있는가 — 없으면 렌더러가 굳이 프레임을 안 바꾼다 */
+  function hasFrames(name) {
+    var s = SPR[name];
+    if (!s) return false;
+    if (s._hf === undefined) {
+      s._hf = false;
+      for (var i = 0; i < s.ops.length; i++) {
+        if (s.ops[i][0] === "f" && s.ops[i][1]) { s._hf = true; break; }
+      }
+    }
+    return s._hf;
   }
 
   /* ── 공용 색 ───────────────────────────────────────── */
@@ -352,6 +377,7 @@
     WALL_VARIANTS: WALL_VARIANTS,
     art: art,
     bake: bake,
+    hasFrames: hasFrames,
     terrain: terrain,
     data: SPR
   };

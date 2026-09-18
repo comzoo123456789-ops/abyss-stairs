@@ -62,6 +62,7 @@
     this.gold = 0;
     this.kills = 0;
     this.traps = 0;
+    this.effects = [];
 
     var cls = DATA.byId(DATA.CLASSES, classId || "warrior") || DATA.CLASSES[0];
     this.cls = cls;
@@ -114,6 +115,16 @@
   Game.prototype.say = function (text, tone) {
     this.log.push({ text: text, tone: tone || "", turn: this.turn });
     if (this.log.length > 200) this.log.shift();
+  };
+
+  /* 화면 효과 신호 — 규칙이 화면에게 "이런 일이 있었다" 고 알리는 통로.
+   *
+   * ⚠ 규칙이 화면을 직접 건드리면 안 되고(그러면 검사에서 DOM 이 필요해진다),
+   *   화면이 규칙을 추측할 수도 없다(공격은 좌표가 안 변해서 렌더러가 알 길이 없다).
+   *   그래서 목록에 쌓아 두고 렌더러가 비워 간다. 화면이 없어도(검사) 그냥 쌓이고 만다. */
+  Game.prototype.fx = function (type, x, y, dx, dy) {
+    this.effects.push({ type: type, x: x, y: y, dx: dx || 0, dy: dy || 0 });
+    if (this.effects.length > 32) this.effects.shift();   /* 안 비워 가도 안 새게 */
   };
 
   /* ── 아이템 이름: 미식별 물약은 겉모습으로 부른다 ────── */
@@ -624,6 +635,7 @@
     }
 
     p.cooldown = ab.cd;
+    this.fx(ab.kind === "throw" ? "hit" : "burst", p.x, p.y);
     sfx("ability");
     return this.act(true);
   };
@@ -644,6 +656,10 @@
   };
 
   Game.prototype.attack = function (who, target) {
+    /* 공격은 좌표가 안 변한다 — 화면이 알 수 없으므로 여기서 알려 준다 */
+    this.fx("lunge", who.x, who.y,
+            Math.sign(target.x - who.x), Math.sign(target.y - who.y));
+
     if (who === this.player) {
       this.damage(target, this.roll(this.power(), target.def), null);
       return;
@@ -668,6 +684,7 @@
   Game.prototype.damage = function (m, dmg, source) {
     m.hp -= dmg;
     m.awake = true;
+    this.fx("hit", m.x, m.y);
     var head = source ? josa(source, "이", "가") + " " : "";
     if (m.hp <= 0) {
       this.say(head + josa(m.name, "을", "를") + " 쓰러뜨렸다. (" + dmg + " 피해)", "good");

@@ -44,6 +44,51 @@
     return c;
   }
 
+  /* ── 부드러운 이동 ─────────────────────────────────────
+   *
+   * 규칙은 한 칸씩 즉시 움직인다(턴제니까). 화면만 그 뒤를 따라간다.
+   *
+   * ⚠ 이 분리가 핵심이다. 애니메이션이 끝날 때까지 규칙을 붙잡으면 연타가 밀려
+   *   "눌렀는데 안 움직인다" 가 된다. 논리 좌표는 즉시 바뀌고, 렌더러는 그 좌표를
+   *   보고 "지금 보이는 자리" 를 쫓아가게 한다 — 그래서 규칙 코드를 한 줄도
+   *   안 고치고 붙을 수 있다(검사도 그대로 돈다).
+   * ⚠ 한 칸을 넘는 이동(순간이동·층 이동)은 보간하지 않는다. 지도 절반을 미끄러져
+   *   가면 무엇이 일어났는지 알 수 없다 — 그냥 순간이동으로 보여 준다. */
+  var STEP_MS = 115;          /* 한 칸 걷는 시간. 더 길면 연타가 답답하다 */
+  var LUNGE_MS = 130;         /* 공격 찌르기 */
+
+  function makeVis(e) {
+    return { vx: e.x, vy: e.y, sx: e.x, sy: e.y, tx: e.x, ty: e.y, t: 1, stride: 1 };
+  }
+
+  /* 한 개체의 보이는 자리를 목표로 한 걸음 옮긴다. 아직 움직이는 중이면 true */
+  function stepVis(v, e, dt) {
+    if (v.tx !== e.x || v.ty !== e.y) {
+      var far = Math.abs(e.x - v.tx) + Math.abs(e.y - v.ty) > 1;
+      v.sx = far ? e.x : v.vx;
+      v.sy = far ? e.y : v.vy;
+      v.tx = e.x; v.ty = e.y;
+      v.t = far ? 1 : 0;
+      v.stride = v.stride === 1 ? 2 : 1;      /* 걸음마다 발을 바꾼다 */
+      if (far) { v.vx = e.x; v.vy = e.y; }
+    }
+    if (v.t >= 1) { v.vx = v.tx; v.vy = v.ty; return false; }
+    v.t = Math.min(1, v.t + dt / STEP_MS);
+    var p = v.t * v.t * (3 - 2 * v.t);        /* smoothstep — 시작·끝이 부드럽다 */
+    v.vx = v.sx + (v.tx - v.sx) * p;
+    v.vy = v.sy + (v.ty - v.sy) * p;
+    return v.t < 1;
+  }
+
+  /* 걷는 동안 몸이 한 픽셀 들린다 — 다리 프레임만으로는 '걷는다' 가 약하다 */
+  function bobOf(v) {
+    if (v.t >= 1) return 0;
+    return (v.t > 0.15 && v.t < 0.85) ? -1 : 0;
+  }
+  function frameOf(v) {
+    return v.t >= 1 ? 0 : v.stride;
+  }
+
   function Renderer(canvas, game) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
@@ -52,7 +97,36 @@
     this.shake = 0;
     this.flash = 0;
     this.cam = { x: 0, y: 0 };
+    this.camReady = false;
+    /* 개체 → 보이는 자리. WeakMap 이라 몬스터가 죽거나 층이 바뀌면 알아서 사라진다
+     * (모델 객체에 화면 값을 심으면 규칙 코드가 화면을 알게 되어 섞인다). */
+    this.vis = new WeakMap();
+    this.hits = [];            /* 피격 표시 */
+    this.lunges = new WeakMap();
+    this.last = 0;
   }
+
+  Renderer.prototype.visOf = function (e) {
+    var v = this.vis.get(e);
+    if (!v) { v = makeVis(e); this.vis.set(e, v); }
+    return v;
+  };
+
+  /* 규칙이 쌓아 둔 효과 신호를 비워 간다 */
+  Renderer.prototype.drainEffects = function () {
+    var g = this.game, fx = g.effects;
+    if (!fx || !fx.length) return;
+    for (var i = 0; i < fx.length; i++) {
+      var f = fx[i];
+      if (f.type === "lunge") {
+        var who = (g.player.x === f.x && g.player.y === f.y) ? g.player : g.monsterAt(f.x, f.y);
+        if (who) this.lunges.set(who, { dx: f.dx, dy: f.dy, t: 0 });
+      } else if (f.type === "hit" || f.type === "burst") {
+        this.hits.push({ x: f.x, y: f.y, t: 0, big: f.type === "burst" });
+      }
+    }
+    fx.length = 0;
+  };
 
   Renderer.prototype.resize = function () {
     var box = this.canvas.parentNode.getBoundingClientRect();
@@ -72,30 +146,64 @@
     this._vig = null;
   };
 
-  Renderer.prototype.updateCamera = function () {
-    var g = this.game, lv = g.level;
-    var px = g.player.x * TILE + TILE / 2;
-    var py = g.player.y * TILE + TILE / 2;
+  /* 카메라는 **보이는** 플레이어 자리를 따라간다 — 논리 좌표를 따라가면
+   * 캐릭터가 부드럽게 걷는데 배경만 한 칸씩 툭 튄다. */
+  Renderer.prototype.updateCamera = function (pv) {
+    var lv = this.game.level;
+    var px = pv.vx * TILE + TILE / 2;
+    var py = pv.vy * TILE + TILE / 2;
     var maxX = lv.w * TILE - this.viewW;
     var maxY = lv.h * TILE - this.viewH;
     var cx = px - this.viewW / 2, cy = py - this.viewH / 2;
     this.cam.x = maxX <= 0 ? maxX / 2 : Math.max(0, Math.min(maxX, cx));
     this.cam.y = maxY <= 0 ? maxY / 2 : Math.max(0, Math.min(maxY, cy));
+    this.camReady = true;
   };
 
   Renderer.prototype.hit = function () { this.shake = 6; };
   Renderer.prototype.hurt = function () { this.shake = 10; this.flash = 0.45; };
 
-  Renderer.prototype.draw = function () {
+  /* dt(ms)를 받아 한 프레임 그린다. 아직 움직이는 것이 남았으면 true —
+   * main.js 가 그걸 보고 다음 프레임을 예약한다(가만히 있을 때는 안 돈다). */
+  Renderer.prototype.draw = function (dt) {
     var g = this.game, lv = g.level, ctx = this.ctx;
-    this.updateCamera();
+    dt = (dt === undefined) ? 16 : Math.min(48, dt);   /* 탭을 오래 떠났다 와도 한 번에 안 튀게 */
+    var busy = false;
+    var i;
+
+    this.drainEffects();
+
+    /* 1) 보이는 자리 갱신 */
+    var pv = this.visOf(g.player);
+    if (stepVis(pv, g.player, dt)) busy = true;
+    for (i = 0; i < g.monsters.length; i++) {
+      if (stepVis(this.visOf(g.monsters[i]), g.monsters[i], dt)) busy = true;
+    }
+
+    /* 찌르기·피격 타이머 */
+    var self = this;
+    function tickLunge(e) {
+      var l = self.lunges.get(e);
+      if (!l) return 0;
+      l.t += dt / LUNGE_MS;
+      if (l.t >= 1) { self.lunges.delete(e); return 0; }
+      busy = true;
+      return Math.sin(l.t * Math.PI) * 6;         /* 0 → 6px → 0 */
+    }
+    for (i = this.hits.length - 1; i >= 0; i--) {
+      this.hits[i].t += dt / 220;
+      if (this.hits[i].t >= 1) this.hits.splice(i, 1);
+      else busy = true;
+    }
+
+    this.updateCamera(pv);
 
     var ox = -this.cam.x, oy = -this.cam.y;
     if (this.shake > 0) {
       ox += (Math.random() - 0.5) * this.shake;
       oy += (Math.random() - 0.5) * this.shake;
-      this.shake *= 0.78;
-      if (this.shake < 0.4) this.shake = 0;
+      this.shake *= Math.pow(0.78, dt / 16);       /* 시간 기준으로 줄인다 */
+      if (this.shake < 0.4) this.shake = 0; else busy = true;
     }
     ox = Math.round(ox); oy = Math.round(oy);
 
@@ -150,13 +258,16 @@
       ctx.drawImage(tint ? tintedPotion(tint) : S.bake(it.sprite), ix, iy);
     }
 
-    /* 3) 몬스터 + 체력 띠 */
+    /* 3) 몬스터 + 체력 띠. 보이는 자리(보간)로 그린다 */
     for (var m = 0; m < g.monsters.length; m++) {
       var mo = g.monsters[m];
       if (!lv.visible[lv.idx(mo.x, mo.y)]) continue;
-      sx = mo.x * TILE + ox;
-      sy = mo.y * TILE + oy;
-      ctx.drawImage(S.bake(mo.sprite), sx, sy);
+      var mv = this.visOf(mo);
+      var ml = tickLunge(mo);
+      sx = Math.round(mv.vx * TILE + ox + (this.lunges.get(mo) ? this.lunges.get(mo).dx * ml : 0));
+      sy = Math.round(mv.vy * TILE + oy + bobOf(mv) +
+                      (this.lunges.get(mo) ? this.lunges.get(mo).dy * ml : 0));
+      ctx.drawImage(S.bake(mo.sprite, S.hasFrames(mo.sprite) ? frameOf(mv) : 0), sx, sy);
       if (mo.hp < mo.maxhp) {
         var frac = Math.max(0, mo.hp / mo.maxhp);
         ctx.fillStyle = "rgba(0,0,0,.72)";
@@ -168,7 +279,10 @@
 
     /* 4) 플레이어. 바닥에 옅은 빛을 깔아 준다 —
      *    도트 타일이 깔린 화면에서 내가 어디 있는지 한눈에 못 찾으면 그것만으로 못 논다. */
-    var pxp = g.player.x * TILE + ox, pyp = g.player.y * TILE + oy;
+    var pl = this.lunges.get(g.player);
+    var plAmt = tickLunge(g.player);
+    var pxp = Math.round(pv.vx * TILE + ox + (pl ? pl.dx * plAmt : 0));
+    var pyp = Math.round(pv.vy * TILE + oy + bobOf(pv) + (pl ? pl.dy * plAmt : 0));
     var glow = ctx.createRadialGradient(
       pxp + TILE / 2, pyp + TILE / 2, 2,
       pxp + TILE / 2, pyp + TILE / 2, TILE * 1.3);
@@ -176,7 +290,21 @@
     glow.addColorStop(1, "rgba(255, 226, 150, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(pxp - TILE, pyp - TILE, TILE * 3, TILE * 3);
-    ctx.drawImage(S.bake(g.player.sprite || "warrior"), pxp, pyp);
+    ctx.drawImage(S.bake(g.player.sprite || "warrior", frameOf(pv)), pxp, pyp);
+
+    /* 4-b) 피격 표시 — 맞은 자리에 짧게 튀는 빛. 로그를 안 봐도 뭔가 맞았음을 안다 */
+    for (i = 0; i < this.hits.length; i++) {
+      var h = this.hits[i];
+      var hx = h.x * TILE + ox + TILE / 2, hy = h.y * TILE + oy + TILE / 2;
+      var r = (h.big ? 26 : 12) * (0.4 + h.t * 0.9);
+      ctx.globalAlpha = Math.max(0, 1 - h.t) * (h.big ? 0.5 : 0.65);
+      ctx.strokeStyle = h.big ? "#f0913a" : "#fff0c0";
+      ctx.lineWidth = h.big ? 3 : 2;
+      ctx.beginPath();
+      ctx.arc(hx, hy, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
 
     /* 5) 가장자리를 어둡게 — 탐험 안 된 검은 여백이 '고장' 이 아니라 '깊이' 로 읽힌다. */
     if (!this._vig) {
@@ -194,10 +322,12 @@
     if (this.flash > 0.01) {
       ctx.fillStyle = "rgba(180,30,30," + this.flash.toFixed(3) + ")";
       ctx.fillRect(0, 0, this.viewW, this.viewH);
-      this.flash *= 0.82;
+      this.flash *= Math.pow(0.82, dt / 16);
+      busy = true;
     }
 
     this.drawDepthBadge();
+    return busy;
   };
 
   /* 층 표시 — 예전엔 검은 사각형에 글자였다. 깊이가 한눈에 읽히도록

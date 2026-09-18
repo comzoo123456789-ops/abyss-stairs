@@ -21,8 +21,34 @@
     ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]
   };
 
+  /* ── 그리는 고리 ─────────────────────────────────────────
+   *
+   * 이동을 부드럽게 하려면 한 번 그리고 끝낼 수 없다. 다만 **가만히 있을 때는
+   * 돌리지 않는다** — 턴제 게임이 60fps 로 배터리를 태울 이유가 없다.
+   * 애니메이션이 남아 있는 동안만 다음 프레임을 예약하고, 끝나면 멈춘다.
+   *
+   * ⚠ 규칙은 이 고리와 무관하게 즉시 진행된다. 애니메이션을 기다렸다가 규칙을
+   *   돌리면 연타가 밀려 "눌렀는데 안 움직인다" 가 된다. */
+  var rafId = 0, lastT = 0;
+
+  function loop(now) {
+    rafId = 0;
+    var dt = lastT ? (now - lastT) : 16;
+    lastT = now;
+    var busy = view.draw(dt);
+    if (busy) rafId = requestAnimationFrame(loop);
+    else lastT = 0;
+  }
+
+  function kick() {
+    if (!rafId) { lastT = 0; rafId = requestAnimationFrame(loop); }
+  }
+
+  /* 화면 전체 갱신 — 캔버스는 고리에 맡기고 DOM(상태창·가방·기록)만 여기서 다시 쓴다.
+   * DOM 을 매 프레임 다시 쓰면 60fps 로 innerHTML 을 갈아 치우는 셈이라 느려진다. */
   function refresh() {
-    view.draw();
+    view.draw(0);
+    kick();
     view.drawStats(els.stats);
     view.drawInventory(els.inv);
     view.drawLog(els.log);
@@ -352,6 +378,15 @@
       };
     };
     window.__start = function (id) { newGame(id); };
+
+    /* 점검기가 "칸 사이에 있는 순간" 을 잡을 창구.
+     * ⚠ 논리 좌표만 보면 애니메이션이 도는지 알 수 없다(그건 즉시 바뀐다).
+     *   보이는 좌표가 정수가 아닌 순간이 있어야 실제로 보간되는 것이다. */
+    window.__vis = function () {
+      var v = view.visOf(game.player);
+      return { vx: v.vx, vy: v.vy, t: v.t, stride: v.stride,
+               moving: v.t < 1, raf: !!rafId };
+    };
 
     /* 점검기가 길을 찾을 수 있게 통행 가능 여부만 넘긴다(지형 종류는 안 넘긴다).
      * 탐욕적 이동만으로는 L 자 복도에서 막혀 계단에 못 닿았다 — 908턴 동안 1층이었다. */

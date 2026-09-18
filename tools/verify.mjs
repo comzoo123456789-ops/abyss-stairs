@@ -424,6 +424,15 @@ for (const [label, args] of SCREENS) {
   if (bad) r.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 부드러운 이동 — 칸 사이 보간 · 걸음 프레임 · 연타 · 유휴 정지 · 층 이동 스냅
+{
+  const ra = spawnSync(process.execPath, [path.join(ROOT, "tools", "anim-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (ra.stdout.match(/✘/g) || []).length;
+  console.log("부드러운 이동".padEnd(20), ok(ra.status === 0), bad ? "문제 " + bad + "건" : "통과");
+  if (bad) ra.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 한 판을 끝까지 밟는다(종료 화면)
 const rp = spawnSync(process.execPath, [path.join(ROOT, "tools", "check.mjs"), "--play"],
   { encoding: "utf8", cwd: ROOT });
