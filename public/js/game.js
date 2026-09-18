@@ -471,6 +471,17 @@
       ailKind: (elite && elite.ail) || def.ail || null,
       elite: elite ? elite.id : null,
       awake: false, boss: !!def.boss,
+      /* ── 행동 ────────────────────────────────────────
+       * spd     100 이 사람과 같은 속도. 150 이면 두 턴에 세 걸음이다.
+       * ranged  이 칸 수 안에서 **보이면 쏜다**. 붙으면 그냥 때린다.
+       * timid   체력이 이 비율 밑으로 내려가면 등을 돌린다.
+       * summon  {id, every, max} — 몇 턴마다 무엇을 몇 마리까지 부르는가.
+       * swing   화면이 그릴 공격 모양(발톱·돌). */
+      spd: def.spd || 100, energy: 0,
+      ranged: def.ranged || 0,
+      timid: def.timid || 0, fleeLeft: def.fleeFor || 5,
+      summon: def.summon || null, lastSummon: -999,
+      swing: def.swing || "claw",
       ail: {}
     };
   };
@@ -946,8 +957,9 @@
      * ⚠ 치명타 여부는 아직 모른다(굴림이 아래에 있다). 화면은 뒤따라오는
      *   crit/hit 신호로 세기를 정한다 — 여기서 굴림을 앞당기면 규칙이 바뀐다. */
     this.fx("swing", target.x, target.y, adx, ady,
-            { w: (who === this.player && this.player.weapon)
-                   ? this.player.weapon.weaponKind : (who === this.player ? "fist" : "claw") });
+            { w: (who === this.player)
+                   ? (this.player.weapon ? this.player.weapon.weaponKind : "fist")
+                   : (who.swing || "claw") });
 
     if (who === this.player) {
       var st = this.stats();
@@ -1416,14 +1428,32 @@
     }
   };
 
+  /* 한 턴에 누가 몇 번 움직이는가 — **에너지**로 센다.
+   *
+   * 턴마다 spd 만큼 쌓고, 100 이 모일 때마다 한 번 움직인다. 사람은 늘 100 이다.
+   * spd 150 이면 두 턴에 세 번, spd 70 이면 열 턴에 일곱 번 움직인다.
+   *
+   * ⚠ 이것이 있어야 **도망이 상대에 따라 달라진다.** 같은 속도끼리는 걸어서 절대
+   *   못 떼어놓고(기회 공격이 그래서 필요했다), 빠른 놈에게서는 애초에 못 도망간다.
+   * ⚠ 한 턴에 세 번까지만 움직인다. 데이터가 잘못 들어와도 화면이 멈추지 않는다.
+   * ⚠ 기절한 놈은 에너지도 안 쌓는다 — 쌓아 두면 풀리는 순간 몰아서 움직인다. */
+  var MAX_ACTS = 3;
+
   Game.prototype.monsterTurn = function () {
     this.buildFlow();
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (m.hp <= 0) continue;
       if (m.ail.stun) continue;                 /* 기절한 놈은 한 턴 쉰다 */
-      this.stepMonster(m);
-      if (this.over) return;
+      m.energy += (m.spd || 100);
+      var acts = 0;
+      while (m.energy >= 100 && acts < MAX_ACTS) {
+        m.energy -= 100;
+        acts++;
+        this.stepMonster(m);
+        if (this.over) return;
+        if (m.hp <= 0) break;                   /* 가시 갑옷 같은 것에 죽을 수 있다 */
+      }
     }
   };
 
@@ -1435,9 +1465,96 @@
       if (this.isVisible(m.x, m.y) && cheb(m.x, m.y, p.x, p.y) <= notice) m.awake = true;
       else return;
     }
-    if (manhattan(m.x, m.y, p.x, p.y) === 1) { this.attack(m, p); return; }
+    var dist = manhattan(m.x, m.y, p.x, p.y);
+
+    /* 소환 — 부르는 것이 곧 그 턴의 행동이다(부르고 때리면 두 배가 된다) */
+    if (m.summon && this.turn - m.lastSummon >= m.summon.every &&
+        this.broodOf(m) < m.summon.max && this.summonFor(m)) return;
+
+    /* 도망 — 체력이 바닥나면 등을 돌린다. 몇 걸음만이다.
+     *
+     * ⚠ **끝이 있어야 한다.** 같은 속도라 걸어서는 절대 못 잡는데 끝없이 달아나면
+     *   쫓는 쪽이 영원히 못 끝낸다 — 실측: 시뮬 120판 중 55판이 결판이 안 났다.
+     *   사람도 똑같이 겪는다. 다섯 걸음 달아나고 나면 돌아서서 죽을 때까지 문다.
+     * ⚠ 구석에 몰렸으면 **그 자리에서** 싸운다. 갈 곳이 없는데 계속 돌아서면
+     *   제자리에서 떨기만 하는데, 사람 눈에 제일 먼저 띄는 것이 그 모습이다.
+     * ⚠ 그래서 도망은 "못 잡는 상대" 가 아니라 **한 번의 이탈**이다. 쫓을지
+     *   보낼지를 고르게 만드는 것이 목적이지 약을 올리는 것이 아니다. */
+    if (m.timid && !m.brave && m.hp <= m.maxhp * m.timid) {
+      var away = m.fleeLeft > 0 ? this.stepAway(m) : null;
+      if (away) {
+        if (!m.fleeing) { this.say(josa(m.name, "이", "가") + " 등을 돌렸다.", "warn"); m.fleeing = true; }
+        m.fleeLeft -= 1;
+        m.x = away.x; m.y = away.y;
+        return;
+      }
+      m.brave = true;                           /* 다 달아났거나 몰렸다 — 이제 문다 */
+      if (m.fleeing) { m.fleeing = false; this.say(josa(m.name, "이", "가") + " 돌아섰다.", "bad"); }
+    }
+
+    /* 원거리 — 보이는 자리에서 던진다. 붙으면 그냥 때린다.
+     * ⚠ 판정을 "플레이어가 그 칸을 보는가" 로 둔다. 내가 보면 저쪽도 본다 —
+     *   안 보이는 데서 날아오면 무엇에 맞았는지 알 수가 없다. */
+    if (m.ranged && dist > 1 && dist <= m.ranged && this.isVisible(m.x, m.y)) {
+      this.fx("bolt", m.x, m.y, p.x - m.x, p.y - m.y, { kind: "stone" });
+      this.attack(m, p, josa(m.name, "이", "가") + " 멀리서 던졌다.");
+      return;
+    }
+
+    if (dist === 1) { this.attack(m, p); return; }
     var step = this.stepToward(m);
     if (step) { m.x = step.x; m.y = step.y; }
+  };
+
+  /* 흐름장을 **거슬러** 한 걸음. 값이 커지는 칸이 플레이어에게서 먼 칸이다.
+   * ⚠ 흐름장 밖(FLOW_UNREACHED = 65535)은 "여기서 20칸 넘게 멀다" 는 뜻이라
+   *   도망 대상으로는 가장 좋은 칸이다. 그대로 크기 비교에 태운다. */
+  Game.prototype.stepAway = function (m) {
+    var lv = this.level, flow = this.flow;
+    if (!flow) return null;
+    var here = flow[lv.idx(m.x, m.y)];
+    var best = null, bestD = here;
+    for (var s = 0; s < STEPS.length; s++) {
+      var nx = m.x + STEPS[s][0], ny = m.y + STEPS[s][1];
+      if (!lv.inside(nx, ny) || lv.blocked(nx, ny)) continue;
+      if (this.monsterAt(nx, ny)) continue;
+      if (this.player.x === nx && this.player.y === ny) continue;
+      if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) continue;
+      var d = flow[ny * lv.w + nx];
+      if (d > bestD) { bestD = d; best = { x: nx, y: ny }; }
+    }
+    return best;
+  };
+
+  /* 이 놈이 불러 놓은 것이 지금 몇 마리인가 */
+  Game.prototype.broodOf = function (m) {
+    var n = 0;
+    for (var i = 0; i < this.monsters.length; i++)
+      if (this.monsters[i].summonedBy === m && this.monsters[i].hp > 0) n++;
+    return n;
+  };
+
+  /* 옆 빈 칸에 하나 부른다. 자리가 없으면 안 부른 것으로 친다(턴을 안 쓴다). */
+  Game.prototype.summonFor = function (m) {
+    var def = DATA.byId(DATA.MONSTERS, m.summon.id);
+    if (!def) return false;
+    var lv = this.level;
+    for (var s = 0; s < STEPS.length; s++) {
+      var nx = m.x + STEPS[s][0], ny = m.y + STEPS[s][1];
+      if (!lv.inside(nx, ny) || lv.blocked(nx, ny)) continue;
+      if (this.monsterAt(nx, ny)) continue;
+      if (this.player.x === nx && this.player.y === ny) continue;
+      var born = this.spawn(def, nx, ny, true);   /* 불려 나온 것은 엘리트가 아니다 */
+      born.awake = true;
+      born.summonedBy = m;
+      this.monsters.push(born);
+      m.lastSummon = this.turn;
+      this.say(josa(m.name, "이", "가") + " " + josa(def.name, "을", "를") + " 불러냈다.", "bad");
+      this.fx("burst", nx, ny);
+      sfx("ability");
+      return true;
+    }
+    return false;
   };
 
   /* 거리 지도를 내려가는 한 걸음. **값이 줄어드는 칸만** 고른다 —

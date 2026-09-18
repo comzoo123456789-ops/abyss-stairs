@@ -291,21 +291,43 @@
   /* ── 몬스터 ───────────────────────────────────────────────
    * ⚠ 아이템·빌드가 세지므로 몬스터도 깊이에 따라 함께 오른다(scaleAt).
    *   고정 수치로 두면 5층부터 아무 저항이 없어진다. */
+  /* 행동 값(js/game.js 의 spawn 과 stepMonster 가 읽는다):
+   *   spd     100 이 사람과 같은 속도. 150 이면 두 턴에 세 걸음이다.
+   *   ranged  이 칸 수 안에서 보이면 던진다. 붙으면 그냥 때린다.
+   *   timid   체력이 이 비율 밑으로 내려가면 등을 돌린다.
+   *   summon  {id, every, max}
+   *   swing   화면이 그릴 공격 모양(기본 claw)
+   * ⚠ **행동은 수치보다 세게 느껴진다.** 같은 공격력이라도 멀리서 던지는 놈과
+   *   붙어야 때리는 놈은 전혀 다른 상대다. 수치를 올리기 전에 여기를 먼저 본다. */
   var MONSTERS = [
-    { id: "rat",      name: "굶주린 쥐", sprite: "rat",      hp: 7,   atk: 3,  def: 0, xp: 3,   depth: 1, last: 4,  weight: 10 },
+    { id: "rat",      name: "굶주린 쥐", sprite: "rat",      hp: 7,   atk: 3,  def: 0, xp: 3,   depth: 1, last: 4,  weight: 10, timid: 0.30 },
     /* ⚠ 고블린은 2층부터다. 1층에 섞었더니 300판 중 32판이 1층에서 끝났다 —
      *   시작하자마자 죽는 게임은 다시 안 하게 된다. 1층은 쥐만 나오는 연습 층이다. */
-    { id: "goblin",   name: "고블린",    sprite: "goblin",   hp: 13,  atk: 5,  def: 1, xp: 8,   depth: 2, last: 6,  weight: 10 },
+    { id: "goblin",   name: "고블린",    sprite: "goblin",   hp: 13,  atk: 5,  def: 1, xp: 8,   depth: 2, last: 6,  weight: 10, timid: 0.25 },
+    /* 투석꾼 — **이 게임 첫 원거리 몬스터다.** 이것이 생겨야 모서리와 엄폐가
+     * 처음으로 의미를 가진다. 맷집을 낮게 두어 "먼저 저놈부터" 가 정답이 되게 한다.
+     * ⚠ 3층부터다. 1~2층은 연습 층으로 두되 너무 늦게 가르치면 뒤에서 처음 만나
+     *   억울하게 죽는다.
+     * ⚠ **원거리는 수치보다 훨씬 세다.** 실측(120판/직업): 속도·도망·소환 셋을
+     *   합쳐도 승률이 3.0%p 밖에 안 떨어졌는데, 투석꾼 하나를 weight 6 · 사거리 5 ·
+     *   공격 4 로 넣자 **9.5%p** 가 더 떨어졌다(46.7% → 37.2%). 붙기까지 공짜로
+     *   맞는 횟수가 곧 난이도다 — 사거리를 한 칸 줄이는 것이 공격력을 깎는 것보다
+     *   크게 먹는다. 여기 값을 만질 때는 반드시 다시 잴 것. */
+    { id: "slinger",  name: "고블린 투석꾼", sprite: "slinger", hp: 10, atk: 3, def: 0, xp: 12, depth: 3, last: 7, weight: 4,
+      ranged: 4, swing: "stone", timid: 0.35 },
     { id: "skeleton", name: "해골 병사", sprite: "skeleton", hp: 20,  atk: 7,  def: 2, xp: 16,  depth: 3, last: 8,  weight: 8, ail: "bleed" },
     { id: "orc",      name: "오크 전사", sprite: "orc",      hp: 30,  atk: 10, def: 3, xp: 28,  depth: 4, last: 10, weight: 8 },
-    { id: "wraith",   name: "망령",      sprite: "wraith",   hp: 24,  atk: 13, def: 1, xp: 38,  depth: 6, last: 10, weight: 6, ail: "poison" },
+    /* 망령은 **빠르다**(두 턴에 세 걸음). 걸어서는 절대 못 떼어놓는 상대가
+     * 하나는 있어야 "도망" 이 상대를 보고 정하는 판단이 된다. */
+    { id: "wraith",   name: "망령",      sprite: "wraith",   hp: 24,  atk: 13, def: 1, xp: 38,  depth: 6, last: 10, weight: 6, ail: "poison", spd: 150 },
     { id: "troll",    name: "동굴 트롤", sprite: "troll",    hp: 52,  atk: 15, def: 5, xp: 60,  depth: 7, last: 10, weight: 5 },
     /* ⚠ 보스 수치는 여기서 직접 잡는다(층 배수를 안 받는다).
      *   10층 플레이어는 방어 30~40 이라 공격 24 로는 한 대에 9 밖에 안 들어간다 —
      *   마지막 벽이 되려면 이 정도가 필요하다.
      *   실측(40판/직업): 1150/44 → 승률 43·53·43% · 보스층 사망 17 ·
      *                     1400/52 → 28·38·33% · 보스층 사망 33. */
-    { id: "lord",     name: "심연의 군주", sprite: "lord",   hp: 1150, atk: 44, def: 16, xp: 900, depth: 99, last: 99, weight: 0, boss: true, ail: "bleed" }
+    { id: "lord",     name: "심연의 군주", sprite: "lord",   hp: 1150, atk: 44, def: 16, xp: 900, depth: 99, last: 99, weight: 0, boss: true, ail: "bleed",
+      summon: { id: "skeleton", every: 7, max: 2 } }
   ];
 
   /* 깊이 배수 — 층이 깊어질수록 같은 종류도 강해진다 */

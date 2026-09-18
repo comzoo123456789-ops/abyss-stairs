@@ -146,7 +146,8 @@
     staff:  { ms: 260, arc: 6.28, r: 18, w: 2, col: "#c79ae8", n: 1, spread: 0 },
     bow:    { ms: 130, arc: 0,   r: 15, w: 2, col: "#e6e2cf", n: 1, spread: 0 },
     fist:   { ms: 150, arc: 1.5, r: 15, w: 2, col: "#e6e2cf", n: 1, spread: 0 },
-    claw:   { ms: 180, arc: 1.1, r: 19, w: 2, col: "#f07a7a", n: 3, spread: 0.55 }
+    claw:   { ms: 180, arc: 1.1, r: 19, w: 2, col: "#f07a7a", n: 3, spread: 0.55 },
+    stone:  { ms: 150, arc: 0,   r: 13, w: 3, col: "#d8cfbb", n: 1, spread: 0 }
   };
 
   /* 스킬마다 다른 터짐. kind 로 고르고 없으면 기본값을 쓴다. */

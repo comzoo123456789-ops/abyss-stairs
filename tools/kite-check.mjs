@@ -11,23 +11,9 @@
 //  대조군을 함께 잰다. 같은 자리에서 **가만히 있으면** 얼마나 맞는지 재지 않으면
 //  "춤추면 0 피해" 라는 숫자가 큰지 작은지 알 수 없다.
 
-import fs from "node:fs";
-import vm from "node:vm";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { loadRules, makeArena, stand } from "./arena.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const JS = path.join(ROOT, "public", "js");
 const TURNS = parseInt(process.argv[2] || "100", 10);
-
-function loadRules() {
-  const win = {};
-  const ctx = vm.createContext({ window: win, Math, console, Uint8Array, Uint16Array, Int32Array });
-  for (const f of ["data.js", "items.js", "dungeon.js", "game.js"]) {
-    vm.runInContext(fs.readFileSync(path.join(JS, f), "utf8"), ctx, { filename: f });
-  }
-  return win;
-}
 
 const W = loadRules();
 const { Game, DUNGEON: D, DATA } = W;
@@ -35,44 +21,9 @@ const { Game, DUNGEON: D, DATA } = W;
 let fails = 0;
 const ok = (b) => { if (!b) fails++; return b ? "✔" : "✘"; };
 
-/* 위아래로 오갈 수 있고 오른쪽에 적을 세울 수 있는 빈 자리를 찾는다.
- * ⚠ 함정 위에서 재면 안 된다 — 춤 도중 함정이 터져 피해가 섞인다. */
-function openSpot(lv, runLeft) {
-  const free = (x, y) => lv.inside(x, y) && !lv.blocked(x, y) &&
-                         lv.traps[lv.idx(x, y)] === 0 && lv.at(x, y) !== D.STAIRS;
-  for (let y = 2; y < lv.h - 2; y++) {
-    for (let x = 2; x < lv.w - 2; x++) {
-      if (!(free(x, y) && free(x, y - 1) && free(x, y + 1) && free(x + 1, y) &&
-            free(x + 1, y - 1) && free(x + 1, y + 1))) continue;
-      var run = true;
-      for (var k = 1; k <= (runLeft || 0); k++) if (!free(x - k, y)) { run = false; break; }
-      if (run) return { x: x, y: y };
-    }
-  }
-  return null;
-}
-
-/* 적 하나를 옆에 깨워 세운 판. 피해와 "몬스터가 때린 횟수" 를 함께 센다 —
- * 피해 0 만 보면 빗나간 것인지 애초에 안 때린 것인지 갈리지 않는다. */
-function arena(seed, runLeft) {
-  const g = new Game("warrior");
-  g.reset(seed, "warrior");
-  const spot = openSpot(g.level, runLeft);
-  if (!spot) return null;
-  g.player.x = spot.x; g.player.y = spot.y;
-  g.player.hp = g.player.maxhp = 99999;      /* 죽어서 act() 가 멈추면 못 잰다 */
-  const m = g.spawn(DATA.byId(DATA.MONSTERS, "orc"), spot.x + 1, spot.y);
-  m.hp = m.maxhp = 99999;
-  m.awake = true;
-  g.monsters = [m];
-  g.merchant = null;
-  g.items = [];
-  let swings = 0;
-  g.attack = function (a, b) {
-    if (a !== g.player) swings++;
-    return Game.prototype.attack.call(g, a, b);
-  };
-  return { g: g, m: m, hp0: g.player.hp, swings: () => swings };
+/* 판은 tools/arena.mjs 가 만든다 — mob-check 와 **같은 판**이어야 한다 */
+function arena(seed, runLeft, mon) {
+  return makeArena(W, { seed: seed, runLeft: runLeft, mon: mon });
 }
 
 /* 춤 — 위아래로만 오간다. 사람이 방향키 두 개로 하는 그것이다. */
@@ -81,13 +32,6 @@ function dance(a, turns) {
   for (let i = 0; i < turns && !a.g.over; i++) {
     if (!a.g.move(0, i % 2 === 0 ? -1 : 1)) a.g.wait();
   }
-  return a.g.turn - t0;
-}
-
-/* 대조군 — 같은 자리에서 가만히 있는다 */
-function stand(a, turns) {
-  const t0 = a.g.turn;
-  for (let i = 0; i < turns && !a.g.over; i++) a.g.wait();
   return a.g.turn - t0;
 }
 
@@ -176,6 +120,52 @@ console.log("춤이 공짜인가  :", ok(!free), free ? "✘ 0 피해로 무한�
     console.log("때릴 때        :", ok(hits <= turns),
       turns + "턴에 맞은 횟수 " + hits + " (턴수 이하여야 한다)");
   }
+}
+
+/* 빠른 몬스터 앞에서도 춤이 통하는가 — **기회 공격을 유지할지 정하는 자리다.**
+ *
+ * 기회 공격은 원거리도 속도도 없던 시절의 임시 처방이었다(NetHack·DCSS 에는
+ * 기회 공격이 없다. 같은 속도 상대에게서 걸어 물러나면 안 맞는 것이 장르 표준이고,
+ * 그 게임들이 괜찮은 이유는 **빠른 놈과 원거리 놈이 있어서**다).
+ * 이제 망령이 spd 150 이다. 속도만으로 춤이 손해가 되면 기회 공격을 뺄 수 있다. */
+{
+  const noOp = Game.prototype.opportunity;
+  function danceVs(mon, withOpp) {
+    Game.prototype.opportunity = withOpp ? noOp : function () {};
+    let hit = 0, dmg = 0, rounds = 0;
+    for (const seed of SEEDS) {
+      const a = arena(seed, 0, mon);
+      if (!a) continue;
+      rounds++;
+      dance(a, TURNS);
+      hit += a.swings(); dmg += a.hp0 - a.g.player.hp;
+    }
+    Game.prototype.opportunity = noOp;
+    return { hit: hit / Math.max(1, rounds), dmg: dmg / Math.max(1, rounds) };
+  }
+  function standVs(mon) {
+    let hit = 0, rounds = 0;
+    for (const seed of SEEDS) {
+      const b = arena(seed, 0, mon);
+      if (!b) continue;
+      rounds++;
+      stand(b, TURNS);
+      hit += b.swings();
+    }
+    return hit / Math.max(1, rounds);
+  }
+
+  for (const mon of ["orc", "wraith"]) {
+    const spd = (DATA.byId(DATA.MONSTERS, mon).spd || 100);
+    const st = standVs(mon);
+    const off = danceVs(mon, false);
+    const on = danceVs(mon, true);
+    const pctOff = st ? (off.hit / st * 100) : 0;
+    console.log(("속도 " + spd + " " + DATA.byId(DATA.MONSTERS, mon).name).padEnd(16) + ":",
+      "서 있기 " + st.toFixed(0) + "대 · 춤(기회공격 없이) " + off.hit.toFixed(0) +
+      "대(" + pctOff.toFixed(0) + "%) · 춤(있을 때) " + on.hit.toFixed(0) + "대");
+  }
+  console.log("읽는 법        : 기회 공격 없이도 춤이 서 있기에 가까우면 그 상대에게는 빼도 된다.");
 }
 
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ " + fails + "건");

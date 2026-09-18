@@ -34,6 +34,21 @@ const DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 let fails = 0;
 const ok = (b) => { if (!b) fails++; return b ? "✔" : "✘"; };
 
+/* 하위 검사가 **조용히 죽었을 때** 그 이유를 끌어낸다.
+ * ⚠ 종료 코드만 보고 stdout 의 ✘ 만 세면, 크롬이 안 떠서 통째로 죽은 것이
+ *   "✘ 통과" 나 "✘ 0개 항목 통과" 로 나온다 — 화면에 아무 단서가 없다.
+ *   실제로 장비 창과 마법사 화면에서 한 번씩 그렇게 나왔다. stderr 를 버리지 말 것. */
+function why(r) {
+  if (!r || r.status === 0) return "";
+  if ((r.stdout || "").includes("✘")) return "";
+  const err = (r.stderr || "").trim().split(String.fromCharCode(10)).filter(Boolean);
+  const last = err.length ? err[err.length - 1] : "";
+  return " ⚠ 종료코드 " + r.status +
+         (r.error ? " · " + r.error.message : "") +
+         (last ? " · " + last.slice(0, 120) : " · stderr 없음") +
+         (r.stdout ? "" : " · 출력 없음");
+}
+
 const W = loadRules();
 const { Game, DUNGEON: D, DATA, ITEMS, josa } = W;
 
@@ -670,6 +685,21 @@ console.log("문구        :", ok(strayMd === 0), strayMd ? "마크다운 기호
   console.log("무작위 내구 :", ok(crashes === 0), "120판 · 예외 " + crashes + "건");
 }
 
+// 13-a) 몬스터 행동 — 속도 · 원거리 · 도망 · 소환이 실제로 도는가.
+/* ⚠ 표에 spd: 150 이라고 적혀 있는 것은 통과가 아니다. 세워 놓고 몇 대 맞는지
+ *   세야 에너지가 도는지 알 수 있다. 그리고 **도망에 끝이 있는지**를 꼭 본다 —
+ *   끝없이 달아나면 같은 속도라 영영 못 잡아 판이 안 끝난다(실측 120판 중 55판). */
+{
+  const rm = spawnSync(process.execPath, [path.join(ROOT, "tools", "mob-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rm.stdout.match(/✘/g) || []).length;
+  if (rm.status !== 0) fails++;
+  console.log("몬스터 행동 :", ok(rm.status === 0),
+    (bad ? "문제 " + bad + "건" : (rm.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(rm));
+  if (bad) rm.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 13-b) 붙었다 떨어지는 춤 — 0 피해로 쿨다운을 돌릴 수 있는가.
 /* ⚠ **밸런스 검사가 이것을 못 잡는다.** 아래 AI 는 붙으면 반드시 때리고 물러나는
  *   일이 없어서, 기회 공격을 넣기 전후로 360판 결과가 소수점까지 같았다. 사람은
@@ -891,7 +921,7 @@ for (const [label, args] of SCREENS) {
   const r = spawnSync(process.execPath, [path.join(ROOT, "tools", "check.mjs"), ...args],
     { encoding: "utf8", cwd: ROOT });
   const bad = (r.stdout.match(/✘/g) || []).length;
-  console.log(label.padEnd(20), ok(r.status === 0), bad ? "문제 " + bad + "건" : "통과");
+  console.log(label.padEnd(20), ok(r.status === 0), (bad ? "문제 " + bad + "건" : "통과") + why(r));
   if (bad) r.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
@@ -900,7 +930,7 @@ for (const [label, args] of SCREENS) {
   const ra = spawnSync(process.execPath, [path.join(ROOT, "tools", "anim-check.mjs")],
     { encoding: "utf8", cwd: ROOT });
   const bad = (ra.stdout.match(/✘/g) || []).length;
-  console.log("부드러운 이동".padEnd(20), ok(ra.status === 0), bad ? "문제 " + bad + "건" : "통과");
+  console.log("부드러운 이동".padEnd(20), ok(ra.status === 0), (bad ? "문제 " + bad + "건" : "통과") + why(ra));
   if (bad) ra.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
@@ -913,7 +943,7 @@ for (const [label, args] of SCREENS) {
   const bad = (rd.stdout.match(/✘/g) || []).length;
   if (rd.status !== 0) fails++;
   console.log("하루의 장부".padEnd(20), ok(rd.status === 0),
-    bad ? "문제 " + bad + "건" : (rd.stdout.match(/✔/g) || []).length + "개 항목 통과");
+    (bad ? "문제 " + bad + "건" : (rd.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(rd));
   if (bad) rd.stdout.split(String.fromCharCode(10))
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
@@ -925,7 +955,7 @@ for (const [label, args] of SCREENS) {
   const bad = (rf.stdout.match(/✘/g) || []).length;
   if (rf.status !== 0) fails++;
   console.log("타격감".padEnd(20), ok(rf.status === 0),
-    bad ? "문제 " + bad + "건" : (rf.stdout.match(/✔/g) || []).length + "개 항목 통과");
+    (bad ? "문제 " + bad + "건" : (rf.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(rf));
   if (bad) rf.stdout.split(String.fromCharCode(10))
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
@@ -937,7 +967,7 @@ for (const [label, args] of SCREENS) {
   const bad = (rg.stdout.match(/✘/g) || []).length;
   if (rg.status !== 0) fails++;
   console.log("장비 창".padEnd(20), ok(rg.status === 0),
-    bad ? "문제 " + bad + "건" : (rg.stdout.match(/✔/g) || []).length + "개 항목 통과");
+    (bad ? "문제 " + bad + "건" : (rg.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(rg));
   if (bad) rg.stdout.split(String.fromCharCode(10))
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
@@ -946,7 +976,7 @@ for (const [label, args] of SCREENS) {
 const rp = spawnSync(process.execPath, [path.join(ROOT, "tools", "check.mjs"), "--play"],
   { encoding: "utf8", cwd: ROOT });
 const endLine = rp.stdout.split("\n").find(l => l.includes("끝까지 진행")) || "";
-console.log("끝까지 한 판".padEnd(20), ok(rp.status === 0), endLine.replace(/.*끝까지 진행\s*:\s*/, "").trim());
+console.log("끝까지 한 판".padEnd(20), ok(rp.status === 0), endLine.replace(/.*끝까지 진행\s*:\s*/, "").trim() + why(rp));
 
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ 실패 " + fails + "건");
 process.exit(fails === 0 ? 0 : 1);
