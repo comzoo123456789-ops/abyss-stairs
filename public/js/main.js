@@ -943,6 +943,60 @@
       }
       return null;
     };
+    /* 점검기 전용 — 전투 연출을 잴 수 있게 판을 고정한다.
+     *
+     * ⚠ 무작위 던전에서는 "옆에 적이 서 있는 순간" 을 기다릴 수가 없다. 그래서
+     *   옆 칸에 하나만 세우고(깨운 채) 필요하면 무기 종류까지 갈아 끼운다.
+     *   무기마다 궤적이 다른 것을 재려면 무기를 정할 수 있어야 한다. */
+    window.__arena = function (opt) {
+      opt = opt || {};
+      var p = game.player, lv = game.level, D = window.DATA;
+      var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]], spot = null;
+      for (var i = 0; i < dirs.length; i++) {
+        var x = p.x + dirs[i][0], y = p.y + dirs[i][1];
+        if (lv.inside(x, y) && !lv.blocked(x, y)) {
+          spot = { x: x, y: y, dx: dirs[i][0], dy: dirs[i][1] }; break;
+        }
+      }
+      if (!spot) return null;
+      game.monsters = [];
+      var m = game.spawn(D.byId(D.MONSTERS, opt.mon || "orc"), spot.x, spot.y, true);
+      m.awake = true;
+      m.hp = m.maxhp = opt.hp || 9999;      /* 안 죽어야 여러 번 잰다 */
+      game.monsters.push(m);
+      if (opt.weapon) {
+        game.player.weapon = window.ITEMS.makeGear("weapon", 1, function () { return 0.5; },
+                                                  { weaponKind: opt.weapon });
+      }
+      if (opt.ail) game.applyAil(m, opt.ail, 0);
+      if (opt.skill) game.player.skills = [{ id: opt.skill, rank: 1, cd: 0 }];
+      /* 반격을 안 하게 재운다. 베기 궤적만 재려면 필요하다 —
+       * ⚠ 맞으면 화면 전체에 붉은 막이 덮여 **밝은 픽셀이 무너진다.** 호가 넓은
+       *   무기는 그걸 덮고도 남지만 창처럼 얇은 것은 막에 져서 오히려 어두워진다
+       *   (실측 181 → 32). 궤적을 재는 동안에는 막이 없어야 한다. */
+      if (opt.calm) m.ail.stun = { turns: 999 };
+      /* ⚠ 체력을 채워 둔다. 안 채우면 연출을 재는 도중에 **맞아 죽고**, 그 뒤
+       *   입력이 전부 안 먹혀 "연출이 안 나온다" 는 거짓 실패가 난다(실제로 났다). */
+      game.player.hp = opt.php || game.maxhp();
+      refresh();
+      return { x: spot.x, y: spot.y, dx: spot.dx, dy: spot.dy, over: !!game.over,
+               weapon: game.player.weapon ? game.player.weapon.weaponKind : null };
+    };
+    /* 점검기 전용 — 연출이 **쌓였는지**를 본다.
+     * ⚠ 픽셀만 재면 "안 그려졌다" 와 "애초에 신호가 없었다" 가 안 갈린다.
+     *   둘은 고치는 자리가 전혀 다르다. */
+    window.__fxState = function () {
+      return { dmgs: view.dmgs.length, swings: view.swings.length,
+               blooms: view.blooms.length, bolts: view.bolts.length,
+               whites: view.whites.length, freeze: Math.round(view.freeze),
+               hudGhost: view.hudGhost === undefined ? -1 : Math.round(view.hudGhost * 10) / 10,
+               ghostEl: !!view.hudGhostEl,
+               hudHtml: (els.hud.querySelector(".meter.hp") || {}).outerHTML || "" };
+    };
+
+    /* 점검기 전용 — 구운 판 수(색 캐시가 새는지 본다) */
+    window.__bakes = function () { return window.SPRITES.cacheCount(); };
+
     /* 점검기 전용 — 지금 층의 적을 치운다.
       * ⚠ 「층 이동 스냅」 같은 검사는 계단까지 걸어가야 하는데, 기회 공격이 생긴
       *   뒤로는 가는 길에 맞아 죽어 **검사 자체가 못 돌았다**. 애니메이션 검사가

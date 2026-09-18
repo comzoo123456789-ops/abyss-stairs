@@ -918,6 +918,18 @@ for (const [label, args] of SCREENS) {
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 타격감 — 연출이 실제로 캔버스에 그려지는가(무기별 궤적 · 숫자 · 섬광 · 색 · 히트스톱)
+{
+  const rf = spawnSync(process.execPath, [path.join(ROOT, "tools", "fx-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rf.stdout.match(/✘/g) || []).length;
+  if (rf.status !== 0) fails++;
+  console.log("타격감".padEnd(20), ok(rf.status === 0),
+    bad ? "문제 " + bad + "건" : (rf.stdout.match(/✔/g) || []).length + "개 항목 통과");
+  if (bad) rf.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 장비 창 · 유물 표시 — 휴대폰에서 장비를 볼 수 있는가, 그리고 턴을 안 쓰는가
 {
   const rg = spawnSync(process.execPath, [path.join(ROOT, "tools", "gear-check.mjs")],

@@ -279,6 +279,13 @@ button { font-family: inherit; cursor: pointer; }
   transition: width .2s ease-out;
 }
 .meter.hp i { background: linear-gradient(180deg, #d4574f 0%, #b03f38 55%, #8c2b26 100%); }
+/* 방금 깎인 만큼 — 현재 값 뒤에 깔려 뒤따라 줄어든다(render.js 가 민다) */
+.meter em.ghost {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #7d2a26;
+  opacity: .85;
+}
 .meter.xp i { background: linear-gradient(180deg, #5b8ec4 0%, #4275a8 55%, #2f5680 100%); }
 .meter u {
   position: absolute;

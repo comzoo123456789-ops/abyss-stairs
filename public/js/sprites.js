@@ -154,10 +154,34 @@
     return b;
   }
 
-  function bake(name, frame) {
+  /* 색을 입힌 판.
+   *
+   * ⚠ 메인 캔버스에 source-atop 으로 칠하면 그 합성이 **이미 그려진 곳 전체**에
+   *   걸려 바닥까지 물든다(구역 작업에서 겪은 것). 그래서 스프라이트마다
+   *   오프스크린에서 굽고 캐시한다. 열쇠에 색을 넣어야 흰 섬광과 독 색이
+   *   서로를 덮어쓰지 않는다.
+   * ⚠ 쓰는 색은 몇 가지뿐이다(흰 섬광 · 상태이상 3~4색). 캔버스가 무한정
+   *   늘지 않는다 — 색을 값에서 만들어 넘기지 말 것. */
+  function bake(name, frame, tint) {
     var s = SPR[name];
     if (!s) return null;
     var f = frame || 0;
+    if (tint) {
+      var key = f + "|" + tint;
+      if (s.baked[key]) return s.baked[key];
+      var base = bake(name, f);
+      if (!base) return null;
+      var tc = document.createElement("canvas");
+      tc.width = SIZE; tc.height = SIZE;
+      var tx = tc.getContext("2d");
+      tx.imageSmoothingEnabled = false;
+      tx.drawImage(base, 0, 0);
+      tx.globalCompositeOperation = "source-atop";   /* 그려진 픽셀 위에만 */
+      tx.fillStyle = tint;
+      tx.fillRect(0, 0, SIZE, SIZE);
+      s.baked[key] = tc;
+      return tc;
+    }
     if (s.baked[f]) return s.baked[f];
     var b = draw(name, f);
     var c = document.createElement("canvas");
@@ -396,6 +420,19 @@
     WALL_VARIANTS: WALL_VARIANTS,
     art: art,
     bake: bake,
+    /* 점검기 전용 — 구운 판이 몇 벌인가.
+     * ⚠ 색을 값에서 만들어 넘기면(알파를 시간에 따라 바꾸는 식) 여기가 프레임마다
+     *   하나씩 늘어 메모리를 먹는다. 검사가 이 수를 지킨다. */
+    cacheCount: function () {
+      var total = 0, worst = 0, worstName = "";
+      for (var k in SPR) {
+        var c = 0;
+        for (var f in SPR[k].baked) c++;
+        total += c;
+        if (c > worst) { worst = c; worstName = k; }
+      }
+      return { total: total, worst: worst, name: worstName };
+    },
     hasFrames: hasFrames,
     terrain: terrain,
     data: SPR

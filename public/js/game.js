@@ -125,8 +125,13 @@
   /* 화면 효과 신호 — 규칙이 화면에게 "이런 일이 있었다" 고 알리는 통로.
    * ⚠ 공격은 좌표가 안 변해서 렌더러가 알 길이 없다. 목록에 쌓아 두고 렌더러가
    *   비워 간다. 화면이 없어도(검사) 그냥 쌓이고 만다. */
-  Game.prototype.fx = function (type, x, y, dx, dy) {
-    this.effects.push({ type: type, x: x, y: y, dx: dx || 0, dy: dy || 0 });
+  /* 규칙 → 화면 신호. 여섯 번째 인자로 딸린 값을 넘긴다(피해량 · 무기 종류 · 스킬 id).
+   * ⚠ 화면이 없어도(검사·헤드리스) 쌓이고 말 뿐이라 규칙이 안 깨진다. 40개에서
+   *   잘라내므로 아무도 안 비워 가도 메모리가 안 는다. */
+  Game.prototype.fx = function (type, x, y, dx, dy, opt) {
+    var e = { type: type, x: x, y: y, dx: dx || 0, dy: dy || 0 };
+    if (opt) for (var k in opt) e[k] = opt[k];
+    this.effects.push(e);
     if (this.effects.length > 40) this.effects.shift();
   };
 
@@ -935,7 +940,14 @@
   };
 
   Game.prototype.attack = function (who, target, note) {
-    this.fx("lunge", who.x, who.y, Math.sign(target.x - who.x), Math.sign(target.y - who.y));
+    var adx = Math.sign(target.x - who.x), ady = Math.sign(target.y - who.y);
+    this.fx("lunge", who.x, who.y, adx, ady);
+    /* 무엇으로 때렸는지 — 검은 내리치고 단검은 두 번 긋고 지팡이는 터진다.
+     * ⚠ 치명타 여부는 아직 모른다(굴림이 아래에 있다). 화면은 뒤따라오는
+     *   crit/hit 신호로 세기를 정한다 — 여기서 굴림을 앞당기면 규칙이 바뀐다. */
+    this.fx("swing", target.x, target.y, adx, ady,
+            { w: (who === this.player && this.player.weapon)
+                   ? this.player.weapon.weaponKind : (who === this.player ? "fist" : "claw") });
 
     if (who === this.player) {
       var st = this.stats();
@@ -986,10 +998,12 @@
       var absorb = Math.min(this.player.ward, d);
       this.player.ward -= absorb;
       d -= absorb;
+      this.fx("ward", this.player.x, this.player.y, 0, 0, { n: absorb });
       this.say("방벽이 " + absorb + " 을 막았다." + (this.player.ward <= 0 ? " 방벽이 깨졌다." : ""), "warn");
     }
     if (d > 0) {
       this.player.hp -= d;
+      this.fx("hurt", this.player.x, this.player.y, 0, 0, { n: d });
       this.say((note || (who.name + "의 공격.")) + " " + d + " 피해.", "bad");
       sfx("hurt");
       /* 유물: 가시 갑옷 — 받은 만큼 되돌려 준다.
@@ -1011,7 +1025,7 @@
   Game.prototype.damage = function (m, dmg, source, crit, ailed) {
     m.hp -= dmg;
     m.awake = true;
-    this.fx(crit ? "crit" : "hit", m.x, m.y);
+    this.fx(crit ? "crit" : "hit", m.x, m.y, 0, 0, { n: dmg, ail: ailed || null });
     var head = source ? josa(source, "이", "가") + " " : "";
     var tail = ailed ? " · " + DATA.AILMENTS[ailed].name : "";
 
@@ -1327,6 +1341,9 @@
       hit = 1;
     }
 
+    /* 어떤 스킬이 터졌는지 — 화면이 스킬마다 다른 모션을 낸다.
+     * 성공한 갈래만 여기 닿는다(거절은 위에서 전부 return 한다). */
+    this.fx("skill", p.x, p.y, 0, 0, { id: def.id, sk: def.kind, range: def.range || 1 });
     s.cd = this.skillCd(s);
     sfx("ability");
     return this.act(true);
@@ -1341,6 +1358,8 @@
     if (!m) { this.say("사거리 안에 적이 없다. (" + w.ranged + "칸)", "warn"); sfx("deny"); return false; }
     this.fx("lunge", this.player.x, this.player.y,
             Math.sign(m.x - this.player.x), Math.sign(m.y - this.player.y));
+    this.fx("bolt", this.player.x, this.player.y, m.x - this.player.x, m.y - this.player.y,
+            { kind: "arrow" });
     var st = this.stats();
     var dmg = this.roll(this.power(), m.def);
     var crit = this.critRoll(1);

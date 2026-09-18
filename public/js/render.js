@@ -116,8 +116,63 @@
     this.toasts = [];
     this.logSeen = 0;
     this.lunges = new WeakMap();
+    /* ── 타격감 ──────────────────────────────────────
+     * 조사한 정석대로 넷을 겹친다(예비 → 타격 → 마무리):
+     *   ① 맞은 그림이 흰색으로 짧게 번쩍   ② 짧은 히트스톱
+     *   ③ **공격 방향으로만** 흔들기        ④ 떠오르는 피해 숫자
+     * ⚠ 히트스톱은 **그림만** 멈춘다. 규칙은 이미 끝났고 입력도 안 막는다 —
+     *   막으면 연타가 밀려 "눌렀는데 안 움직인다" 가 된다.
+     * ⚠ 흔들기를 사방 난수로 두면 멀미가 난다. 방향을 주고 그 축으로 민다. */
+    this.swings = [];          /* 무기별 베기 궤적 */
+    this.dmgs = [];            /* 떠오르는 피해 숫자 */
+    this.bolts = [];           /* 날아가는 것(화살·투척·저격) */
+    this.blooms = [];          /* 스킬이 터지는 고리 */
+    this.whites = [];          /* 맞은 그림이 하얗게 번쩍 — {e, t} */
+    this.ghosts = new WeakMap();  /* 몬스터 체력 띠가 뒤따라 닳는다 */
+    this.freeze = 0;           /* 히트스톱(ms) */
+    this.shakeDir = { x: 0, y: 0 };
     this.last = 0;
   }
+
+  /* 무기가 무엇이냐에 따라 궤적이 다르다.
+   *   arc   휘두르는 각도(0 이면 직선 찌르기, 6.28 이면 한 바퀴)
+   *   n     몇 번 긋는가 — 단검은 둘(쌍검), 몬스터 발톱은 셋
+   * ⚠ 색은 **고정된 몇 가지**만 쓴다. 값에서 만들어 넘기면 구운 판이 무한정 는다. */
+  var SWING = {
+    sword:  { ms: 200, arc: 2.3, r: 21, w: 3, col: "#eef2ff", n: 1, spread: 0 },
+    axe:    { ms: 280, arc: 2.7, r: 25, w: 5, col: "#ffd9a0", n: 1, spread: 0 },
+    dagger: { ms: 160, arc: 1.4, r: 17, w: 2, col: "#cfe9ff", n: 2, spread: 0.9 },
+    spear:  { ms: 180, arc: 0,   r: 28, w: 3, col: "#e6e2cf", n: 1, spread: 0 },
+    staff:  { ms: 260, arc: 6.28, r: 18, w: 2, col: "#c79ae8", n: 1, spread: 0 },
+    bow:    { ms: 130, arc: 0,   r: 15, w: 2, col: "#e6e2cf", n: 1, spread: 0 },
+    fist:   { ms: 150, arc: 1.5, r: 15, w: 2, col: "#e6e2cf", n: 1, spread: 0 },
+    claw:   { ms: 180, arc: 1.1, r: 19, w: 2, col: "#f07a7a", n: 3, spread: 0.55 }
+  };
+
+  /* 스킬마다 다른 터짐. kind 로 고르고 없으면 기본값을 쓴다. */
+  var BLOOM = {
+    cleave: { col: "#ffd9a0", r: 46, ms: 320, rings: 1 },
+    blast:  { col: "#ff9a3a", r: 58, ms: 430, rings: 2 },
+    quake:  { col: "#c98a4a", r: 82, ms: 540, rings: 3 },
+    ail:    { col: "#6ec06e", r: 54, ms: 470, rings: 2 },
+    ward:   { col: "#8fb8d8", r: 30, ms: 430, rings: 1 },
+    heal:   { col: "#7ed07e", r: 28, ms: 430, rings: 1 },
+    charge: { col: "#e0d6ad", r: 36, ms: 270, rings: 1 },
+    drain:  { col: "#c79ae8", r: 36, ms: 390, rings: 1 },
+    throw:  { col: "#cfe9ff", r: 22, ms: 230, rings: 1 },
+    snipe:  { col: "#ffe08a", r: 24, ms: 270, rings: 1 }
+  };
+
+  /* 흰 섬광과 상태이상 색. **고정 문자열**이라 구운 판이 스프라이트당 넷을 안 넘는다. */
+  var WHITE_TINT = "rgba(255,255,255,.86)";
+  var AIL_TINT = {
+    poison: "rgba(110,192,110,.42)",
+    bleed:  "rgba(224,90,90,.36)",
+    stun:   "rgba(232,212,74,.38)"
+  };
+  var WHITE_MS = 110;        /* 조사 기준 0.1초 */
+  var HITSTOP_MS = 55;       /* 보통 타격 */
+  var HITSTOP_CRIT_MS = 120; /* 묵직한 한 방 */
 
   Renderer.prototype.visOf = function (e) {
     var v = this.vis.get(e);
@@ -143,17 +198,88 @@
     while (this.toasts.length > 5) this.toasts.shift();
   };
 
-  /* 규칙이 쌓아 둔 효과 신호를 비워 간다 */
+  /* 그 칸에 선 개체. 흰 섬광과 색 입히기는 좌표가 아니라 **개체**에 걸어야
+   * 걸어가는 동안에도 따라간다(좌표에 걸면 제자리에 남는다). */
+  Renderer.prototype.entityAt = function (x, y) {
+    var g = this.game;
+    if (g.player.x === x && g.player.y === y) return g.player;
+    return g.monsterAt(x, y);
+  };
+
+  /* 맞은 그림을 흰색으로 짧게 번쩍인다. 같은 개체가 연달아 맞으면 시간만 되감는다. */
+  Renderer.prototype.flashWhite = function (e) {
+    if (!e) return;
+    for (var i = 0; i < this.whites.length; i++) {
+      if (this.whites[i].e === e) { this.whites[i].t = 0; return; }
+    }
+    this.whites.push({ e: e, t: 0 });
+  };
+  Renderer.prototype.isWhite = function (e) {
+    for (var i = 0; i < this.whites.length; i++) if (this.whites[i].e === e) return true;
+    return false;
+  };
+
+  /* 그릴 때 입힐 색. 흰 섬광이 먼저고, 없으면 걸린 상태이상 색이다.
+   * ⚠ 돌려주는 문자열은 **고정된 넷** 중 하나다(흰색 · 독 · 출혈 · 기절).
+   *   알파를 시간에 따라 바꾸면 구운 판이 프레임마다 하나씩 늘어난다. */
+  Renderer.prototype.tintOf = function (e) {
+    if (this.isWhite(e)) return WHITE_TINT;
+    if (!e.ail) return null;
+    if (e.ail.poison && e.ail.poison.turns > 0) return AIL_TINT.poison;
+    if (e.ail.bleed && e.ail.bleed.turns > 0) return AIL_TINT.bleed;
+    if (e.ail.stun && e.ail.stun.turns > 0) return AIL_TINT.stun;
+    return null;
+  };
+
+  /* 규칙이 쌓아 둔 효과 신호를 비워 간다.
+   * ⚠ 규칙은 화면을 모른다 — 신호만 쌓는다. 화면이 없어도(검사·헤드리스)
+   *   40개에서 잘려 나갈 뿐이라 아무것도 안 깨진다. */
   Renderer.prototype.drainEffects = function () {
     var g = this.game, fx = g.effects;
     if (!fx || !fx.length) return;
     for (var i = 0; i < fx.length; i++) {
-      var f = fx[i];
+      var f = fx[i], who;
       if (f.type === "lunge") {
-        var who = (g.player.x === f.x && g.player.y === f.y) ? g.player : g.monsterAt(f.x, f.y);
+        who = this.entityAt(f.x, f.y);
         if (who) this.lunges.set(who, { dx: f.dx, dy: f.dy, t: 0 });
-      } else if (f.type === "hit" || f.type === "burst") {
-        this.hits.push({ x: f.x, y: f.y, t: 0, big: f.type === "burst" });
+
+      } else if (f.type === "swing") {
+        var sw = SWING[f.w] || SWING.fist;
+        this.swings.push({ x: f.x, y: f.y, dx: f.dx, dy: f.dy, t: 0, s: sw });
+        /* 맞는 쪽이 나면 그 방향으로 화면을 민다 */
+        if (g.player.x === f.x && g.player.y === f.y) { this.shakeDir.x = f.dx; this.shakeDir.y = f.dy; }
+        else { this.shakeDir.x = f.dx * 0.5; this.shakeDir.y = f.dy * 0.5; }
+
+      } else if (f.type === "hit" || f.type === "crit") {
+        var isCrit = f.type === "crit";
+        this.hits.push({ x: f.x, y: f.y, t: 0, big: false });
+        this.flashWhite(this.entityAt(f.x, f.y));
+        if (f.n) this.dmgs.push({ x: f.x, y: f.y, t: 0, n: f.n,
+                                  col: isCrit ? "#ffb347" : "#f2ead2", big: isCrit });
+        this.shake = Math.max(this.shake, isCrit ? 11 : 6);
+        this.freeze = Math.max(this.freeze, isCrit ? HITSTOP_CRIT_MS : HITSTOP_MS);
+
+      } else if (f.type === "hurt") {
+        this.flashWhite(g.player);
+        if (f.n) this.dmgs.push({ x: f.x, y: f.y, t: 0, n: f.n, col: "#ff6b6b", big: false, down: true });
+        this.freeze = Math.max(this.freeze, HITSTOP_MS);
+
+      } else if (f.type === "ward") {
+        this.blooms.push({ x: f.x, y: f.y, t: 0, b: BLOOM.ward });
+        if (f.n) this.dmgs.push({ x: f.x, y: f.y, t: 0, n: f.n, col: "#8fb8d8", big: false, down: true });
+
+      } else if (f.type === "burst") {
+        this.hits.push({ x: f.x, y: f.y, t: 0, big: true });
+
+      } else if (f.type === "heal") {
+        this.blooms.push({ x: f.x, y: f.y, t: 0, b: BLOOM.heal });
+
+      } else if (f.type === "skill") {
+        this.blooms.push({ x: f.x, y: f.y, t: 0, b: BLOOM[f.sk] || BLOOM.cleave });
+        if (f.sk === "quake") { this.shake = Math.max(this.shake, 16); }
+
+      } else if (f.type === "bolt") {
+        this.bolts.push({ x: f.x, y: f.y, dx: f.dx, dy: f.dy, t: 0 });
       }
     }
     fx.length = 0;
@@ -232,6 +358,97 @@
     return true;                                    /* 깜박이므로 계속 다시 그려야 한다 */
   };
 
+  /* 베기 궤적 · 날아가는 것 · 스킬 터짐. 스프라이트 **위**에 그린다. */
+  Renderer.prototype.drawImpacts = function (ctx, ox, oy) {
+    var i, j;
+    ctx.lineCap = "round";
+
+    /* ① 무기별 베기. 검은 내리치고 · 도끼는 크게 돌고 · 단검은 두 번 긋고(쌍검)
+     *    · 창은 곧게 찌르고 · 지팡이는 고리를 두르고 · 발톱은 세 줄을 낸다. */
+    for (i = 0; i < this.swings.length; i++) {
+      var sw = this.swings[i], d = sw.s;
+      var cx = sw.x * TILE + ox + TILE / 2, cy = sw.y * TILE + oy + TILE / 2;
+      var base = Math.atan2(sw.dy, sw.dx);
+      for (j = 0; j < d.n; j++) {
+        var tj = sw.t * (1 + (d.n - 1) * 0.22) - j * 0.22;
+        if (tj <= 0 || tj >= 1) continue;
+        ctx.globalAlpha = Math.min(1, (1 - tj) * 1.5);
+        ctx.strokeStyle = d.col;
+        ctx.lineWidth = d.w;
+        ctx.beginPath();
+        if (d.arc === 0) {
+          /* 찌르기 — 뻗었다가 들어온다(예비 → 타격 → 마무리가 한 곡선에 담긴다) */
+          var back = d.r * 0.65, len = d.r * Math.sin(tj * Math.PI);
+          ctx.moveTo(cx - sw.dx * back, cy - sw.dy * back);
+          ctx.lineTo(cx - sw.dx * back + sw.dx * len, cy - sw.dy * back + sw.dy * len);
+        } else {
+          var off = (j - (d.n - 1) / 2) * d.spread;
+          var head = base - d.arc / 2 + d.arc * tj + off;
+          ctx.arc(cx, cy, d.r, head - d.arc * 0.5, head);
+        }
+        ctx.stroke();
+      }
+    }
+
+    /* ② 날아가는 것 — 짧은 선이 지나간다. 점으로 두면 무엇이 날아갔는지 안 보인다. */
+    for (i = 0; i < this.bolts.length; i++) {
+      var b = this.bolts[i];
+      var bx0 = b.x * TILE + ox + TILE / 2, by0 = b.y * TILE + oy + TILE / 2;
+      var len2 = Math.max(1, Math.sqrt(b.dx * b.dx + b.dy * b.dy));
+      var ux = b.dx / len2, uy = b.dy / len2;
+      var px = bx0 + b.dx * TILE * b.t, py = by0 + b.dy * TILE * b.t;
+      ctx.globalAlpha = 0.95;
+      ctx.strokeStyle = "#ffe3a0";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(px - ux * 10, py - uy * 10);
+      ctx.lineTo(px + ux * 4, py + uy * 4);
+      ctx.stroke();
+    }
+
+    /* ③ 스킬 터짐 — 고리가 퍼진다. 지진은 셋, 폭발은 둘. */
+    for (i = 0; i < this.blooms.length; i++) {
+      var bl = this.blooms[i], bd = bl.b;
+      var lx = bl.x * TILE + ox + TILE / 2, ly = bl.y * TILE + oy + TILE / 2;
+      for (j = 0; j < bd.rings; j++) {
+        var rt = bl.t * (1 + (bd.rings - 1) * 0.18) - j * 0.18;
+        if (rt <= 0 || rt >= 1) continue;
+        ctx.globalAlpha = Math.max(0, 1 - rt) * 0.8;
+        ctx.strokeStyle = bd.col;
+        ctx.lineWidth = 1 + (bd.rings - j);
+        ctx.beginPath();
+        ctx.arc(lx, ly, bd.r * (0.22 + rt * 0.9), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1;
+  };
+
+  /* 떠오르는 피해 숫자. **가장 위**에 그린다 — 어둡게 깔린 막 밑에 두면 안 읽힌다.
+   * ⚠ 검은 테두리를 두르지 않으면 밝은 바닥 위에서 사라진다. */
+  Renderer.prototype.drawDmgs = function (ctx, ox, oy) {
+    if (!this.dmgs.length) return;
+    var font = global.TOAST_FONT || '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
+    ctx.textAlign = "center";
+    ctx.lineJoin = "round";
+    for (var i = 0; i < this.dmgs.length; i++) {
+      var n = this.dmgs[i];
+      var nx = n.x * TILE + ox + TILE / 2;
+      /* 내가 맞은 것은 아래로 떨어지고 적이 맞은 것은 위로 뜬다 — 누가 맞았는지가 갈린다 */
+      var ny = n.down ? (n.y * TILE + oy + TILE + 4 + n.t * 13)
+                      : (n.y * TILE + oy + 2 - n.t * 21);
+      ctx.globalAlpha = 1 - Math.max(0, (n.t - 0.55) / 0.45);
+      ctx.font = (n.big ? "800 18px " : "700 13px ") + font;
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "rgba(0,0,0,.88)";
+      ctx.strokeText(String(n.n), nx, ny);
+      ctx.fillStyle = n.col;
+      ctx.fillText(String(n.n), nx, ny);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = "left";
+  };
+
   Renderer.prototype.hit = function () { this.shake = 6; };
   Renderer.prototype.hurt = function () { this.shake = 10; this.flash = 0.45; };
 
@@ -244,6 +461,9 @@
     var i;
 
     this.drainEffects();
+    /* 히트스톱 — **그림만** 멈춘다(dt 를 0 으로 둔다). 규칙은 이미 끝났고 입력도
+     * 안 막는다. busy 를 세워야 멈춰 있는 동안에도 프레임이 이어진다. */
+    if (this.freeze > 0) { this.freeze = Math.max(0, this.freeze - dt); dt = 0; busy = true; }
     this.drainLog();
     for (i = this.toasts.length - 1; i >= 0; i--) {
       this.toasts[i].t += dt / TOAST_MS;
@@ -273,15 +493,49 @@
       if (this.hits[i].t >= 1) this.hits.splice(i, 1);
       else busy = true;
     }
+    /* 베기·날아가는 것·터짐·숫자·흰 섬광 — 전부 시간(dt) 기준이다.
+     * ⚠ 프레임 수 기준으로 두면 느린 기기에서 연출이 늘어진다. */
+    for (i = this.swings.length - 1; i >= 0; i--) {
+      var swv = this.swings[i];
+      swv.t += dt / (swv.s.ms + (swv.s.n - 1) * swv.s.ms * 0.22);
+      if (swv.t >= 1) this.swings.splice(i, 1); else busy = true;
+    }
+    for (i = this.bolts.length - 1; i >= 0; i--) {
+      this.bolts[i].t += dt / 190;
+      if (this.bolts[i].t >= 1) this.bolts.splice(i, 1); else busy = true;
+    }
+    for (i = this.blooms.length - 1; i >= 0; i--) {
+      var blv = this.blooms[i];
+      blv.t += dt / (blv.b.ms + (blv.b.rings - 1) * blv.b.ms * 0.18);
+      if (blv.t >= 1) this.blooms.splice(i, 1); else busy = true;
+    }
+    for (i = this.dmgs.length - 1; i >= 0; i--) {
+      this.dmgs[i].t += dt / 780;
+      if (this.dmgs[i].t >= 1) this.dmgs.splice(i, 1); else busy = true;
+    }
+    for (i = this.whites.length - 1; i >= 0; i--) {
+      this.whites[i].t += dt / WHITE_MS;
+      if (this.whites[i].t >= 1) this.whites.splice(i, 1); else busy = true;
+    }
 
     this.updateCamera(pv);
 
     var ox = -this.cam.x, oy = -this.cam.y;
     if (this.shake > 0) {
-      ox += (Math.random() - 0.5) * this.shake;
-      oy += (Math.random() - 0.5) * this.shake;
-      this.shake *= Math.pow(0.78, dt / 16);       /* 시간 기준으로 줄인다 */
-      if (this.shake < 0.4) this.shake = 0; else busy = true;
+      /* 공격 방향 축으로 밀고, 그 직각으로만 아주 조금 떤다.
+       * ⚠ 사방 난수로 흔들면 멀미가 나고 **무엇에 맞았는지도 안 읽힌다.**
+       *   조사한 정석도 "공격 벡터를 따라 두어 프레임" 이다. */
+      var sd = this.shakeDir;
+      if (sd.x || sd.y) {
+        var jit = (Math.random() - 0.5) * this.shake * 0.4;
+        ox += sd.x * this.shake - sd.y * jit;
+        oy += sd.y * this.shake + sd.x * jit;
+      } else {
+        ox += (Math.random() - 0.5) * this.shake;
+        oy += (Math.random() - 0.5) * this.shake;
+      }
+      this.shake *= Math.pow(0.72, dt / 16);       /* 시간 기준으로 줄인다 */
+      if (this.shake < 0.4) { this.shake = 0; sd.x = 0; sd.y = 0; } else busy = true;
     }
     ox = Math.round(ox); oy = Math.round(oy);
 
@@ -385,11 +639,22 @@
       sx = Math.round(mv.vx * TILE + ox + (this.lunges.get(mo) ? this.lunges.get(mo).dx * ml : 0));
       sy = Math.round(mv.vy * TILE + oy + bobOf(mv) +
                       (this.lunges.get(mo) ? this.lunges.get(mo).dy * ml : 0));
-      ctx.drawImage(S.bake(mo.sprite, S.hasFrames(mo.sprite) ? frameOf(mv) : 0), sx, sy);
+      ctx.drawImage(S.bake(mo.sprite, S.hasFrames(mo.sprite) ? frameOf(mv) : 0,
+                           this.tintOf(mo)), sx, sy);
       if (mo.hp < mo.maxhp) {
         var frac = Math.max(0, mo.hp / mo.maxhp);
+        /* 뒤따라 닳는 띠 — 방금 얼마나 깎였는지가 눈에 남는다.
+         * ⚠ 개체에 건다(WeakMap). 죽거나 층이 바뀌면 알아서 사라진다. */
+        var gh = this.ghosts.get(mo);
+        if (gh === undefined || gh < frac) gh = frac;
+        else if (gh > frac) { gh = Math.max(frac, gh - dt / 620); busy = true; }
+        this.ghosts.set(mo, gh);
         ctx.fillStyle = "rgba(0,0,0,.72)";
         ctx.fillRect(sx + 3, sy - 5, TILE - 6, 4);
+        if (gh > frac + 0.001) {
+          ctx.fillStyle = "#8d2f2f";
+          ctx.fillRect(sx + 4, sy - 4, Math.round((TILE - 8) * gh), 2);
+        }
         ctx.fillStyle = frac > 0.5 ? "#6ec06e" : frac > 0.25 ? "#e0b84a" : "#e05a5a";
         ctx.fillRect(sx + 4, sy - 4, Math.round((TILE - 8) * frac), 2);
       }
@@ -423,7 +688,8 @@
     glow.addColorStop(1, "rgba(255, 226, 150, 0)");
     ctx.fillStyle = glow;
     ctx.fillRect(pxp - TILE, pyp - TILE, TILE * 3, TILE * 3);
-    ctx.drawImage(S.bake(g.player.sprite || "warrior", frameOf(pv)), pxp, pyp);
+    ctx.drawImage(S.bake(g.player.sprite || "warrior", frameOf(pv),
+                         this.tintOf(g.player)), pxp, pyp);
 
     /* 4-b) 피격 표시 — 맞은 자리에 짧게 튀는 빛. 로그를 안 봐도 뭔가 맞았음을 안다 */
     for (i = 0; i < this.hits.length; i++) {
@@ -438,6 +704,9 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+
+    /* 4-c) 베기 궤적 · 날아가는 것 · 스킬 터짐 */
+    this.drawImpacts(ctx, ox, oy);
 
     /* 5) 가장자리를 어둡게 — 탐험 안 된 검은 여백이 '고장' 이 아니라 '깊이' 로 읽힌다. */
     if (!this._vig) {
@@ -458,6 +727,22 @@
       this.flash *= Math.pow(0.82, dt / 16);
       busy = true;
     }
+
+    /* 7) 상단 체력 띠가 뒤따라 닳는다. DOM 이라 여기서 직접 민다 —
+     *    drawHud 가 매번 다시 그리므로 CSS transition 으로는 안 된다. */
+    if (this.hudGhostEl) {
+      var hpNow = g.maxhp() > 0 ? Math.max(0, Math.min(100, (g.player.hp / g.maxhp()) * 100)) : 0;
+      if (this.hudGhost > hpNow) {
+        this.hudGhost = Math.max(hpNow, this.hudGhost - dt * 0.075);
+        this.hudGhostEl.style.width = this.hudGhost.toFixed(1) + "%";
+        busy = true;
+      } else if (this.hudGhost < hpNow) {
+        this.hudGhost = hpNow;                       /* 회복은 즉시 따라간다 */
+      }
+    }
+
+    /* 8) 피해 숫자 — 어둡게 깔린 막과 붉은 막 **위**여야 읽힌다 */
+    this.drawDmgs(ctx, ox, oy);
 
     if (this.drawGoal()) busy = true;
     this.drawDepthBadge();
@@ -603,9 +888,14 @@
     });
   }
 
-  function meter(cur, max, cls, label) {
+  /* ghost 를 주면 그만큼 어두운 띠를 **뒤에** 깔고 그 위에 현재 값을 그린다.
+   * ⚠ drawHud 는 innerHTML 로 통째로 다시 그린다 — 그래서 CSS transition 이
+   *   안 먹는다(새 요소는 처음부터 최종 너비다). 줄어드는 것은 그림 고리가 민다. */
+  function meter(cur, max, cls, label, ghost) {
     var pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
+    var gp = (ghost !== undefined && ghost > pct) ? Math.min(100, ghost) : 0;
     return '<div class="meter ' + cls + '">' +
+             (gp ? '<em class="ghost" style="width:' + gp.toFixed(1) + '%"></em>' : "") +
              '<i style="width:' + pct.toFixed(1) + '%"></i>' +
              '<u>' + label + "</u>" +
              '<b>' + cur + '<s>/' + max + "</s></b>" +
@@ -641,7 +931,7 @@
         '<div class="hud-name"><b>' + esc(c.name) + "</b><em>" + esc(c.title) + "</em></div>" +
       "</div>" +
       '<div class="hud-bars">' +
-        meter(p.hp, mx, "hp", hpLabel) +
+        meter(p.hp, mx, "hp", hpLabel, this.hudGhost) +
         meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험") +
       "</div>" +
       (ails.length ? '<div class="hud-ail">' + ails.join("") + "</div>" : "") +
@@ -650,6 +940,11 @@
         '<span class="d"><b>' + g.depth + "</b>층</span>" +
         '<span class="g"><b>' + g.gold.toLocaleString() + "</b>금</span>" +
       "</div>";
+
+    /* 이 회차의 닳는 띠를 붙잡아 둔다 — 그림 고리가 매 프레임 너비를 줄인다 */
+    this.hudGhostEl = el.querySelector(".meter.hp .ghost");
+    var hpPct = mx > 0 ? Math.max(0, Math.min(100, (p.hp / mx) * 100)) : 0;
+    if (this.hudGhost === undefined || this.hudGhost < hpPct) this.hudGhost = hpPct;
 
     var art = el.querySelector(".hud-art");
     if (art) {
