@@ -450,6 +450,95 @@
     ctx.textAlign = "left";
   };
 
+  /* 아직 못 본 어둠.
+   *
+   * ⚠ 순수 검정으로 두면 "빈 화면" 으로 읽힌다(제안서 진단 2번: 검은 여백이 화면의
+   *   절반 이상). 같은 어둠이라도 **결이 있으면** "아직 못 본 곳" 으로 읽힌다.
+   * ⚠ 한 번 구워 두고 패턴으로 깐다. 프레임마다 난수를 돌리면 어둠이 지글거려
+   *   눈이 그쪽으로 끌린다 — 배경은 조용해야 한다.
+   * ⚠ 밝기를 올리지 말 것. 바닥 타일보다 밝아지는 순간 "여기도 방인가" 로 읽힌다. */
+  Renderer.prototype.voidPattern = function () {
+    if (this._void) return this._void;
+    var c = document.createElement("canvas");
+    c.width = 64; c.height = 64;
+    var x = c.getContext("2d");
+    x.fillStyle = "#120e0a";
+    x.fillRect(0, 0, 64, 64);
+    /* 굵은 알갱이 — 고정된 의사난수라 판마다 같다 */
+    var seed = 1234567;
+    function rnd() { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; }
+    for (var i = 0; i < 300; i++) {
+      var px = Math.floor(rnd() * 64), py = Math.floor(rnd() * 64);
+      var v = rnd();
+      x.fillStyle = v > 0.72 ? "#1a1410" : (v > 0.4 ? "#161109" : "#0e0b07");
+      x.fillRect(px, py, 2, 2);
+    }
+    this._void = x.createPattern(c, "repeat");
+    return this._void;
+  };
+
+  /* 미니맵 — 본 곳 · 나 · 계단.
+   *
+   * ⚠ **본 칸만 그린다.** 안 본 지형을 보여 주면 탐험이 통째로 사라진다
+   *   (탭 이동이 본 칸만 지나가는 것과 같은 규칙이다).
+   * ⚠ 몬스터는 안 그린다. 지도에서 적 위치를 다 알면 시야가 의미를 잃는다.
+   * ⚠ 한 칸 2px. 62x38 짜리 층이 124x76 이라 화면 구석에 들어간다. */
+  Renderer.prototype.drawMinimap = function (ctx) {
+    /* ⚠ 좁은 화면에서는 한 칸 1px 로 줄인다. 2px 로 두면 62칸짜리 층이 132px 라
+     *   390px 화면의 3분의 1을 덮는다. */
+    var g = this.game, lv = g.level, S2 = this.viewW < 620 ? 1 : 2, pad = 4;
+    var w = lv.w * S2, h = lv.h * S2, x = 12, y = 12;
+    ctx.fillStyle = "rgba(10,9,7,.86)";
+    ctx.fillRect(x, y, w + pad * 2, h + pad * 2);
+    pxFrame(ctx, x, y, w + pad * 2, h + pad * 2);
+
+    /* ⚠ 한 층이 62x38 = 2,356칸이다. 매 프레임 다시 칠하면 애니메이션이 도는
+     *   동안 초당 14만 번 채우기가 된다. **턴이 바뀔 때만** 다시 굽는다. */
+    var key = g.depth + ":" + g.turn + ":" + S2 + ":" + lv.w + "x" + lv.h;
+    if (!this._mm || this._mmKey !== key) {
+      if (!this._mm) this._mm = document.createElement("canvas");
+      this._mm.width = w; this._mm.height = h;
+      var mx = this._mm.getContext("2d");
+      mx.clearRect(0, 0, w, h);
+      for (var ty = 0; ty < lv.h; ty++) {
+        for (var tx = 0; tx < lv.w; tx++) {
+          var id = lv.idx(tx, ty);
+          if (!lv.seen[id]) continue;
+          var t = lv.at(tx, ty);
+          var col;
+          if (lv.blocked(tx, ty)) col = "#3a3129";
+          else if (t === D.STAIRS) col = "#d9a441";
+          else if (t === D.DOOR) col = "#8a6a33";
+          else col = lv.visible[id] ? "#6b6055" : "#453d34";
+          mx.fillStyle = col;
+          mx.fillRect(tx * S2, ty * S2, S2, S2);
+        }
+      }
+      this._mmKey = key;
+    }
+    var ox = x + pad, oy = y + pad;
+    ctx.drawImage(this._mm, ox, oy);
+    /* 나 — 제일 밝게, 한 칸보다 크게. 지도에서 나를 못 찾으면 지도가 아니다. */
+    ctx.fillStyle = "#ffe9a8";
+    ctx.fillRect(ox + g.player.x * S2 - 1, oy + g.player.y * S2 - 1, S2 + 2, S2 + 2);
+    return { x: x, y: y, w: w + pad * 2, h: h + pad * 2 };
+  };
+
+  /* 각진 픽셀 테두리 — CSS 의 --frame 과 같은 모양을 캔버스에 그린다.
+   * ⚠ 화면 안팎이 같은 모양이어야 "하나의 UI" 가 된다. */
+  function pxFrame(ctx, x, y, w, h) {
+    ctx.fillStyle = "#4a3826";
+    ctx.fillRect(x, y, w, 2);
+    ctx.fillRect(x, y + h - 2, w, 2);
+    ctx.fillRect(x, y, 2, h);
+    ctx.fillRect(x + w - 2, y, 2, h);
+    ctx.fillStyle = "#7a6336";
+    ctx.fillRect(x, y, 3, 3);
+    ctx.fillRect(x + w - 3, y, 3, 3);
+    ctx.fillRect(x, y + h - 3, 3, 3);
+    ctx.fillRect(x + w - 3, y + h - 3, 3, 3);
+  }
+
   Renderer.prototype.hit = function () { this.shake = 6; };
   Renderer.prototype.hurt = function () { this.shake = 10; this.flash = 0.45; };
 
@@ -541,8 +630,10 @@
     ox = Math.round(ox); oy = Math.round(oy);
 
     /* ⚠ CSS 의 --bg 와 같은 값이어야 한다. 한쪽만 밝히면 던전이 화면에
-     *   뚫린 구멍처럼 보인다. */
-    ctx.fillStyle = "#120e0a";
+     *   뚫린 구멍처럼 보인다.
+     * ⚠ 순수 색이 아니라 **결 있는 어둠**을 깐다 — "빈 화면" 이 아니라
+     *   "아직 못 본 곳" 으로 읽혀야 한다(제안서 진단 2번). */
+    ctx.fillStyle = this.voidPattern() || "#120e0a";
     ctx.fillRect(0, 0, this.viewW, this.viewH);
 
     var x0 = Math.max(0, Math.floor(this.cam.x / TILE));
@@ -748,8 +839,12 @@
     this.drawDmgs(ctx, ox, oy);
 
     if (this.drawGoal()) busy = true;
+    /* 좌상단 미니맵 · 우하단 층 표시 — 진행 정보를 화면 구석에 고정한다(제안서) */
+    this.drawMinimap(ctx);
     this.drawDepthBadge();
     this.drawToasts();
+    /* 뷰포트를 픽셀 테두리로 감싼다 — 화면 안에 "떠 있는 느낌" 을 없앤다 */
+    pxFrame(ctx, 0, 0, this.viewW, this.viewH);
     return busy;
   };
 
@@ -844,13 +939,18 @@
      *   재야 한다(이름 길이가 구역마다 다르다). */
     ctx.font = "600 11px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, sans-serif');
     var nameW = ctx.measureText(zone.name).width;
-    var w = Math.max(14 + max * 9, nameW + 20), h = 54, x = 12, y = 12;
+    /* ⚠ 좌상단은 미니맵이 쓴다. 층 표시는 **우하단**으로 옮겼다(제안서 배치).
+     *   둘 다 왼쪽 위에 두면 겹친다.
+     * ⚠ 좁은 화면에서는 **우상단**이다. 아래쪽은 토스트가 넓게 깔려 우하단에
+     *   두면 가린다(390px 에서 실제로 가렸다). 위쪽은 미니맵 옆이 비어 있다. */
+    var w = Math.max(14 + max * 9, nameW + 20), h = 54;
+    var narrow = this.viewW < 620;
+    var x = Math.max(12, this.viewW - w - 12);
+    var y = narrow ? 12 : Math.max(12, this.viewH - h - 12);
 
-    ctx.fillStyle = "rgba(10,9,14,.82)";
+    ctx.fillStyle = "rgba(10,9,7,.86)";
     ctx.fillRect(x, y, w, h);
-    ctx.strokeStyle = "rgba(201,162,39,.35)";
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    pxFrame(ctx, x, y, w, h);
 
     ctx.font = "600 11px ui-monospace, Consolas, monospace";
     ctx.fillStyle = "#8b8477";

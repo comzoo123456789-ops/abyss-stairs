@@ -379,10 +379,11 @@ button { font-family: inherit; cursor: pointer; }
   color: rgba(255,255,255,.82);
   text-shadow: 0 1px 2px rgba(0,0,0,.85);
 }
+/* ⚠ 픽셀 서체는 baseline 정렬이 낮게 앉는다 — center 로 둔다. */
 .meter b {
   position: absolute;
-  right: 8px; top: 0; bottom: 0;
-  display: flex; align-items: baseline; gap: 1px;
+  right: 10px; top: 0; bottom: 0;
+  display: flex; align-items: center; gap: 1px;
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 700;
