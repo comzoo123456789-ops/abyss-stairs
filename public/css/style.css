@@ -687,3 +687,255 @@ body.is-touch .side, body.pad-on .side { max-height: 30vh; }
   .seedline { display: none; }
   .card { padding: 22px 18px; }
 }
+
+/* ══════════════════════════════════════════════════════════
+   빌드 시스템 UI — 스킬 · 상태이상 · 쌓인 옵션 · 레벨업 · 상점
+   ⚠ 수치를 숨기지 않는다. "치명타 34%" 라고 적어 줘야 다음 선택을 계산할 수 있다
+     (Slay the Spire 에서 배운 것 — 툴팁이 게임을 가르친다).
+   ══════════════════════════════════════════════════════════ */
+
+/* 금화 — 이제 점수가 아니라 자원이다. 이름 옆에 항상 보인다 */
+.who-gold {
+  margin-left: auto;
+  flex: 0 0 auto;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+}
+.who-gold i { font-style: normal; font-size: 10px; margin-left: 2px; opacity: .7; }
+
+.meter.ward i { background: linear-gradient(180deg, #7ea8c8, #4a6f8c); }
+
+/* 상태이상 — 지금 나를 갉아먹는 것이 제일 위에 보여야 한다 */
+.ails { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.ails > * { min-width: 0; }
+.ail {
+  font-size: 10.5px;
+  font-family: var(--mono);
+  padding: 2px 6px;
+  border: 1px solid;
+  border-radius: 10px;
+  background: rgba(0,0,0,.3);
+}
+
+/* 스킬 4칸 — 쿨다운이 게이지로 차오른다 */
+.skills { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+.skills > * { min-width: 0; }
+.skill {
+  position: relative;
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  background: #15131b;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink-dim);
+  text-align: left;
+  overflow: hidden;
+  transition: border-color .12s;
+}
+.skill > * { position: relative; min-width: 0; }
+.skill i {
+  position: absolute; inset: 0 auto 0 0;
+  background: linear-gradient(180deg, #2a3a22, #1d2a17);
+  transition: width .2s ease-out;
+}
+.skill .k {
+  font-family: var(--mono); font-size: 10.5px; text-align: center;
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 0;
+  background: rgba(0,0,0,.35);
+}
+.skill .n { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skill .n em { font-style: normal; font-size: 9.5px; color: var(--gold); margin-left: 4px; }
+.skill .cd { font-size: 10px; font-family: var(--mono); white-space: nowrap; }
+.skill.ready { color: var(--ink); border-color: #4e6a3c; cursor: pointer; }
+.skill.ready i { background: linear-gradient(180deg, #3a5a2c, #26401c); }
+.skill.ready .k { color: var(--good); border-color: #4e6a3c; }
+.skill.ready .cd { color: var(--good); font-weight: 700; }
+.skill.ready:hover { border-color: var(--good); }
+.skill.empty { opacity: .4; border-style: dashed; }
+.skill.empty .n { font-size: 11px; }
+
+/* 핵심 수치에 치명타 배수를 작게 붙인다 */
+.stat-grid b s { text-decoration: none; font-size: 10px; opacity: .7; margin-left: 3px; font-weight: 500; }
+
+/* 쌓인 옵션 = 내 빌드. 0 인 것은 안 보여 준다(줄만 늘어난다) */
+.build {
+  display: flex; flex-wrap: wrap; gap: 1px;
+  background: var(--line); border: 1px solid var(--line);
+  border-radius: 4px; overflow: hidden; margin-bottom: 8px;
+}
+.build > * { min-width: 0; }
+.build span {
+  flex: 1 1 46%;
+  display: flex; justify-content: space-between; align-items: baseline;
+  background: #191621; padding: 4px 8px;
+}
+.build em { font-style: normal; font-size: 10px; color: var(--ink-dim); }
+.build b { font-family: var(--mono); font-size: 11px; color: #8fb8d8; }
+
+.equip b s { text-decoration: none; color: var(--gold); font-family: var(--mono); font-size: 10px; margin-left: 3px; }
+
+/* 가방 — 옵션 줄이 길어지므로 두 줄까지 보여 준다 */
+.inv { max-height: 260px; }
+.inv-item .ds {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.4;
+}
+
+/* ── 레벨업 선택 ───────────────────────────────────────── */
+.perks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 18px 0 14px; }
+.perks > * { min-width: 0; }
+.perk {
+  position: relative;
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 16px 13px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  text-align: left;
+  transition: .12s;
+}
+.perk:hover { border-color: var(--gold); background: #23202b; transform: translateY(-2px); }
+.perk-key {
+  position: absolute; top: 7px; right: 8px;
+  font-family: var(--mono); font-size: 10px; color: var(--gold);
+  border: 1px solid var(--line); border-radius: 3px; padding: 0 4px;
+}
+.perk-tag { font-size: 9.5px; letter-spacing: .1em; color: var(--ink-dim); }
+.perk-title { font-size: 15px; font-weight: 700; line-height: 1.3; }
+.perk-note { font-size: 11px; line-height: 1.55; color: var(--ink-dim); }
+.perk.stat .perk-tag { color: #8fb8d8; }
+.perk.new  .perk-tag { color: var(--good); }
+.perk.new  { border-color: #3d5a3d; }
+.perk.up   .perk-tag { color: var(--gold); }
+
+/* ── 상점 ──────────────────────────────────────────────── */
+.shop-card { max-width: 900px; text-align: left; }
+.shop-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.shop-head h2 { margin: 0; flex: 0 0 auto; }
+.shop-gold { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
+.shop-gold b { font-family: var(--mono); font-size: 16px; color: var(--gold); }
+
+.shop-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.shop-cols > * { min-width: 0; }
+.shop-list { display: flex; flex-direction: column; gap: 4px; max-height: 52vh; overflow-y: auto; }
+.shop-list .empty { font-size: 12px; color: var(--ink-dim); padding: 8px 0; }
+
+.shop-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  grid-template-areas: "kind nm cost" "kind ds cost";
+  gap: 0 8px;
+  padding: 7px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--ink);
+  text-align: left;
+  transition: .1s;
+}
+.shop-row > * { min-width: 0; }
+.shop-row:hover:not([disabled]) { border-color: var(--gold); background: #23202b; }
+.shop-kind {
+  grid-area: kind; align-self: center;
+  font-size: 9px; letter-spacing: .06em; color: var(--ink-dim);
+  border: 1px solid var(--line); border-radius: 3px; padding: 1px 0; text-align: center;
+}
+.shop-nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
+.shop-ds {
+  grid-area: ds; font-size: 10.5px; color: var(--ink-dim); line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.shop-cost {
+  grid-area: cost; align-self: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--gold);
+  white-space: nowrap;
+}
+.shop-row.poor { opacity: .5; }
+.shop-row.poor .shop-cost { color: var(--bad); }
+.shop-row.sold { opacity: .32; }
+.shop-row.sell .shop-cost { color: var(--good); }
+
+/* 치명타 로그는 눈에 걸려야 한다 */
+.log .m.crit { color: #ffb347; font-weight: 700; }
+
+/* 시작 화면 — 시작 무기 한 줄 */
+.cls-gear { font-size: 10px; color: var(--gold); font-family: var(--mono); }
+
+@media (max-width: 900px) {
+  .perks { grid-template-columns: 1fr; gap: 8px; }
+  .perk { flex-direction: row; align-items: baseline; flex-wrap: wrap; padding: 12px 34px 12px 12px; }
+  .perk-title { flex: 0 0 auto; margin-right: 8px; }
+  .perk-note { flex: 1 1 100%; }
+  .shop-cols { grid-template-columns: 1fr; gap: 10px; }
+  .shop-list { max-height: 30vh; }
+  .inv { max-height: 150px; }
+}
+
+/* 터치 — 스킬 4칸을 한 줄로 */
+@media (pointer: coarse) {
+  .skillpad { flex-direction: row !important; gap: 4px; }
+  .skillpad button { padding: 12px 0; width: 40px; font-family: var(--mono); }
+}
+
+
+/* ══════════════════════════════════════════════════════════
+   기록 자리 고정
+   ⚠ 상태창이 길어지자(스킬 4칸 · 빌드 요약) 기록 패널이 사이드바 아래로 밀려
+     화면 밖에 있었다. 사용자 신고: "기록이 실시간으로 안 따라온다".
+     위쪽만 스크롤 영역으로 두고 기록은 바닥에 못박는다.
+   ══════════════════════════════════════════════════════════ */
+.side { overflow: hidden; }
+.side-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--line);
+}
+.side-scroll > * { flex-shrink: 0; }
+.side-scroll::-webkit-scrollbar { width: 6px; }
+.side-scroll::-webkit-scrollbar-thumb { background: #38333f; border-radius: 3px; }
+.side-scroll::-webkit-scrollbar-track { background: transparent; }
+
+.logpanel {
+  flex: 0 0 auto;
+  height: 216px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+.logpanel .log { flex: 1 1 auto; min-height: 0; max-height: none; }
+
+@media (max-width: 900px) {
+  /* ⚠ 기록이 2줄이면 실시간으로 따라와도 못 읽는다 — 최소 4줄은 보이게 한다.
+   *   대신 가방을 줄인다(가방은 스크롤되지만 기록은 늘 보여야 한다). */
+  .logpanel { height: 98px; }
+  .logpanel .log { max-height: none; }
+  .side { max-height: 44vh; }
+  .inv { max-height: 116px; }
+}
+@media (pointer: coarse) {
+  .logpanel { height: 98px; }
+  .side { max-height: 40vh; }
+}
+
+/* 좁은 화면의 터치 패드 — 줄을 나눈다.
+ * ⚠ 스킬 4칸이 생기면서 한 줄에 dpad(178) + 행동(90) + 스킬(172) = 440px 가 되어
+ *   390 화면을 넘었다(실측: skillpad right=431). 스킬 줄을 아래로 내린다. */
+@media (max-width: 620px) {
+  .pad { flex-wrap: wrap; gap: 8px 14px; padding-bottom: calc(8px + env(safe-area-inset-bottom)); }
+  .dpad { grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 44px); gap: 4px; }
+  /* ⚠ 손가락은 40px 미만을 정확히 못 누른다. 폭을 줄이더라도 높이는 지킨다
+   *   (실측: padding 만 줄였더니 34px 가 되어 7개가 기준 미달이었다). */
+  .acts button { padding: 0 12px; min-height: 42px; font-size: 12px; }
+  .skillpad { flex: 1 1 100%; justify-content: center; }
+  .skillpad button { width: 62px; min-height: 42px; }
+}

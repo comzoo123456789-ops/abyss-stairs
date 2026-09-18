@@ -102,6 +102,11 @@
      * (모델 객체에 화면 값을 심으면 규칙 코드가 화면을 알게 되어 섞인다). */
     this.vis = new WeakMap();
     this.hits = [];            /* 피격 표시 */
+    /* 최근 메시지를 화면 위에 띄운다 — 사이드바를 안 봐도 무슨 일이 났는지 안다.
+     * ⚠ 사용자 신고: "기록이 실시간으로 안 따라온다". 기록 패널 자리를 고정한 것과
+     *   별개로, 전투 중에 눈이 캔버스에 있으므로 그 자리에서도 알려 줘야 한다. */
+    this.toasts = [];
+    this.logSeen = 0;
     this.lunges = new WeakMap();
     this.last = 0;
   }
@@ -110,6 +115,24 @@
     var v = this.vis.get(e);
     if (!v) { v = makeVis(e); this.vis.set(e, v); }
     return v;
+  };
+
+  /* 새로 늘어난 기록을 토스트로 옮긴다. 규칙은 이것을 모른다(로그만 쌓는다). */
+  var TOAST_MS = 3600;
+  var TONE_COLOR = {
+    "": "#b9b2a4", good: "#7ed07e", bad: "#f07a7a", hit: "#e0d6ad",
+    item: "#8fb8d8", warn: "#e0b73a", depth: "#e8c14a", level: "#c79ae8",
+    crit: "#ffb347", win: "#ffd75e"
+  };
+  Renderer.prototype.drainLog = function () {
+    var log = this.game.log;
+    if (this.logSeen > log.length) this.logSeen = 0;      /* 새 판 — 기록이 비워졌다 */
+    for (var i = this.logSeen; i < log.length; i++) {
+      this.toasts.push({ text: log[i].text, tone: log[i].tone || "", t: 0 });
+    }
+    this.logSeen = log.length;
+    /* 한 번에 여럿 쏟아지면 오래된 것부터 버린다 — 화면을 덮으면 게임이 안 보인다 */
+    while (this.toasts.length > 5) this.toasts.shift();
   };
 
   /* 규칙이 쌓아 둔 효과 신호를 비워 간다 */
@@ -172,6 +195,12 @@
     var i;
 
     this.drainEffects();
+    this.drainLog();
+    for (i = this.toasts.length - 1; i >= 0; i--) {
+      this.toasts[i].t += dt / TOAST_MS;
+      if (this.toasts[i].t >= 1) this.toasts.splice(i, 1);
+      else busy = true;
+    }
 
     /* 1) 보이는 자리 갱신 */
     var pv = this.visOf(g.player);
@@ -258,6 +287,18 @@
       ctx.drawImage(tint ? tintedPotion(tint) : S.bake(it.sprite), ix, iy);
     }
 
+    /* 2-b) 상인 — 등불을 깔아 멀리서도 눈에 띄게 한다(여기가 금화를 쓰는 자리다) */
+    if (g.merchant && lv.visible[lv.idx(g.merchant.x, g.merchant.y)]) {
+      var mx2 = g.merchant.x * TILE + ox, my2 = g.merchant.y * TILE + oy;
+      var lamp = ctx.createRadialGradient(mx2 + TILE / 2, my2 + TILE / 2, 2,
+                                          mx2 + TILE / 2, my2 + TILE / 2, TILE * 1.6);
+      lamp.addColorStop(0, "rgba(255, 196, 90, .26)");
+      lamp.addColorStop(1, "rgba(255, 196, 90, 0)");
+      ctx.fillStyle = lamp;
+      ctx.fillRect(mx2 - TILE, my2 - TILE, TILE * 3, TILE * 3);
+      ctx.drawImage(S.bake("merchant"), mx2, my2);
+    }
+
     /* 3) 몬스터 + 체력 띠. 보이는 자리(보간)로 그린다 */
     for (var m = 0; m < g.monsters.length; m++) {
       var mo = g.monsters[m];
@@ -274,6 +315,21 @@
         ctx.fillRect(sx + 3, sy - 5, TILE - 6, 4);
         ctx.fillStyle = frac > 0.5 ? "#6ec06e" : frac > 0.25 ? "#e0b84a" : "#e05a5a";
         ctx.fillRect(sx + 4, sy - 4, Math.round((TILE - 8) * frac), 2);
+      }
+      /* 엘리트 — 이름만으로는 화면에서 못 가린다. 머리 위에 표식을 둔다 */
+      if (mo.elite) {
+        ctx.fillStyle = "#e0742a";
+        ctx.fillRect(sx + TILE / 2 - 4, sy - 10, 8, 3);
+        ctx.fillRect(sx + TILE / 2 - 1, sy - 12, 2, 2);
+      }
+      /* 걸린 상태이상 — 색 점. "독이 일하고 있다" 가 보여야 빌드가 재미있다 */
+      var adx = 0;
+      for (var ak in mo.ail) {
+        var adef = global.DATA.AILMENTS[ak];
+        if (!adef || !mo.ail[ak] || mo.ail[ak].turns <= 0) continue;
+        ctx.fillStyle = adef.color;
+        ctx.fillRect(sx + 3 + adx * 5, sy + TILE - 2, 3, 3);
+        adx++;
       }
     }
 
@@ -327,7 +383,37 @@
     }
 
     this.drawDepthBadge();
+    this.drawToasts();
     return busy;
+  };
+
+  /* 최근 메시지 — 캔버스 아래쪽에 쌓아 올리고 서서히 사라진다.
+   * 아래가 최신이다(기록 패널과 같은 순서라 헷갈리지 않는다). */
+  Renderer.prototype.drawToasts = function () {
+    if (!this.toasts.length) return;
+    var ctx = this.ctx;
+    var lh = 20, pad = 9;
+    var bottom = this.viewH - 12;
+    ctx.font = "600 12.5px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif');
+    ctx.textBaseline = "middle";
+    for (var i = 0; i < this.toasts.length; i++) {
+      var m = this.toasts[i];
+      /* 마지막 25% 구간에서만 사라진다 — 바로 흐려지면 읽을 시간이 없다 */
+      var a = m.t < 0.75 ? 1 : Math.max(0, 1 - (m.t - 0.75) / 0.25);
+      var y = bottom - (this.toasts.length - 1 - i) * lh;
+      var w = ctx.measureText(m.text).width + pad * 2;
+      ctx.globalAlpha = a * 0.78;
+      ctx.fillStyle = "#0b0a0f";
+      ctx.fillRect(14, y - lh / 2 + 1, w, lh - 2);
+      ctx.globalAlpha = a * 0.5;
+      ctx.fillStyle = TONE_COLOR[m.tone] || TONE_COLOR[""];
+      ctx.fillRect(14, y - lh / 2 + 1, 2, lh - 2);          /* 색 띠로 종류를 표시 */
+      ctx.globalAlpha = a;
+      ctx.fillStyle = TONE_COLOR[m.tone] || TONE_COLOR[""];
+      ctx.fillText(m.text, 14 + pad, y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textBaseline = "alphabetic";
   };
 
   /* 층 표시 — 예전엔 검은 사각형에 글자였다. 깊이가 한눈에 읽히도록
@@ -358,10 +444,22 @@
       ctx.fillRect(bx, by, bw, bh);
     }
   };
+  /* ── 사이드바 ─────────────────────────────────────────
+   *
+   * 정보 위계(Brogue·Slay the Spire 에서 배운 것):
+   *   ① 지금 위험한가 — 체력·상태이상
+   *   ② 지금 쓸 수 있는 것 — 스킬 쿨다운
+   *   ③ 내가 무엇이 됐나 — 쌓인 옵션(빌드)
+   *   ④ 가진 것 — 가방
+   * ⚠ 수치를 숨기지 않는다. "치명타 34%" 라고 적어 줘야 다음 선택을 계산할 수 있다. */
 
-  /* ── 사이드바 ───────────────────────────────────────── */
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
 
-  function bar(cur, max, cls, label) {
+  function meter(cur, max, cls, label) {
     var pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
     return '<div class="meter ' + cls + '">' +
              '<i style="width:' + pct.toFixed(1) + '%"></i>' +
@@ -370,60 +468,104 @@
            "</div>";
   }
 
-  function esc(s) {
-    return String(s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
-  }
+  function pct(v) { return Math.round(v * 100) + "%"; }
 
   Renderer.prototype.drawStats = function (el) {
     var g = this.game, p = g.player, c = g.cls;
-    var t = global.DATA.XP_TABLE;
+    var DATA = global.DATA;
+    var t = DATA.XP_TABLE;
     var need = p.level < t.length ? t[p.level] : p.xp;
     var prev = t[p.level - 1] || 0;
-    var ab = c.ability;
-    var ready = p.cooldown <= 0;
-    var cdPct = ready ? 100 : Math.round((1 - p.cooldown / ab.cd) * 100);
+    var st = g.stats();
+    var mx = g.maxhp();
 
     var html = "";
 
-    /* 머리 — 초상화 + 이름. 누구로 내려왔는지가 제일 위에 있어야 한다. */
+    /* 누구인가 */
     html += '<div class="who">' +
       '<canvas class="who-art" width="32" height="32" data-sprite="' + esc(p.sprite) + '"></canvas>' +
       '<div class="who-txt">' +
-        '<b>' + esc(c.title || c.name) + "</b>" +
-        '<em>' + esc(c.name) + ' · Lv.' + p.level + "</em>" +
+        '<b>' + esc(c.title) + "</b>" +
+        '<em>' + esc(c.name) + " · Lv." + p.level + "</em>" +
       "</div>" +
+      '<span class="who-gold">' + g.gold.toLocaleString() + "<i>금</i></span>" +
       "</div>";
 
-    html += bar(p.hp, p.maxhp, "hp", "체력");
-    html += bar(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험");
+    html += meter(p.hp, mx, "hp", "체력");
+    if (p.ward > 0) html += meter(p.ward, mx, "ward", "방벽");
+    html += meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험");
 
-    /* 능력 — 쿨다운이 게이지로 차오른다. 숫자만으로는 "얼마나 남았나" 가 안 읽힌다. */
-    html += '<button class="ability' + (ready ? " ready" : "") + '" id="abilityBtn"' +
-      (ready ? "" : " disabled") + ' title="' + esc(ab.desc) + '">' +
-      '<i style="width:' + cdPct + '%"></i>' +
-      '<span class="k">Q</span>' +
-      '<span class="n">' + esc(ab.name) + "</span>" +
-      '<span class="cd">' + (ready ? "준비됨" : p.cooldown + "턴") + "</span>" +
-      "</button>";
+    /* 상태이상 — 지금 나를 갉아먹는 것이 제일 위에 보여야 한다 */
+    var ails = [];
+    for (var k in p.ail) {
+      var a = DATA.AILMENTS[k];
+      if (a) ails.push('<span class="ail" style="border-color:' + a.color + ';color:' + a.color + '">' +
+                       a.name + " " + p.ail[k].turns + "턴</span>");
+    }
+    if (ails.length) html += '<div class="ails">' + ails.join("") + "</div>";
 
-    /* 능력치 — 아이콘 대신 굵은 숫자. 네 칸이 같은 무게로 보이게. */
+    /* 스킬 — 쿨다운이 게이지로 차오른다. 키는 Q W E R */
+    var keys = ["Q", "W", "E", "R"];
+    html += '<div class="skills">';
+    for (var i = 0; i < DATA.SKILL_SLOTS; i++) {
+      var s = p.skills[i];
+      if (!s) {
+        html += '<div class="skill empty"><span class="k">' + keys[i] + "</span>" +
+                '<span class="n">빈 자리</span></div>';
+        continue;
+      }
+      var def = DATA.byId(DATA.SKILLS, s.id);
+      var cd = g.skillCd(s);
+      var ready = s.cd <= 0;
+      var fill = ready ? 100 : Math.round((1 - s.cd / Math.max(1, cd)) * 100);
+      html += '<button class="skill' + (ready ? " ready" : "") + '" data-skill="' + i + '"' +
+        (ready ? "" : " disabled") + ' title="' + esc(def.desc) + '">' +
+        '<i style="width:' + fill + '%"></i>' +
+        '<span class="k">' + keys[i] + "</span>" +
+        '<span class="n">' + esc(def.name) + '<em>' + s.rank + "단</em></span>" +
+        '<span class="cd">' + (ready ? "준비" : s.cd + "턴") + "</span>" +
+        "</button>";
+    }
+    html += "</div>";
+
+    /* 핵심 수치 */
     html += '<div class="stat-grid">' +
       '<div><em>공격</em><b>' + g.power() + "</b></div>" +
       '<div><em>방어</em><b>' + g.guard() + "</b></div>" +
-      '<div><em>금화</em><b>' + g.gold.toLocaleString() + "</b></div>" +
-      '<div><em>처치</em><b>' + g.kills + "</b></div>" +
+      '<div><em>치명</em><b>' + pct(st.crit) + '<s>×' + st.critMult.toFixed(1) + "</s></b></div>" +
+      '<div><em>상태이상</em><b>' + pct(st.ailChance) + "</b></div>" +
       "</div>";
 
-    html += '<div class="equip">' +
-      '<div><em>무기</em><b>' + (p.weapon ? esc(p.weapon.name) + ' <s>+' + p.weapon.power + "</s>" : "맨손") + "</b></div>" +
-      '<div><em>갑옷</em><b>' + (p.armor ? esc(p.armor.name) + ' <s>+' + p.armor.power + "</s>" : "없음") + "</b></div>" +
-      "</div>";
+    /* 쌓인 옵션 — 이게 "내 빌드" 다. 0 인 것은 안 보여 준다(줄만 늘어난다) */
+    var extra = [];
+    function add(label, v, unit) {
+      if (!v) return;
+      extra.push('<span><em>' + label + "</em><b>" +
+        (unit === "%" ? "+" + Math.round(v * 100) + "%" : (unit === "턴" ? "−" + Math.round(v) + "턴" : "+" + Math.round(v))) +
+        "</b></span>");
+    }
+    add("스킬 피해", st.skillPower, "%");
+    add("상태이상 피해", st.ailPower, "%");
+    add("쿨다운", st.cdReduce, "턴");
+    add("생명 흡수", st.lifesteal, "%");
+    add("물약 효과", st.potionBoost, "%");
+    add("금화 획득", st.goldBoost, "%");
+    if (extra.length) html += '<div class="build">' + extra.join("") + "</div>";
+
+    /* 장비 — 등급 색으로 한눈에 */
+    html += '<div class="equip">';
+    var slots = [["weapon", "무기"], ["armor", "갑옷"], ["offhand", "보조"]];
+    for (var q = 0; q < slots.length; q++) {
+      var it = p[slots[q][0]];
+      html += "<div><em>" + slots[q][1] + "</em>" +
+        (it ? '<b style="color:' + esc(it.color) + '">' + esc(it.name) +
+              "<s>+" + it.power + "</s></b>"
+            : "<b>없음</b>") + "</div>";
+    }
+    html += "</div>";
 
     el.innerHTML = html;
 
-    /* 초상화에 실제 도트를 넣는다 — 글자만 있으면 누구인지 안 와닿는다 */
     var art = el.querySelector(".who-art");
     if (art) {
       var x = art.getContext("2d");
@@ -432,6 +574,7 @@
     }
   };
 
+  /* 가방 — 등급 색 + 옵션 줄. 아이템을 고르는 것이 빌드이므로 옵션이 보여야 한다. */
   Renderer.prototype.drawInventory = function (el) {
     var g = this.game, p = g.player;
     if (!p.inventory.length) {
@@ -441,18 +584,18 @@
     var html = "";
     for (var i = 0; i < p.inventory.length; i++) {
       var it = p.inventory[i];
-      var worn = (it === p.weapon || it === p.armor);
-      /* 미식별 물약은 겉모습 이름으로 부르고 그 색 점을 찍는다 —
-       * 이름만으로는 화면의 병과 가방 속 병을 짝지을 수 없다. */
-      var nm = g.itemName(it), ds = g.itemDesc(it), col = g.itemColor(it);
+      var worn = it.slot && p[it.slot] === it;
+      var nm = g.itemName(it);
+      var col = g.itemColor(it) || it.color || null;
       var unknown = (it.kind === "potion" && !g.identified[it.id]);
+      var lines = g.itemLines(it);
       html += '<button class="inv-item' + (worn ? " worn" : "") + (unknown ? " unknown" : "") +
-        '" data-idx="' + i + '" title="' + esc(ds || "") + ' (우클릭: 버리기)">' +
+        '" data-idx="' + i + '" title="우클릭: 버리기">' +
         '<span class="key">' + (i + 1 <= 9 ? (i + 1) : "·") + "</span>" +
-        '<span class="nm">' +
-        (col ? '<i class="dot" style="background:' + esc(col) + '"></i>' : "") +
-        esc(nm) + (worn ? " <i>착용중</i>" : "") + "</span>" +
-        '<span class="ds">' + esc(ds || "") + "</span>" +
+        '<span class="nm"' + (col ? ' style="color:' + esc(col) + '"' : "") + ">" +
+        (it.kind === "potion" ? '<i class="dot" style="background:' + esc(col || "#888") + '"></i>' : "") +
+        esc(nm) + (worn ? " <i>착용</i>" : "") + "</span>" +
+        '<span class="ds">' + lines.map(esc).join(" · ") + "</span>" +
         "</button>";
     }
     el.innerHTML = html;
@@ -460,7 +603,7 @@
 
   Renderer.prototype.drawLog = function (el) {
     var log = this.game.log;
-    var start = Math.max(0, log.length - 60);
+    var start = Math.max(0, log.length - 70);
     var html = "";
     for (var i = start; i < log.length; i++) {
       html += '<p class="m ' + log[i].tone + '">' + esc(log[i].text) + "</p>";
@@ -469,6 +612,82 @@
     el.scrollTop = el.scrollHeight;
   };
 
+  /* ── 레벨업 선택 ─────────────────────────────────────
+   * 항상 3개를 나란히 보여 준다(Hades 방식). 무엇을 포기하는지가 보여야 선택이 된다. */
+  Renderer.prototype.drawPerks = function (el) {
+    var g = this.game, DATA = global.DATA;
+    if (!g.pendingPerks) return;
+    var html = "";
+    for (var i = 0; i < g.pendingPerks.length; i++) {
+      var c = g.pendingPerks[i];
+      var kind, title, note, tag;
+      if (c.what === "perk") {
+        kind = "stat"; title = c.perk.label; note = c.perk.note; tag = "능력치";
+      } else {
+        var def = DATA.byId(DATA.SKILLS, c.skill);
+        if (c.what === "skillnew") { kind = "new"; title = def.name; note = def.desc; tag = "새 스킬"; }
+        else { kind = "up"; title = def.name + " → " + c.rank + "단"; note = def.desc; tag = "스킬 강화"; }
+      }
+      html += '<button class="perk ' + kind + '" data-perk="' + i + '">' +
+        '<span class="perk-key">' + (i + 1) + "</span>" +
+        '<span class="perk-tag">' + tag + "</span>" +
+        '<span class="perk-title">' + esc(title) + "</span>" +
+        '<span class="perk-note">' + esc(note) + "</span>" +
+        "</button>";
+    }
+    el.innerHTML = html;
+  };
+
+  /* ── 상점 ────────────────────────────────────────────
+   * 왼쪽에 파는 물건, 오른쪽에 내 가방(팔 수 있다). 금화가 힘이 되는 자리다. */
+  Renderer.prototype.drawShop = function (elBuy, elSell, elGold) {
+    var g = this.game, DATA = global.DATA;
+    if (!g.shop) return;
+    elGold.textContent = g.gold.toLocaleString();
+
+    var html = "", i;
+    for (i = 0; i < g.shop.length; i++) {
+      var row = g.shop[i];
+      var can = !row.sold && g.gold >= row.cost;
+      var name, lines, col;
+      if (row.what === "skill") {
+        var def = DATA.byId(DATA.SKILLS, row.skill);
+        name = def.name + " " + row.rank + "단";
+        lines = [def.desc];
+        col = "#8ae8f0";
+      } else {
+        name = g.itemName(row.item);
+        lines = g.itemLines(row.item);
+        col = row.item.color || g.itemColor(row.item) || null;
+      }
+      html += '<button class="shop-row' + (row.sold ? " sold" : (can ? "" : " poor")) +
+        '" data-buy="' + i + '"' + (row.sold || !can ? " disabled" : "") + ">" +
+        '<span class="shop-kind">' + (row.what === "skill" ? "스킬" : "물건") + "</span>" +
+        '<span class="shop-nm"' + (col ? ' style="color:' + esc(col) + '"' : "") + ">" + esc(name) + "</span>" +
+        '<span class="shop-ds">' + lines.map(esc).join(" · ") + "</span>" +
+        '<span class="shop-cost">' + (row.sold ? "판매됨" : row.cost + " 금") + "</span>" +
+        "</button>";
+    }
+    elBuy.innerHTML = html || '<div class="empty">물건이 없다.</div>';
+
+    html = "";
+    for (i = 0; i < g.player.inventory.length; i++) {
+      var it = g.player.inventory[i];
+      var price = Math.max(4, Math.round((it.cost || 10) * 0.42));
+      var worn = it.slot && g.player[it.slot] === it;
+      html += '<button class="shop-row sell" data-sell="' + i + '">' +
+        '<span class="shop-kind">' + (worn ? "착용" : "가방") + "</span>" +
+        '<span class="shop-nm"' + (it.color ? ' style="color:' + esc(it.color) + '"' : "") + ">" +
+        esc(g.itemName(it)) + "</span>" +
+        '<span class="shop-ds">' + g.itemLines(it).map(esc).join(" · ") + "</span>" +
+        '<span class="shop-cost">+' + price + " 금</span>" +
+        "</button>";
+    }
+    elSell.innerHTML = html || '<div class="empty">팔 것이 없다.</div>';
+  };
+
   global.Renderer = Renderer;
   global.TILE = TILE;
+  /* 입력 반복 간격을 여기에 맞춘다 — 어긋나면 걸음이 끊기거나 겹친다 */
+  global.STEP_MS = STEP_MS;
 })(window);

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>심연의 계단</title>
 <meta name="description" content="10층 아래 심연의 군주를 쓰러뜨리는 턴제 던전 크롤러.">
-<link rel="stylesheet" href="css/style.css?v=5">
+<link rel="stylesheet" href="css/style.css?v=8">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <body>
@@ -31,15 +31,20 @@
       <canvas id="view"></canvas>
     </div>
 
+    <!-- ⚠ 기록은 **바닥에 고정**한다. 상태창이 길어지면(스킬 4칸·빌드 요약이 생겼다)
+         기록 패널이 화면 밖으로 밀려나 스크롤해야 보였다 — 그러면 실시간으로
+         안 따라오는 것처럼 느껴진다. 위쪽만 스크롤 영역으로 둔다. -->
     <aside class="side">
-      <section id="stats" class="panel stats"></section>
+      <div class="side-scroll">
+        <section id="stats" class="panel stats"></section>
 
-      <section class="panel">
-        <h2>가방 <small>숫자키 또는 클릭</small></h2>
-        <div id="inv" class="inv"></div>
-      </section>
+        <section class="panel">
+          <h2>가방 <small>숫자키 · 우클릭으로 버리기</small></h2>
+          <div id="inv" class="inv"></div>
+        </section>
+      </div>
 
-      <section class="panel grow">
+      <section class="panel logpanel">
         <h2>기록</h2>
         <div id="log" class="log"></div>
       </section>
@@ -57,8 +62,14 @@
     </div>
     <div class="acts">
       <button id="btnPick">줍기</button>
-      <button id="btnAbility">능력</button>
+      <button id="btnShoot">쏘기</button>
       <button id="btnDown">내려가기</button>
+    </div>
+    <div class="acts skillpad">
+      <button data-skillbtn="0">Q</button>
+      <button data-skillbtn="1">W</button>
+      <button data-skillbtn="2">E</button>
+      <button data-skillbtn="3">R</button>
     </div>
   </nav>
 
@@ -85,7 +96,8 @@
       <div class="guide-row"><kbd>Space</kbd><span>발 밑의 물건을 <b>줍는다</b></span></div>
       <div class="guide-row"><kbd>우클릭</kbd><span>가방의 물건을 <b>버린다</b>. 자리가 없을 때 쓴다 — 발 밑에 뭐가 있으면 <b>교환</b>된다</span></div>
       <div class="guide-row"><kbd>Enter</kbd><span>계단에서 <b>다음 층으로</b> 내려간다</span></div>
-      <div class="guide-row"><kbd>Q</kbd><span>직업 <b>능력</b>을 쓴다 (쿨다운이 있다)</span></div>
+      <div class="guide-row"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><span><b>스킬</b> 4칸. 레벨업·상점에서 모은다</span></div>
+      <div class="guide-row"><kbd>F</kbd><span>활을 들었으면 <b>멀리서 쏜다</b></span></div>
       <div class="guide-row"><kbd>1</kbd>~<kbd>9</kbd><span>가방의 물건을 쓴다 (오른쪽 목록을 클릭해도 된다)</span></div>
       <div class="guide-row"><kbd>.</kbd><span>한 턴 쉰다. <b>턴제</b>라 내가 움직여야 적도 움직인다</span></div>
       <div class="guide-row"><kbd>?</kbd><span>언제든 도움말</span></div>
@@ -95,6 +107,37 @@
       물약은 <b>마셔 봐야</b> 무엇인지 알고, 바닥에는 <b>숨은 함정</b>이 있다.</p>
 
     <p class="hint">직업을 고르면 시작한다 · 휴대폰은 화면 아래 방향 패드로 조작</p>
+  </div>
+</div>
+
+<!-- 레벨업 선택 — 항상 3개. 무엇을 포기하는지가 보여야 선택이 된다(Hades 방식). -->
+<div id="perks" class="overlay" hidden>
+  <div class="card wide">
+    <h2>레벨이 올랐다</h2>
+    <p class="tag">하나를 고른다. 정해진 틀은 없다 — 쌓이는 것이 곧 당신의 빌드다.</p>
+    <div class="perks" id="perkList"></div>
+    <p class="hint">1 · 2 · 3 키로도 고른다</p>
+  </div>
+</div>
+
+<!-- 상점 -->
+<div id="shop" class="overlay" hidden>
+  <div class="card shop-card">
+    <div class="shop-head">
+      <h2>상인</h2>
+      <span class="shop-gold">금화 <b id="shopGold">0</b></span>
+      <button id="shopClose" class="ghost">닫기 (Esc)</button>
+    </div>
+    <div class="shop-cols">
+      <div>
+        <h3>파는 물건</h3>
+        <div class="shop-list" id="shopBuy"></div>
+      </div>
+      <div>
+        <h3>내 가방 <small>눌러서 팔기</small></h3>
+        <div class="shop-list" id="shopSell"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -125,7 +168,8 @@
           <tr><td>Space</td><td>발 밑의 물건 줍기</td></tr>
           <tr><td>가방에서 우클릭</td><td>버리기 (자리 비우기) · 발 밑에 뭐가 있으면 교환</td></tr>
           <tr><td>가방을 길게 누르기</td><td>버리기 (휴대폰 · 0.45초)</td></tr>
-          <tr><td>Q</td><td>직업 능력</td></tr>
+          <tr><td>Q W E R</td><td>스킬 1~4칸</td></tr>
+          <tr><td>F</td><td>원거리 공격 (활)</td></tr>
           <tr><td>1 ~ 9</td><td>가방의 물건 쓰기</td></tr>
           <tr><td>Enter 또는 &gt;</td><td>계단 내려가기</td></tr>
           <tr><td>M</td><td>효과음 켜기/끄기</td></tr>
@@ -146,6 +190,11 @@
           <li><b>문으로 둘러싸인 방</b>은 보물방이다. 좋은 물건이 있고 지키는 놈도 있다.</li>
           <li>더 좋은 무기·갑옷은 주우면 자동으로 착용된다.</li>
           <li><b>도망은 유효한 전술이다.</b> 체력이 낮으면 계단으로 달리는 편이 낫다.</li>
+          <li><b>정해진 틀이 없다.</b> 레벨업마다 능력치나 스킬을 고르고, 아이템 옵션이 쌓여 빌드가 된다. 상한은 없다.</li>
+          <li><b>아이템은 굴려서 나온다.</b> 색이 등급이다 — 흰(일반) · 파랑(고급) · 노랑(희귀) · 주황(유물).</li>
+          <li><b>2층마다 상인</b>이 있다. 걸어가면 물건과 스킬을 사고, 가방을 팔 수 있다.</li>
+          <li><b>치명타</b>가 터진다. 확률과 배수를 아이템·레벨업으로 올린다.</li>
+          <li><b>중독·출혈</b>은 턴마다 갉아먹는다. 상태이상 확률을 올리면 때릴 때 걸린다.</li>
           <li><b>10층</b>에 심연의 군주가 있다. 쓰러뜨리면 먹힌 이름들이 돌아온다 — 그게 승리다.</li>
         </ul>
       </div>
@@ -155,13 +204,14 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=5"></script>
-<script src="js/sprites-art.js?v=5"></script>
-<script src="js/sound.js?v=5"></script>
-<script src="js/data.js?v=5"></script>
-<script src="js/dungeon.js?v=5"></script>
-<script src="js/game.js?v=5"></script>
-<script src="js/render.js?v=5"></script>
-<script src="js/main.js?v=5"></script>
+<script src="js/sprites.js?v=8"></script>
+<script src="js/sprites-art.js?v=8"></script>
+<script src="js/sound.js?v=8"></script>
+<script src="js/data.js?v=8"></script>
+<script src="js/items.js?v=8"></script>
+<script src="js/dungeon.js?v=8"></script>
+<script src="js/game.js?v=8"></script>
+<script src="js/render.js?v=8"></script>
+<script src="js/main.js?v=8"></script>
 </body>
 </html>

@@ -264,6 +264,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       }
       if (i % 4 === 0) await tap("g");
       st = await ev(`window.__peek()`);
+      /* ⚠ 상인을 밟으면 상점이 열리고 그 동안 모든 행동이 막힌다 — 닫아 줘야 계속 간다.
+       *   레벨업 선택도 같다(열려 있으면 뒤에서 아무 것도 못 한다). */
+      if (st.shopOpen) { await ev("window.__closeShop && window.__closeShop()"); st = await ev(`window.__peek()`); }
+      if (st.perkOpen) { await ev("window.__pickPerk && window.__pickPerk(0)"); st = await ev(`window.__peek()`); }
       if (st.depth !== depthSeen) { map = await ev(`window.__map()`); depthSeen = st.depth; }
     }
     endCheck = await ev(`(()=>{
@@ -282,7 +286,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   //    로직 검사로는 "값이 맞다" 까지만 안다. 버튼이 잠기고 풀리는지는 화면에서 봐야 한다.
   const feat = await ev(`(()=>{
     const before = window.__peek();
-    const btn = document.getElementById("abilityBtn");
+    const btn = document.querySelector("[data-skill]");
     return { cdBefore: before.cooldown, btnReady: btn ? !btn.disabled : null,
              btnText: btn ? btn.textContent.replace(/s+/g," ").trim() : "(없음)",
              traps: before.traps, treasure: before.treasure, bag: before.bag };
@@ -293,7 +297,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   await sleep(120);
   const feat2 = await ev(`(()=>{
     const st = window.__peek();
-    const btn = document.getElementById("abilityBtn");
+    const btn = document.querySelector("[data-skill]");
     const last = document.querySelector("#log .m:last-child");
     return { cd: st.cooldown, disabled: btn ? btn.disabled : null,
              text: btn ? btn.textContent.replace(/s+/g," ").trim() : "",
@@ -305,6 +309,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const looks = window.DATA.POTION_LOOKS.map(l=>l.label);
     return { names, looks };
   })()`);
+  //  ⚠ 빌드 검사는 **버리기 검사보다 앞**에 둔다. 우클릭 검사가 무기를 내려놓아서
+  //    뒤에 재면 장비가 null 로 보인다(실제로 그렇게 오진했다).
+  // ── 3-f) 빌드 시스템이 실제로 화면에 붙었는가 ──
+  const build = await ev(
+    "(function(){" +
+    "  var p = window.__peek();" +
+    "  var skillRows = document.querySelectorAll('.skills .skill').length;" +
+    "  var ready = document.querySelectorAll('.skills .skill.ready').length;" +
+    "  var invColored = [...document.querySelectorAll('.inv-item .nm')]" +
+    "     .filter(function(e){ return e.style.color; }).length;" +
+    "  var gold = document.querySelector('.who-gold');" +
+    "  return { skillRows: skillRows, ready: ready, invColored: invColored," +
+    "           gold: gold ? gold.textContent.trim() : '(없음)'," +
+    "           skills: p.skills.length, crit: p.crit, weapon: p.weapon, rarity: p.rarity," +
+    "           merchant: p.merchant };" +
+    "})()");
   // ── 3-d) 4방향 조작과 우클릭 버리기 ──
   //    ⚠ 대각선 키(YUBN)가 정말 죽었는지, 우클릭이 브라우저 메뉴만 띄우고
   //      끝나지 않는지는 화면에서 눌러 봐야 안다.
@@ -362,6 +382,52 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     zoomCheck = { ta: before.ta, scale0: before.scale, scale1: after.scale,
                   turn0: st0.turn, turn1: st1.turn, x0: st0.x, x1: st1.x };
   }
+  // ── 3-g) 누르고 있을 때의 걸음 속도 + 기록 가시성 ──
+  //    ⚠ 둘 다 사용자가 직접 신고한 문제다:
+  //      "화살표 쭉 누르면 캐릭터가 한번에 슝 간다" · "기록이 실시간으로 안 따라온다"
+  //    OS 키 반복은 30ms 간격이라 그대로 받으면 1초에 30칸을 간다.
+  //  ⚠ 한 방향만 누르면 그쪽이 벽일 때 0걸음이 나와 "입력이 안 먹는다" 로 오진한다
+  //    (실제로 그렇게 나왔다). 지도를 읽어 **열린 방향**을 골라 누른다.
+  const openDir = await ev(
+    "(function(){" +
+    "  var m = window.__map(), p = window.__peek();" +
+    "  var opts = [[0,-1,'ArrowUp',38],[0,1,'ArrowDown',40],[-1,0,'ArrowLeft',37],[1,0,'ArrowRight',39]];" +
+    "  for (var i=0;i<opts.length;i++) {" +
+    "    var nx = p.x + opts[i][0], ny = p.y + opts[i][1];" +
+    "    var run = 0;" +
+    "    while (run < 5 && m.walk[(ny+opts[i][1]*run)*m.w + (nx+opts[i][0]*run)]) run++;" +
+    "    if (run >= 3) return { key: opts[i][2], vk: opts[i][3], run: run };" +
+    "  }" +
+    "  return null;" +
+    "})()");
+  const hold = await ev("window.__peek()");
+  let heldTurns = -1;
+  if (openDir && canAct) {
+    await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key: openDir.key, code: openDir.key,
+                                        windowsVirtualKeyCode: openDir.vk });
+    for (let i = 0; i < 20; i++) {   /* OS 반복을 흉내 낸다 — 600ms 동안 20번 */
+      await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key: openDir.key, code: openDir.key,
+                                          windowsVirtualKeyCode: openDir.vk, autoRepeat: true });
+      await sleep(30);
+    }
+    await S("Input.dispatchKeyEvent", { type: "keyUp", key: openDir.key, code: openDir.key });
+    await sleep(80);
+    const hold2 = await ev("window.__peek()");
+    heldTurns = hold2.turn - hold.turn;
+  }
+
+  //  기록 패널이 실제로 화면 안에 보이는가
+  const logBox = await ev(
+    "(function(){" +
+    "  var el = document.getElementById('log');" +
+    "  var r = el.getBoundingClientRect();" +
+    "  var lines = el.querySelectorAll('.m').length;" +
+    "  var atBottom = Math.abs(el.scrollTop + el.clientHeight - el.scrollHeight) < 4;" +
+    "  return { top: Math.round(r.top), bottom: Math.round(r.bottom), h: Math.round(r.height)," +
+    "           inView: r.top >= 0 && r.bottom <= innerHeight + 1 && r.height > 40," +
+    "           lines: lines, atBottom: atBottom," +
+    "           toasts: (window.__toasts ? window.__toasts() : -1) };" +
+    "})()");
   // ── 4) 도움말이 열리고 닫히는가 ──
   await ev(`document.getElementById("helpBtn").click()`);
   const helpOpen = await ev(`!document.getElementById("help").hidden`);
@@ -377,7 +443,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         bad.push((el.id||el.className||el.tagName)+" right="+Math.round(r.right));
     });
     return { docScroll: document.documentElement.scrollWidth > innerWidth,
-             count: bad.length, sample: bad.slice(0,5) };
+             count: bad.length, sample: bad.slice(0,8) };
   })()`);
 
   // ── 출력 ──
@@ -418,6 +484,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const wrapped = [...document.querySelectorAll(".top h1, .top .ghost")]
       .filter(el => lineCount(el) > 1).map(el => el.textContent.trim() + "(" + lineCount(el) + "줄)");
     const side = document.querySelector(".side");
+    /* ⚠ 스크롤하는 것은 .side 가 아니라 안쪽 .side-scroll 이다(기록 패널을 바닥에
+     *   고정하면서 바뀌었다). 바깥을 보면 "스크롤 없음" 으로 나와 오진한다. */
+    const scroller = document.querySelector(".side-scroll") || side;
     const sr = side.getBoundingClientRect();
     // 패널 경계가 글자를 자르는지: 사이드바 바닥에 걸친 패널이 있는가
     const cut = [...document.querySelectorAll(".side .panel")].filter(pl => {
@@ -426,22 +495,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }).length;
     // 패널이 찌그러져 자식이 밖으로 새어 나와 겹치는지 — 이게 진짜로 났던 결함이다.
     // (flex 항목 기본값이 줄어드는 것이라 상자만 작아지고 내용은 그대로 그려진다)
+    /* ⚠ 스크롤 영역 안의 요소는 컨테이너 밖으로 나간 부분이 **잘려서** 안 보인다.
+     *   그걸 겹침으로 세면 오탐이다(실측: inv ↔ log 가 그렇게 빨개졌다).
+     *   그래서 같은 스크롤 컨테이너 안에서만, 그리고 보이는 범위로 잘라서 비교한다. */
+    function clipOf(e) {
+      let n2 = e.parentElement;
+      while (n2 && n2 !== document.body) {
+        const ov = getComputedStyle(n2).overflowY;
+        if (ov === "auto" || ov === "scroll" || ov === "hidden") return n2;
+        n2 = n2.parentElement;
+      }
+      return null;
+    }
     const blocks = [...document.querySelectorAll(".side .stats, .side .stat-grid, .side .equip, .side .inv, .side .log, .side h2")]
-      .map(e => ({ n: (e.className||e.tagName)+"", r: e.getBoundingClientRect() }))
-      .filter(b => b.r.height > 0);
+      .map(e => ({ n: (e.className||e.tagName)+"", r: e.getBoundingClientRect(), clip: clipOf(e) }))
+      .filter(b => {
+        if (b.r.height <= 0) return false;
+        if (!b.clip) return true;
+        const cr = b.clip.getBoundingClientRect();
+        return b.r.bottom > cr.top && b.r.top < cr.bottom;   /* 잘려 안 보이는 것은 뺀다 */
+      });
     const laps = [];
     for (let i=0;i<blocks.length;i++) for (let j=i+1;j<blocks.length;j++) {
       const a=blocks[i].r, b=blocks[j].r;
+      if (blocks[i].clip !== blocks[j].clip) continue;   /* 다른 스크롤 영역끼리는 비교하지 않는다 */
       if (a.top < b.top && a.bottom > b.top + 2 && !(a.top <= b.top && a.bottom >= b.bottom))
         laps.push(blocks[i].n + " ↔ " + blocks[j].n);
     }
     const spill = [...document.querySelectorAll(".side .panel")].filter(pl => {
       const pr = pl.getBoundingClientRect();
+      if (getComputedStyle(pl).overflowY !== "visible") return false;
       return [...pl.children].some(c => c.getBoundingClientRect().bottom > pr.bottom + 2);
     }).map(pl => pl.className);
     const cv = document.getElementById("view").getBoundingClientRect();
     return { topH: Math.round(top.getBoundingClientRect().height), wrapped,
-             sideH: Math.round(sr.height), sideScroll: side.scrollHeight > side.clientHeight,
+             sideH: Math.round(sr.height),
+             sideScroll: scroller.scrollHeight > scroller.clientHeight + 1,
              cut, canvasH: Math.round(cv.height), laps: laps.slice(0,4), spill,
              pageOverflowY: document.documentElement.scrollHeight > innerHeight + 1 };
   })()`);
@@ -487,6 +576,20 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       "touch-action=" + zoomCheck.ta + " · 배율 " + zoomCheck.scale0 + " → " + zoomCheck.scale1 +
       " · 8번 눌러 턴 " + zoomCheck.turn0 + " → " + zoomCheck.turn1);
   }
+  console.log("스킬 4칸     :", ok(build.skillRows === 4 && build.skills >= 1),
+    "칸 " + build.skillRows + "개 · 배운 것 " + build.skills + "개 · 준비됨 " + build.ready + "개");
+  console.log("치명타·장비  :", ok(build.crit > 0 && !!build.weapon),
+    "치명 " + Math.round(build.crit * 100) + "% · 무기 \"" + build.weapon + "\" (" + build.rarity + ")" +
+    " · 가방 색칠 " + build.invColored + "개");
+  console.log("금화 표시    :", ok(build.gold !== "(없음)"), build.gold);
+  //  600ms 동안 OS 반복 20번 → 걸음 간격(115ms)이면 5~7걸음이 정상이다.
+  console.log("누르고 걷기  :", ok(!canAct || (heldTurns >= 2 && heldTurns <= 9)),
+    heldTurns < 0 ? "열린 방향을 못 찾아 검사 못 함"
+      : "600ms 에 " + heldTurns + "걸음 (OS 반복 20번을 그대로 받으면 20걸음)");
+  console.log("기록 가시성  :", ok(logBox.inView && logBox.atBottom),
+    "패널 y" + logBox.top + "~" + logBox.bottom + " (높이 " + logBox.h + ") · " +
+    logBox.lines + "줄 · 맨 아래로 " + (logBox.atBottom ? "따라감" : "⚠안 따라감") +
+    (logBox.inView ? "" : " · ⚠화면 밖"));
   console.log("상태창       :", ui.stats);
   console.log("마지막 기록  :", ui.lastLog);
 
@@ -499,9 +602,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const pass = errs.length === 0 && canvas.litPct > 3 && moved && turned && canvas2.hash !== canvas.hash &&
                !overflow.docScroll && overflow.count === 0 && helpOpen && helpClosed &&
                (!zoomCheck || (Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 && zoomCheck.ta === "manipulation" && zoomCheck.turn1 > zoomCheck.turn0)) &&
+               (!canAct || (heldTurns >= 2 && heldTurns <= 9)) && logBox.inView && logBox.atBottom &&
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
-               abilityWorks && potions.looks.length >= potions.names.length &&
+               build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
+               build.gold !== "(없음)" &&
+               potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&
                startCheck.art.every(a => a > 8) &&
                layout.wrapped.length === 0 && (layout.cut === 0 || layout.sideScroll) && !layout.pageOverflowY &&

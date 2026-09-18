@@ -87,8 +87,10 @@ for (let i = 0; i < 8; i++) {
 const t1 = await ev("window.__peek()");
 console.log("③ 연타 즉시 반응:", ok(t1.turn - t0.turn >= 6), "8번 눌러 턴 " + t0.turn + " → " + t1.turn);
 
-/* ④ 가만히 있으면 고리가 멈추는가 */
-await sleep(600);
+/* ④ 가만히 있으면 고리가 멈추는가
+ *    ⚠ 최근 메시지 토스트가 3.6초 동안 서서히 사라진다 — 그 동안은 프레임이 도는 것이
+ *      **정상**이다. 600ms 만 기다리고 "고리가 계속 돈다" 고 판정하면 오진이다. */
+await sleep(4200);
 const idle = await ev("window.__vis()");
 console.log("④ 유휴 시 정지  :", ok(!idle.raf && !idle.moving), idle.raf ? "고리가 계속 돈다" : "멈춤");
 

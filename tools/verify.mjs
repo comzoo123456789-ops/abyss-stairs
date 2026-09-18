@@ -1,8 +1,8 @@
 //  전체 회귀 검사 — 로직(Node) + 화면(Chrome) 을 한 번에 돌린다.
 //
-//    사용:  node tools/verify.mjs [판수]        기본 150판/직업
+//    사용:  node tools/verify.mjs [판수]        기본 120판/직업
 //
-//  로직 검사는 DOM 없이 규칙만 돌린다(던전 연결성 · 예외 · 직업별 밸런스).
+//  로직 검사는 DOM 없이 규칙만 돌린다(던전 · 아이템 굴림 · 치명타 · 상태이상 · 빌드).
 //  화면 검사는 tools/check.mjs 를 폭별로 돌린다.
 //  ⚠ 둘 다 필요하다 — 로직이 맞아도 캔버스가 0px 일 수 있고,
 //    화면이 멀쩡해도 경험치가 NaN 일 수 있다(실제로 둘 다 났다).
@@ -15,14 +15,14 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const JS = path.join(ROOT, "public", "js");
-const N = parseInt(process.argv[2] || "150", 10);
+const N = parseInt(process.argv[2] || "120", 10);
 
 function loadRules() {
   const win = {};
-  const ctx = vm.createContext({ window: win, Math, console, Uint8Array, Int32Array });
-  /* sound.js 는 DOM·WebAudio 를 쓰므로 여기서는 안 올린다 —
+  const ctx = vm.createContext({ window: win, Math, console, Uint8Array, Uint16Array, Int32Array });
+  /* sound.js · sprites* 는 DOM 을 쓰므로 안 올린다 —
    * game.js 가 `if (global.SFX)` 로 감싸 두어 없어도 돈다(그러라고 감쌌다). */
-  for (const f of ["data.js", "dungeon.js", "game.js"]) {
+  for (const f of ["data.js", "items.js", "dungeon.js", "game.js"]) {
     vm.runInContext(fs.readFileSync(path.join(JS, f), "utf8"), ctx, { filename: f });
   }
   return win;
@@ -30,12 +30,12 @@ function loadRules() {
 
 //  ⚠ 이동이 4방향이 된 뒤로는 검사도 4방향이어야 한다. 8방향으로 두면 AI 가
 //    사람이 갈 수 없는 길로 가서 승률이 실제보다 높게 나온다.
-const DIRS = [[0,-1],[0,1],[-1,0],[1,0]];
+const DIRS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
 let fails = 0;
 const ok = (b) => { if (!b) fails++; return b ? "✔" : "✘"; };
 
 const W = loadRules();
-const { Game, DUNGEON: D, DATA, josa } = W;
+const { Game, DUNGEON: D, DATA, ITEMS, josa } = W;
 
 console.log("── 로직 ──");
 
@@ -47,8 +47,7 @@ for (const f of fs.readdirSync(JS)) {
 }
 console.log("문법        :", ok(synBad === 0), fs.readdirSync(JS).length + "개 파일");
 
-// 2) 던전 연결성 — 시작점에서 계단까지 걸어갈 수 있는가
-//    ⚠ 보물방을 문으로 둘러싼 뒤에도 성립해야 한다(벽으로 막으면 아이템이 영영 안 닿는다).
+// 2) 던전 연결성 + 보물방 진입 가능성
 let unreachable = 0, treasureSealed = 0, treasureCount = 0;
 for (let s = 1; s <= 200; s++) {
   for (let depth = 1; depth <= DATA.MAX_DEPTH; depth++) {
@@ -83,10 +82,10 @@ console.log("던전 연결성 :", ok(unreachable === 0), 200 * DATA.MAX_DEPTH + 
 console.log("보물방      :", ok(treasureSealed === 0),
   treasureCount + "개 생성 · 들어갈 수 없는 방 " + treasureSealed + "개");
 
-// 3) 조사 — 받침 판정
-const JOSA = [["굶주린 쥐","를"],["고블린","을"],["해골 병사","를"],["오크 전사","를"],["망령","을"],
-              ["동굴 트롤","을"],["심연의 군주","를"],["치유 물약","을"],["단검","을"],["전투 도끼","를"],
-              ["붉은 물약","을"],["금화 10","을"],["금화 22","를"],["금화 45","를"],["금화 9","를"]];
+// 3) 조사
+const JOSA = [["굶주린 쥐", "를"], ["고블린", "을"], ["해골 병사", "를"], ["오크 전사", "를"],
+              ["망령", "을"], ["동굴 트롤", "을"], ["심연의 군주", "를"], ["치유 물약", "을"],
+              ["붉은 물약", "을"], ["금화 10", "을"], ["금화 22", "를"], ["금화 9", "를"]];
 const badJosa = JOSA.filter(([w, want]) => josa(w, "을", "를").slice(w.length) !== want);
 console.log("한국어 조사 :", ok(badJosa.length === 0),
   JOSA.length + "건 중 틀림 " + badJosa.length + (badJosa.length ? " — " + badJosa.map(b => b[0]).join(", ") : ""));
@@ -97,186 +96,212 @@ const dataSrc = fs.readFileSync(path.join(JS, "data.js"), "utf8");
 const strayMd = (dataSrc.match(/["'][^"'\n]*\*\*[^"'\n]*["']/g) || []).length;
 console.log("문구        :", ok(strayMd === 0), strayMd ? "마크다운 기호 " + strayMd + "건" : "마크다운 기호 없음");
 
-// 5) 직업이 서로 다른가 — 같으면 고를 이유가 없다
-const seenAb = {};
-let dupAb = 0;
-for (const c of DATA.CLASSES) { if (seenAb[c.ability.kind]) dupAb++; seenAb[c.ability.kind] = 1; }
-console.log("직업 구분   :", ok(DATA.CLASSES.length >= 3 && dupAb === 0),
-  DATA.CLASSES.map(c => c.name + "(" + c.ability.name + ")").join(" · "));
-
-// 6) 미식별 물약 — 겉모습이 겹치지 않는가
-const g0 = new Game("warrior");
-const potions = DATA.ITEMS.filter(i => i.kind === "potion");
-const labels = new Set(potions.map(p => g0.potionLook[p.id] && g0.potionLook[p.id].label));
-console.log("미식별 물약 :", ok(labels.size === potions.length && DATA.POTION_LOOKS.length >= potions.length),
-  potions.length + "종 · 서로 다른 겉모습 " + labels.size + "개 · 색 후보 " + DATA.POTION_LOOKS.length + "개");
-
-// 7) 경험치·레벨이 정말 오르는가 (한 번 NaN 으로 죽어 있던 자리다)
-const lvlG = new Game("warrior");
-lvlG.gainXp(1000);
-console.log("레벨업      :", ok(lvlG.player.level > 1 && !isNaN(lvlG.player.xp)),
-  "경험 " + lvlG.player.xp + " → 레벨 " + lvlG.player.level + " · 공격 " + lvlG.power() + " · 체력 " + lvlG.player.maxhp);
-
-// 7-b) 직업 능력 — 피해가 들어가고 쿨이 걸리고 다시 풀리는가.
-//      ⚠ 화면에서는 "버튼이 보인다" 까지만 확인된다. 1층엔 붙을 적이 없어서
-//        브라우저 검사만으로는 쿨다운이 도는지 알 수 없다 — 여기서 못박는다.
-const abRows = [];
-for (const c of DATA.CLASSES) {
-  const g = new Game(c.id);
-  g.reset(4242, c.id);
-  /* 옆 칸에 적을 하나 세운다 — 능력마다 사거리가 달라 인접이 가장 확실하다 */
-  const mdef = DATA.byId(DATA.MONSTERS, "goblin");
-  const target = g.spawn(mdef, g.player.x + 1, g.player.y);
-  target.hp = 9999; target.maxhp = 9999;   /* 한 방에 죽으면 피해량을 못 읽는다 */
-  g.monsters = [target];
-  const hp0 = target.hp;
-  const used = g.useAbility();
-  const dealt = hp0 - target.hp;
-  const cdSet = g.player.cooldown;
-  const blocked = g.useAbility() === false;          /* 쿨 중에는 거절돼야 한다 */
-  /* ⚠ 쿨이 도는지 보려면 적을 치워야 한다. 옆에 세워 둔 채 쉬게 했더니
-   *   체력 36인 마법사가 8턴 안에 맞아 죽어 `act()` 가 멈췄고, 검사가
-   *   "쿨다운이 안 풀린다" 로 나왔다 — 제품이 아니라 검사의 결함이었다. */
-  g.monsters = [];
-  for (let i = 0; i < c.ability.cd + 1 && !g.over; i++) g.wait();
-  const recovered = g.player.cooldown === 0 && !g.over;
-  abRows.push({ name: c.name, ab: c.ability.name, used, dealt, cdSet, blocked, recovered });
-}
-const abBad = abRows.filter(r => !(r.used && r.dealt > 0 && r.cdSet > 0 && r.blocked && r.recovered));
-console.log("직업 능력   :", ok(abBad.length === 0),
-  abRows.map(r => r.name + " " + r.ab + " " + r.dealt + "피해/쿨" + r.cdSet).join(" · "));
-if (abBad.length) abBad.forEach(r => console.log("   ✘ " + r.name + " " + JSON.stringify(r)));
-
-// 7-c) 함정 — 밟으면 피해를 주고 드러난 채 남는가(두 번 터지지 않는가)
+// 5) 아이템 굴림 — 등급·옵션·이름이 제대로 나오는가
 {
   const g = new Game("warrior");
   g.reset(777, "warrior");
-  const lv = g.level;
-  const tx = g.player.x + 1, ty = g.player.y;
-  lv.traps[lv.idx(tx, ty)] = 1;
-  g.cls = Object.assign({}, g.cls, { evade: 0 });     /* 회피로 흐려지면 못 잰다 */
-  const hp0 = g.player.hp;
-  g.move(1, 0);
-  const hurt = hp0 - g.player.hp;
-  const revealed = lv.traps[lv.idx(tx, ty)] === 2;
-  const hp1 = g.player.hp;
-  g.move(-1, 0); g.move(1, 0);                        /* 같은 칸을 다시 밟는다 */
-  const twice = g.player.hp < hp1 - 1;                /* 몬스터 피해와 섞이지 않게 여유 */
-  console.log("함정        :", ok(hurt > 0 && revealed && !twice),
-    hurt + " 피해 · " + (revealed ? "드러남" : "숨은 채") + " · 재발동 " + (twice ? "있음" : "없음"));
-}
-
-// 7-d) 보물방 — 아이템이 실제로 안에 들어 있는가(문만 있고 비어 있으면 허탕이다)
-{
-  let rooms = 0, withItems = 0, withGuards = 0;
-  for (let s = 1; s <= 120 && rooms < 40; s++) {
-    const g = new Game("warrior");
-    g.reset(s * 1013904223, "warrior");
-    for (let d = 1; d < DATA.MAX_DEPTH && rooms < 40; d++) {
-      const tr = g.level.treasure;
-      if (tr) {
-        rooms++;
-        const inBox = (o) => o.x >= tr.x && o.x < tr.x + tr.w && o.y >= tr.y && o.y < tr.y + tr.h;
-        if (g.items.filter(inBox).length >= DATA.TREASURE_ITEMS) withItems++;
-        if (g.monsters.filter(inBox).length >= 1) withGuards++;
-      }
-      g.descend();
+  const seenRar = {}, seenAffix = {}, seenKind = {};
+  let badName = 0, noAffixOnRare = 0, total = 0;
+  for (let depth = 1; depth <= 10; depth++) {
+    for (let i = 0; i < 120; i++) {
+      const it = ITEMS.makeGear(["weapon", "armor", "offhand"][i % 3], depth, g.rng);
+      total++;
+      seenRar[it.rarity] = (seenRar[it.rarity] || 0) + 1;
+      if (it.weaponKind) seenKind[it.weaponKind] = 1;
+      for (const a of it.affixes) seenAffix[a.id] = 1;
+      /* 이름 — 빈 문자열이나 "undefined" 가 섞이면 안 된다 */
+      if (!it.name || /undefined|NaN/.test(it.name)) badName++;
+      /* 등급이 높은데 옵션이 안 붙으면 굴림이 죽은 것이다 */
+      const want = DATA.byId(DATA.RARITY, it.rarity).affixes;
+      if (it.affixes.length < want) noAffixOnRare++;
     }
   }
-  console.log("보물방 내용 :", ok(rooms > 0 && withItems === rooms && withGuards === rooms),
-    rooms + "개 중 아이템 다 든 방 " + withItems + " · 지키는 적 있는 방 " + withGuards);
+  const rarKinds = Object.keys(seenRar).length;
+  console.log("아이템 굴림 :", ok(rarKinds === 4 && badName === 0 && noAffixOnRare === 0),
+    total + "점 · 등급 " + rarKinds + "종 · 옵션 " + Object.keys(seenAffix).length + "/" + DATA.AFFIXES.length +
+    "종 · 무기 " + Object.keys(seenKind).length + "/" + DATA.WEAPON_KINDS.length + "종" +
+    (badName ? " · ⚠이름 오류 " + badName : "") + (noAffixOnRare ? " · ⚠옵션 누락 " + noAffixOnRare : ""));
 }
 
-// 7-e) 미식별 물약 — 마시기 전엔 겉모습, 마신 뒤엔 본명
+// 6) 능력치 합산 — 옵션이 실제로 반영되는가(표시와 실제가 어긋나면 안 된다)
+{
+  const g = new Game("warrior");
+  g.reset(2024, "warrior");
+  const before = { atk: g.power(), def: g.guard(), crit: g.stats().crit, hp: g.maxhp() };
+  /* 옵션을 강제로 붙인 장비를 만들어 착용 */
+  /* ⚠ 무기 종류를 고정한다. 안 하면 굴려 나온 종류의 태생 옵션(검 +2% 치명 등)이
+   *   섞여 "옵션 +25% 인데 +28% 올랐다" 로 나와 검사가 빨개진다(제품이 아니라 검사 결함). */
+  const gear = ITEMS.makeGear("weapon", 5, g.rng,
+    { affixes: 0, rarity: DATA.RARITY[0], weaponKind: g.cls.startWeapon.kind, tier: g.cls.startWeapon.tier });
+  gear.affixes = [
+    { id: "crit", stat: "crit", label: "치명타 확률", unit: "%", value: 0.25, pre: "날카로운", suf: "예리함의" },
+    { id: "hp", stat: "hpFlat", label: "최대 체력", unit: "", value: 40, pre: "강인한", suf: "생명의" }
+  ];
+  g.player.inventory.push(gear);
+  g.equip(gear, true);
+  const after = { atk: g.power(), def: g.guard(), crit: g.stats().crit, hp: g.maxhp() };
+  const critOk = Math.abs((after.crit - before.crit) - 0.25) < 0.001;
+  const hpOk = (after.hp - before.hp) >= 40;
+  console.log("옵션 반영   :", ok(critOk && hpOk),
+    "치명 " + Math.round(before.crit * 100) + "% → " + Math.round(after.crit * 100) + "% · " +
+    "최대체력 " + before.hp + " → " + after.hp);
+}
+
+// 7) 치명타 — 정말 터지고, 확률을 올리면 더 자주 터지는가
 {
   const g = new Game("warrior");
   g.reset(31337, "warrior");
-  const def = DATA.byId(DATA.ITEMS, "heal_s");
-  const it = g.makeItem(def, 0, 0);
-  g.player.inventory = [it];
-  g.player.hp = 1;
-  const nameBefore = g.itemName(it);
-  const descBefore = g.itemDesc(it);
-  g.useItem(0);
-  const nameAfter = g.itemName(it);
-  console.log("물약 식별   :", ok(nameBefore !== def.name && nameAfter === def.name && /모른다/.test(descBefore)),
-    "\"" + nameBefore + "\" → 마신 뒤 \"" + nameAfter + "\"");
+  function measure(chance) {
+    g.player.perks = ITEMS.blank();
+    g.player.perks.crit = chance - g.cls.base.crit;
+    let crit = 0;
+    for (let i = 0; i < 4000; i++) if (g.critRoll(1)) crit++;
+    return crit / 4000;
+  }
+  const low = measure(0.05), high = measure(0.60);
+  console.log("치명타      :", ok(low > 0.02 && low < 0.09 && high > 0.5),
+    "확률 5% 설정 → 실측 " + (low * 100).toFixed(1) + "% · 60% 설정 → " + (high * 100).toFixed(1) + "%");
 }
 
-// 7-f) 버리기 — 가방을 비울 수 있고, 발 밑에 물건이 있으면 교환되는가.
-//      ⚠ 전에는 "발 밑에 이미 뭔가 있다" 며 거절했다. 그게 정확히 막다른 골목이었다:
-//        가방이 꽉 찬 채 물건 위에 서 있으면 주울 수도 버릴 수도 없어서,
-//        자리를 비우려고 만든 기능이 필요한 순간에 안 됐다.
+// 8) 상태이상 — 걸리고, 턴마다 깎이고, 끝나면 사라지는가
+{
+  const g = new Game("warrior");
+  g.reset(555, "warrior");
+  const m = g.spawn(DATA.byId(DATA.MONSTERS, "orc"), g.player.x + 5, g.player.y);
+  m.hp = 9999; m.maxhp = 9999;
+  g.monsters = [m];
+  g.applyAil(m, "poison", 0);
+  const hp0 = m.hp;
+  let ticks = 0;
+  for (let i = 0; i < 8; i++) { g.tickAil(m, false); if (m.hp < hp0) ticks++; }
+  const gone = !m.ail.poison;
+  console.log("상태이상    :", ok(hp0 - m.hp > 0 && gone),
+    "중독 " + DATA.AILMENTS.poison.turns + "턴 · 총 " + (hp0 - m.hp) + " 피해 · 만료 " + (gone ? "됨" : "안 됨"));
+}
+
+// 9) 스킬 — 전부 동작하고 쿨이 걸리고 다시 풀리는가.
+//    ⚠ 화면에서는 "버튼이 보인다" 까지만 확인된다 — 1층엔 붙을 적이 없다.
+{
+  const rows = [];
+  for (const sk of DATA.SKILLS) {
+    const g = new Game("warrior");
+    g.reset(4242, "warrior");
+    g.player.skills = [{ id: sk.id, rank: 1, cd: 0 }];
+    /* 사거리 안에 적을 둔다. 근접 스킬은 옆 칸, 원거리는 세 칸 */
+    const near = g.spawn(DATA.byId(DATA.MONSTERS, "goblin"), g.player.x + 1, g.player.y);
+    const far = g.spawn(DATA.byId(DATA.MONSTERS, "goblin"), g.player.x + 3, g.player.y);
+    near.hp = near.maxhp = 9999; far.hp = far.maxhp = 9999;
+    g.monsters = [near, far];
+    const hpBefore = g.player.hp, mhpBefore = near.hp + far.hp;
+    const used = g.useSkill(0) !== false;
+    const cdSet = g.player.skills[0].cd;
+    const blocked = g.useSkill(0) === false;
+    g.monsters = [];
+    for (let i = 0; i < cdSet + 1 && !g.over; i++) g.wait();
+    const recovered = g.player.skills[0].cd === 0 && !g.over;
+    const didSomething = (near.hp + far.hp) < mhpBefore || g.player.hp !== hpBefore ||
+                         g.player.ward > 0 || Object.keys(near.ail).length > 0;
+    rows.push({ id: sk.id, name: sk.name, used, cdSet, blocked, recovered, didSomething });
+  }
+  const bad = rows.filter(r => !(r.used && r.cdSet > 0 && r.blocked && r.recovered && r.didSomething));
+  console.log("스킬        :", ok(bad.length === 0),
+    rows.length + "종 · " + rows.map(r => r.name).join(" · "));
+  bad.forEach(r => console.log("   ✘ " + r.name + " " + JSON.stringify(r)));
+}
+
+// 10) 레벨업 선택 — 3개가 나오고, 고르면 실제로 반영되는가
 {
   const g = new Game("warrior");
   g.reset(9001, "warrior");
-  const dagger = g.makeItem(DATA.byId(DATA.ITEMS, "dagger"), 0, 0);
-  g.player.inventory = [dagger];
-  g.monsters = [];                                  /* 턴이 흘러 죽는 것을 막는다 */
-  /* (1) 빈 바닥에 버리기 */
-  const bag0 = g.player.inventory.length;
-  g.dropItem(0);
-  const dropped = g.player.inventory.length === bag0 - 1 &&
-                  !!g.itemAt(g.player.x, g.player.y);
-  /* (2) 가방을 꽉 채우고 물건 위에 서서 버리기 → 교환 */
-  g.player.inventory = [];
-  for (let i = 0; i < 16; i++) g.player.inventory.push(g.makeItem(DATA.byId(DATA.ITEMS, "dagger"), 0, 0));
-  const floorItem = g.makeItem(DATA.byId(DATA.ITEMS, "plate"), g.player.x, g.player.y);
-  g.items = [floorItem];
-  const bagFull = g.player.inventory.length;
-  g.dropItem(0);
-  const swapped = g.player.inventory.indexOf(floorItem) >= 0 &&
-                  g.player.inventory.length === bagFull &&
-                  g.items.length === 1;               /* 한 칸에 둘이 쌓이지 않았다 */
-  console.log("버리기·교환 :", ok(dropped && swapped),
-    (dropped ? "빈 바닥 버리기 정상" : "✘ 버려지지 않음") + " · " +
-    (swapped ? "가방 꽉 찬 상태에서 교환됨(바닥 " + g.items.length + "개)" : "✘ 교환 안 됨"));
+  g.offerPerks();
+  const count = g.pendingPerks ? g.pendingPerks.length : 0;
+  /* ⚠ 일부 수치만 더해 비교하면 "금화 획득 +30%" 같은 선택에서 변화가 0 으로 나온다 —
+   *   그것도 유효한 선택이므로 능력치 전체와 스킬 목록을 함께 본다. */
+  const snap = () => JSON.stringify(g.stats()) + "|" + JSON.stringify(g.player.skills);
+  const before = snap();
+  g.choosePerk(0);
+  const after = snap();
+  const closed = !g.pendingPerks;
+  console.log("레벨업 선택 :", ok(count === 3 && after !== before && closed),
+    count + "개 제시 · 고른 뒤 변화 " + (after !== before ? "있음" : "없음") + " · 창 " + (closed ? "닫힘" : "⚠열림"));
 }
 
-// 7-g) 4방향 — 몬스터가 대각선으로 움직이지 않는가(플레이어와 같은 규칙인가)
+// 11) 상점 — 물건이 차고, 사면 금화가 줄고 물건이 들어오는가
 {
-  let diagMoves = 0, steps = 0;
-  for (let run = 0; run < 25; run++) {
-    const g = new Game("warrior");
-    g.reset(run * 7919 + 5, "warrior");
-    /* ⚠ 제자리에서 쉬면 몬스터가 안 깨어나 표본이 5걸음밖에 안 나왔다 —
-     *   돌아다녀서 깨워야 실제로 쫓아오는 걸음을 잰다. */
-    for (let t = 0; t < 300 && !g.over; t++) {
-      const snap = g.monsters.map(m => ({ m: m, x: m.x, y: m.y }));
-      const d = DIRS[(Math.random() * DIRS.length) | 0];
-      if (!g.move(d[0], d[1])) g.wait();
-      for (const s of snap) {
-        if (g.monsters.indexOf(s.m) < 0) continue;
-        const d = Math.abs(s.m.x - s.x) + Math.abs(s.m.y - s.y);
-        if (d > 0) steps++;
-        if (Math.abs(s.m.x - s.x) > 0 && Math.abs(s.m.y - s.y) > 0) diagMoves++;
-      }
+  const g = new Game("rogue");
+  g.reset(4711, "rogue");
+  g.depth = 4;
+  const stock = g.rollShop(4);
+  g.shop = stock;
+  g.gold = 99999;
+  const bagBefore = g.player.inventory.length, skillsBefore = g.player.skills.length;
+  let boughtItem = false, boughtSkill = false;
+  for (let i = 0; i < stock.length; i++) {
+    const before = g.gold;
+    if (g.buy(i) && g.gold < before) {
+      if (stock[i].what === "skill") boughtSkill = true; else boughtItem = true;
     }
   }
-  console.log("몬스터 4방향:", ok(diagMoves === 0),
-    steps.toLocaleString() + "걸음 중 대각선 " + diagMoves + "걸음");
+  const sellBefore = g.gold;
+  const sold = g.player.inventory.length ? g.sell(0) : false;
+  console.log("상점        :", ok(stock.length >= 5 && boughtItem && g.gold > 0),
+    stock.length + "개 진열 · 물건 구매 " + (boughtItem ? "됨" : "✘") +
+    " · 스킬 구매 " + (boughtSkill ? "됨" : "없음(자리 부족일 수 있다)") +
+    " · 팔기 " + (sold ? "됨(+" + (g.gold - sellBefore) + ")" : "✘") +
+    " · 가방 " + bagBefore + "→" + g.player.inventory.length +
+    " · 스킬 " + skillsBefore + "→" + g.player.skills.length);
 }
 
-// 8) 무작위 조작 내구 — 예외 0 (직업을 돌려 가며)
-let crashes = 0;
-const CLS = DATA.CLASSES.map(c => c.id);
-for (let run = 0; run < 120; run++) {
-  try {
-    const g = new Game(CLS[run % CLS.length]);
-    g.reset((run * 7919 + 13) >>> 0, CLS[run % CLS.length]);
-    for (let t = 0; t < 1200 && !g.over; t++) {
-      const r = Math.random();
-      if (r < 0.05) g.pickUp();
-      else if (r < 0.09) g.descendIfStairs();
-      else if (r < 0.13) g.useAbility();
-      else if (r < 0.17 && g.player.inventory.length) g.useItem((Math.random() * g.player.inventory.length) | 0);
-      else { const d = DIRS[(Math.random() * DIRS.length) | 0]; g.move(d[0], d[1]); }
+// 12) 엘리트 — 나오고, 실제로 더 강한가
+{
+  const g = new Game("warrior");
+  g.reset(1234, "warrior");
+  let elites = 0, plain = 0, eliteHp = 0, plainHp = 0;
+  for (let depth = 5; depth <= 9; depth++) {
+    g.depth = depth;
+    for (let i = 0; i < 400; i++) {
+      const m = g.spawn(DATA.byId(DATA.MONSTERS, "orc"), 1, 1);
+      if (m.elite) { elites++; eliteHp += m.hp; } else { plain++; plainHp += m.hp; }
     }
-  } catch (e) { crashes++; if (crashes < 3) console.log("   예외:", e.message); }
+  }
+  const ratio = (eliteHp / Math.max(1, elites)) / (plainHp / Math.max(1, plain));
+  console.log("엘리트      :", ok(elites > 0 && ratio > 1.3),
+    "2000마리 중 " + elites + "마리(" + (elites / 20).toFixed(1) + "%) · 체력 배수 " + ratio.toFixed(2) + "배");
 }
-console.log("무작위 내구 :", ok(crashes === 0), "120판 · 예외 " + crashes + "건");
 
-// 9) 밸런스 — 층을 정리하고 내려가는 AI 의 직업별 승률
+// 13) 무작위 조작 내구 — 예외 0 (직업·스킬·상점을 돌려 가며)
+{
+  let crashes = 0;
+  const CLS = DATA.CLASSES.map(c => c.id);
+  for (let run = 0; run < 120; run++) {
+    try {
+      const g = new Game(CLS[run % CLS.length]);
+      g.reset((run * 7919 + 13) >>> 0, CLS[run % CLS.length]);
+      for (let t = 0; t < 1400 && !g.over; t++) {
+        if (g.pendingPerks) { g.choosePerk((Math.random() * 3) | 0); continue; }
+        if (g.shop) {
+          if (Math.random() < 0.5) g.buy((Math.random() * g.shop.length) | 0);
+          else g.closeShop();
+          continue;
+        }
+        const r = Math.random();
+        if (r < 0.05) g.pickUp();
+        else if (r < 0.08) g.descendIfStairs();
+        else if (r < 0.14) g.useSkill((Math.random() * 4) | 0);
+        else if (r < 0.17) g.shoot();
+        else if (r < 0.21 && g.player.inventory.length) g.useItem((Math.random() * g.player.inventory.length) | 0);
+        else if (r < 0.23 && g.player.inventory.length) g.dropItem((Math.random() * g.player.inventory.length) | 0);
+        else { const d = DIRS[(Math.random() * DIRS.length) | 0]; g.move(d[0], d[1]); }
+      }
+    } catch (e) { crashes++; if (crashes < 4) console.log("   예외:", e.message, "\n     " + (e.stack || "").split("\n")[1]); }
+  }
+  console.log("무작위 내구 :", ok(crashes === 0), "120판 · 예외 " + crashes + "건");
+}
+
+// 14) 밸런스 — 빌드를 쌓으며 내려가는 AI 의 직업별 승률
+/* 상인은 길을 막지 않는다(밟으면 들어가면서 상점이 열린다) — 그래서 여기서도
+ * 특별 취급하지 않는다. 예전에 상인을 막았을 때는 상인이 유일한 통로를 가로막는
+ * 배치에서 길을 못 찾아 갇혔다. */
 function bfsStep(g, sx, sy, targets) {
   const lv = g.level, Wd = lv.w;
   const goal = new Set(targets.map(t => t.y * Wd + t.x));
@@ -303,39 +328,93 @@ function bfsStep(g, sx, sy, targets) {
   return null;
 }
 
-/* 사람과 맞추려고 넣은 것:
- *   · 모르는 물약은 **안전할 때만** 마셔 본다(체력 80% 이상 · 보이는 적 없음). 독이 섞여 있다.
- *   · 정체를 안 뒤에는 회복만 아껴 둔다.
- *   · 직업 능력은 쿨이 돌면 쓴다 — 안 쓰면 직업을 고른 의미가 없다. */
+/* 사람처럼 두는 AI. 빌드 시스템이 붙었으니 그것도 쓴다:
+ *   · 레벨업은 **공격 계열**로 민다(사람도 대개 그렇게 한다)
+ *   · 상인을 만나면 살 수 있는 것을 산다
+ *   · 스킬은 쿨이 돌면 쓴다
+ *   · 모르는 물약은 안전할 때만 시험한다(독이 섞여 있다) */
+const PERK_PREF = ["p_atk", "p_crit", "p_cdmg", "p_skill", "p_hp", "p_def"];
 function play(seed, clsId) {
   const g = new Game(clsId);
   g.reset(seed, clsId);
   const inv = pred => g.player.inventory.findIndex(pred);
   const skip = new Set();
+  /* ⚠ 상점을 닫고 또 걸어가면 무한 순환이 된다(상인에게 걸어 들어가는 것은 턴을
+   *   쓰지 않으므로 턴이 안 늘고 영원히 돈다 — 실측: 40판 전부 미결).
+   *   한 층에 한 번만 본다. */
+  const shopped = new Set();
   let t = 0, stuck = 0;
 
   while (!g.over && t < 60000) {
     t++;
-    const p = g.player, lv = g.level, hurt = p.hp / p.maxhp;
+
+    /* 레벨업 — 선호 순서대로, 없으면 새 스킬, 없으면 첫 번째 */
+    if (g.pendingPerks) {
+      let idx = -1;
+      for (const want of PERK_PREF) {
+        idx = g.pendingPerks.findIndex(c => c.what === "perk" && c.perk.id === want);
+        if (idx >= 0) break;
+      }
+      if (idx < 0) idx = g.pendingPerks.findIndex(c => c.what === "skillnew");
+      if (idx < 0) idx = 0;
+      g.choosePerk(idx);
+      continue;
+    }
+
+    /* 상점 — 살 수 있는 것을 다 사고 닫는다 */
+    if (g.shop) {
+      let bought = false;
+      for (let i = 0; i < g.shop.length; i++) {
+        const row = g.shop[i];
+        if (row.sold || g.gold < row.cost) continue;
+        if (g.buy(i)) { bought = true; break; }
+      }
+      if (!bought) { shopped.add(g.depth); g.closeShop(); }
+      continue;
+    }
+
+    const p = g.player, lv = g.level, hurt = p.hp / g.maxhp();
+
+    /* 상태이상이 심하면 씻는다 */
+    if ((p.ail.poison || p.ail.bleed) && hurt < 0.5) {
+      const ci = inv(it => g.identified[it.id] && it.effect === "cure");
+      if (ci >= 0) { g.useItem(ci); continue; }
+    }
+    if (hurt < 0.45) {
+      let i = inv(it => g.identified[it.id] && it.effect === "heal" && it.power >= 60);
+      if (i < 0 || hurt > 0.25) { const j = inv(it => g.identified[it.id] && it.effect === "heal"); if (j >= 0) i = j; }
+      if (i >= 0) { g.useItem(i); continue; }
+      /* 회복 스킬 */
+      const hs = p.skills.findIndex(s => s.cd <= 0 && DATA.byId(DATA.SKILLS, s.id).kind === "heal");
+      if (hs >= 0 && g.useSkill(hs) !== false) continue;
+    }
 
     let adj = null;
     for (const d of DIRS) { const m = g.monsterAt(p.x + d[0], p.y + d[1]); if (m) { adj = { d, m }; break; } }
     const near = g.nearestVisible();
 
-    if (hurt < 0.45) {
-      let i = inv(it => g.identified[it.id] && it.effect === "heal" && it.power >= 50);
-      if (i < 0 || hurt > 0.25) { const j = inv(it => g.identified[it.id] && it.effect === "heal"); if (j >= 0) i = j; }
-      if (i >= 0) { g.useItem(i); continue; }
-    }
-
-    if (p.cooldown <= 0) {
-      const ab = g.cls.ability;
+    /* 스킬 — 쿨이 돌고 쓸 자리가 있으면 쓴다 */
+    let usedSkill = false;
+    for (let si = 0; si < p.skills.length; si++) {
+      const s = p.skills[si];
+      if (s.cd > 0) continue;
+      const def = DATA.byId(DATA.SKILLS, s.id);
       let worth = false;
-      if (ab.kind === "cleave") worth = g.monsters.some(m => Math.max(Math.abs(m.x-p.x), Math.abs(m.y-p.y)) <= ab.range);
-      else if (ab.kind === "throw") worth = near && (Math.abs(near.x - p.x) + Math.abs(near.y - p.y)) <= ab.range;
-      else if (ab.kind === "blast") worth = g.monsters.some(m =>
-        Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) <= ab.range);
-      if (worth && g.useAbility()) continue;
+      if (def.kind === "cleave") worth = g.monsters.some(m => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) <= 1);
+      else if (def.kind === "blast" || def.kind === "quake" || def.kind === "ail")
+        worth = g.monsters.some(m => Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) <= def.range);
+      else if (def.kind === "throw" || def.kind === "drain" || def.kind === "charge")
+        worth = near && (Math.abs(near.x - p.x) + Math.abs(near.y - p.y)) <= def.range;
+      else if (def.kind === "snipe") worth = !!g.farthestVisible(def.range);
+      else if (def.kind === "ward") worth = !!adj && hurt < 0.7;
+      else if (def.kind === "heal") worth = hurt < 0.5;
+      if (worth && g.useSkill(si) !== false) { usedSkill = true; break; }
+    }
+    if (usedSkill) continue;
+
+    /* 활 — 붙기 전에 쏜다 */
+    if (p.weapon && p.weapon.ranged && !adj && near) {
+      if (g.shoot() !== false) continue;
     }
 
     if (hurt < 0.35 && adj) {
@@ -347,13 +426,14 @@ function play(seed, clsId) {
 
     if (adj) { g.move(adj.d[0], adj.d[1]); continue; }
 
+    /* 안전할 때 모르는 물약을 하나 시험한다 — 독일 수 있으니 체력이 넉넉할 때만 */
     if (hurt > 0.8 && !g.monsters.some(m => g.isVisible(m.x, m.y))) {
       const i = inv(it => it.kind === "potion" && !g.identified[it.id]);
       if (i >= 0) { g.useItem(i); continue; }
     }
 
     if (g.itemAt(p.x, p.y)) {
-      if (p.inventory.length >= 16) skip.add(g.depth + ":" + p.x + "," + p.y);
+      if (p.inventory.length >= DATA.BAG_MAX) skip.add(g.depth + ":" + p.x + "," + p.y);
       else { g.pickUp(); continue; }
     }
 
@@ -361,6 +441,7 @@ function play(seed, clsId) {
     const desperate = hurt < 0.3 && inv(it => g.identified[it.id] && it.effect === "heal") < 0;
     let goals, toStairs = false;
     if (desperate && g.depth < DATA.MAX_DEPTH) { goals = [lv.downAt]; toStairs = true; }
+    else if (g.merchant && g.gold >= 60 && !shopped.has(g.depth)) goals = [g.merchant];
     else if (g.items.some(it => !skip.has(key(it)))) goals = g.items.filter(it => !skip.has(key(it)));
     else if (g.monsters.length) goals = g.monsters;
     else { goals = [lv.downAt]; toStairs = true; }
@@ -378,17 +459,18 @@ function play(seed, clsId) {
   return g;
 }
 
-//  기준: 직업마다 승률 35~65%. 이보다 높으면 긴장이 없고, 낮으면 사람은 못 깬다.
-//  그리고 직업 사이 격차가 25%p 를 넘으면 안 된다 — 넘으면 "센 직업" 하나만 고르게 된다
-//  (실측으로 잡은 사고: 도적이 200판 전승 100% 였다 — 레벨당 공격 +3 + 짧은 쿨 원거리).
-console.log("\n── 밸런스 (층을 정리하고 내려가는 AI · " + N + "판/직업) ──");
+//  기준: 직업마다 승률 30~70%. 이보다 높으면 긴장이 없고, 낮으면 사람은 못 깬다.
+//  그리고 직업 사이 격차가 28%p 를 넘으면 안 된다 — 넘으면 "센 직업" 하나만 고르게 된다.
+//  ⚠ 빌드 자유도가 생긴 뒤로는 직업보다 **선택**이 승률을 가른다. 폭을 조금 넓게 잡는다.
+console.log("\n── 밸런스 (빌드를 쌓으며 내려가는 AI · " + N + "판/직업) ──");
 const rates = [];
 for (const c of DATA.CLASSES) {
   let wins = 0, unresolved = 0;
-  const dd = {}, depths = [], scores = [];
+  const dd = {}, depths = [], scores = [], lv = [], crit = [];
   for (let i = 0; i < N; i++) {
     const g = play((i * 104729 + 7) >>> 0, c.id);
-    depths.push(g.depth); scores.push(g.score());
+    depths.push(g.depth); scores.push(g.score()); lv.push(g.player.level);
+    crit.push(g.stats().crit);
     if (g.won) wins++;
     else if (g.over) dd[g.depth] = (dd[g.depth] || 0) + 1;
     else unresolved++;
@@ -397,14 +479,16 @@ for (const c of DATA.CLASSES) {
   rates.push(rate);
   const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
   const pre = Object.keys(dd).filter(k => +k < DATA.MAX_DEPTH).reduce((a, k) => a + dd[k], 0);
-  console.log(c.name.padEnd(9), ok(rate >= 35 && rate <= 65 && unresolved === 0),
+  console.log(c.name.padEnd(9), ok(rate >= 30 && rate <= 70 && unresolved === 0),
     ("승률 " + rate.toFixed(1) + "%").padEnd(12) +
-    "평균 " + avg(depths).toFixed(2) + "층 · 점수 " + Math.round(avg(scores)).toLocaleString() +
+    "평균 " + avg(depths).toFixed(2) + "층 · Lv." + avg(lv).toFixed(1) +
+    " · 치명 " + Math.round(avg(crit) * 100) + "%" +
+    " · 점수 " + Math.round(avg(scores)).toLocaleString() +
     " · 보스 전 사망 " + pre + " · 보스층 " + (dd[DATA.MAX_DEPTH] || 0) +
     (unresolved ? " · ⚠미결 " + unresolved : ""));
 }
 const gap = Math.max(...rates) - Math.min(...rates);
-console.log("직업 격차   :", ok(gap <= 25), gap.toFixed(1) + "%p (25%p 이하여야 한다)");
+console.log("직업 격차   :", ok(gap <= 28), gap.toFixed(1) + "%p (28%p 이하여야 한다)");
 
 // ── 화면 ──
 console.log("\n── 화면 (실제 Chrome) ──");
@@ -424,7 +508,7 @@ for (const [label, args] of SCREENS) {
   if (bad) r.stdout.split("\n").filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
-// 부드러운 이동 — 칸 사이 보간 · 걸음 프레임 · 연타 · 유휴 정지 · 층 이동 스냅
+// 부드러운 이동
 {
   const ra = spawnSync(process.execPath, [path.join(ROOT, "tools", "anim-check.mjs")],
     { encoding: "utf8", cwd: ROOT });

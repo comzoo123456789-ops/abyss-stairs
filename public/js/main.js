@@ -31,6 +31,36 @@
    *   돌리면 연타가 밀려 "눌렀는데 안 움직인다" 가 된다. */
   var rafId = 0, lastT = 0;
 
+  /* ── 누르고 있을 때의 걸음 ────────────────────────────────
+   *
+   * ⚠ OS 키 반복은 애니메이션(115ms)보다 훨씬 빠르다(보통 30ms 간격). 그걸 그대로
+   *   받으면 화살표를 쭉 누르는 순간 캐릭터가 지도를 **슝 하고 건너간다**
+   *   (사용자 신고: "너무 빨라"). 그래서 ① OS 반복 이벤트(e.repeat)는 **버리고**
+   *   ② 우리가 걸음 간격으로 직접 반복한다. 그러면 누르고 있는 동안 일정한
+   *   속도로 걷는다 — 애니메이션 한 걸음이 끝나는 자리에서 다음 걸음이 시작된다. */
+  var heldKey = null, heldTimer = 0;
+  function stepInterval() { return Math.max(60, window.STEP_MS || 120); }
+
+  function startHold(key, mv) {
+    stopHold();
+    heldKey = key;
+    doMove(mv);
+    heldTimer = setInterval(function () {
+      /* 창이 열리거나 게임이 끝나면 멈춘다 — 모달 뒤에서 계속 걸으면 안 된다 */
+      if (!heldKey || game.over || game.busy() || !started()) { stopHold(); return; }
+      doMove(MOVE[heldKey]);
+    }, stepInterval());
+  }
+  function stopHold() {
+    if (heldTimer) { clearInterval(heldTimer); heldTimer = 0; }
+    heldKey = null;
+  }
+  function doMove(mv) {
+    if (!mv) return;
+    game.move(mv[0], mv[1]);
+    afterAction();
+  }
+
   function loop(now) {
     rafId = 0;
     var dt = lastT ? (now - lastT) : 16;
@@ -53,8 +83,29 @@
     view.drawInventory(els.inv);
     view.drawLog(els.log);
     els.seed.textContent = "#" + game.seed.toString(16).toUpperCase();
-    var ab = document.getElementById("abilityBtn");
-    if (ab) ab.addEventListener("click", function () { game.useAbility(); afterAction(); });
+    /* 스킬 버튼은 매번 다시 그려지므로 그때마다 배선한다 */
+    els.stats.querySelectorAll("[data-skill]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        game.useSkill(parseInt(b.getAttribute("data-skill"), 10));
+        afterAction();
+      });
+    });
+
+    /* 레벨업 선택 — 열려 있으면 다른 조작을 막는다(뒤에서 몬스터가 때리면 안 된다) */
+    if (game.pendingPerks) {
+      view.drawPerks(els.perkList);
+      els.perks.hidden = false;
+    } else {
+      els.perks.hidden = true;
+    }
+
+    if (game.shop) {
+      view.drawShop(els.shopBuy, els.shopSell, els.shopGold);
+      els.shop.hidden = false;
+    } else {
+      els.shop.hidden = true;
+    }
+
     if (game.over) showEnd();
   }
 
@@ -78,6 +129,20 @@
       }
       return;
     }
+    /* ⚠ 레벨업·상점이 열려 있으면 그쪽 키만 받는다. 안 그러면 모달 뒤에서
+     *   캐릭터가 움직여 "뭐가 일어났는지 모르는" 상태가 된다. */
+    if (els.perks.hidden === false) {
+      if (e.key >= "1" && e.key <= "3") {
+        e.preventDefault();
+        game.choosePerk(parseInt(e.key, 10) - 1);
+        afterAction();
+      }
+      return;
+    }
+    if (els.shop.hidden === false) {
+      if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); game.closeShop(); refresh(); }
+      return;
+    }
     if (els.end.hidden === false) {
       if (e.key === "Enter" || e.key === " " || e.key === "r" || e.key === "R") {
         e.preventDefault();
@@ -95,8 +160,9 @@
     var mv = MOVE[k];
     if (mv) {
       e.preventDefault();
-      game.move(mv[0], mv[1]);
-      afterAction();
+      /* ⚠ OS 가 만들어 내는 반복은 버린다 — 우리가 걸음 간격으로 반복한다 */
+      if (e.repeat) return;
+      startHold(k, mv);
       return;
     }
 
@@ -108,8 +174,13 @@
     if (k === "." || e.code === "Numpad5") {
       e.preventDefault(); game.wait(); afterAction(); return;
     }
-    if (k === "q" || k === "Q") {
-      e.preventDefault(); game.useAbility(); afterAction(); return;
+    /* 스킬 4칸 — Q W E R */
+    var slot = { q: 0, Q: 0, w: 1, W: 1, e: 2, E: 2, r: 3, R: 3 }[k];
+    if (slot !== undefined) {
+      e.preventDefault(); game.useSkill(slot); afterAction(); return;
+    }
+    if (k === "f" || k === "F") {
+      e.preventDefault(); game.shoot(); afterAction(); return;
     }
     if (k === ">" || k === "Enter") {
       e.preventDefault(); game.descendIfStairs(); afterAction(); return;
@@ -176,7 +247,9 @@
         '<span class="cls-title">' + c.title + " · " + c.age + "</span>" +
         '<span class="cls-story">' + c.story + "</span>" +
         '<span class="cls-stats">체력 <b>' + c.hp + "</b> · 공격 <b>" + c.atk + "</b> · 방어 <b>" + c.def + "</b></span>" +
-        '<span class="cls-ability">「' + c.ability.name + "」 " + c.ability.desc + "</span>" +
+        '<span class="cls-ability">「' + window.DATA.byId(window.DATA.SKILLS, c.skill).name + "」 " +
+          window.DATA.byId(window.DATA.SKILLS, c.skill).desc + "</span>" +
+        '<span class="cls-gear">시작 무기: ' + window.DATA.byId(window.DATA.WEAPON_KINDS, c.startWeapon.kind).name + "</span>" +
         '<span class="cls-blurb">' + c.blurb + "</span>" +
         "</button>";
     }
@@ -229,6 +302,12 @@
     els.seed = document.getElementById("seed");
     els.start = document.getElementById("start");
     els.classes = document.getElementById("classes");
+    els.perks = document.getElementById("perks");
+    els.perkList = document.getElementById("perkList");
+    els.shop = document.getElementById("shop");
+    els.shopBuy = document.getElementById("shopBuy");
+    els.shopSell = document.getElementById("shopSell");
+    els.shopGold = document.getElementById("shopGold");
     els.soundBtn = document.getElementById("soundBtn");
 
     var canvas = document.getElementById("view");
@@ -243,6 +322,9 @@
     });
 
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", function (e) { if (e.key === heldKey) stopHold(); });
+    /* 창을 떠나면 keyup 을 못 받는다 — 그대로 두면 돌아왔을 때 혼자 걷고 있다 */
+    window.addEventListener("blur", stopHold);
     window.addEventListener("resize", function () { view.resize(); refresh(); });
 
     /* 인벤토리는 클릭으로도 쓴다 — 숫자키를 외우게 강요하지 않는다 */
@@ -285,6 +367,28 @@
     });
     els.inv.addEventListener("touchmove", cancelHold, { passive: true });
     els.inv.addEventListener("touchcancel", cancelHold, { passive: true });
+
+    els.perkList.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-perk]");
+      if (!b) return;
+      game.choosePerk(parseInt(b.getAttribute("data-perk"), 10));
+      afterAction();
+    });
+    els.shopBuy.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-buy]");
+      if (!b) return;
+      game.buy(parseInt(b.getAttribute("data-buy"), 10));
+      refresh();
+    });
+    els.shopSell.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-sell]");
+      if (!b) return;
+      game.sell(parseInt(b.getAttribute("data-sell"), 10));
+      refresh();
+    });
+    document.getElementById("shopClose").addEventListener("click", function () {
+      game.closeShop(); refresh();
+    });
 
     document.getElementById("again").addEventListener("click", showStart);
     document.getElementById("helpBtn").addEventListener("click", function () { els.help.hidden = false; });
@@ -343,15 +447,36 @@
       });
     }
 
+    /* 터치 패드도 꾹 누르면 걷는 속도로 계속 간다(키보드와 같은 규칙) */
     document.querySelectorAll("[data-dir]").forEach(function (b) {
       var p = b.getAttribute("data-dir").split(",");
       var dx = parseInt(p[0], 10), dy = parseInt(p[1], 10);
-      bindPress(b, function () { game.move(dx, dy); afterAction(); });
+      var timer = 0;
+      function begin(e) {
+        if (e) e.preventDefault();
+        doMove([dx, dy]);
+        clearInterval(timer);
+        timer = setInterval(function () {
+          if (game.over || game.busy() || !started()) { clearInterval(timer); timer = 0; return; }
+          doMove([dx, dy]);
+        }, stepInterval());
+      }
+      function end() { if (timer) { clearInterval(timer); timer = 0; } }
+      b.addEventListener("touchstart", begin, { passive: false });
+      b.addEventListener("touchend", end);
+      b.addEventListener("touchcancel", end);
+      b.addEventListener("mousedown", begin);
+      b.addEventListener("mouseup", end);
+      b.addEventListener("mouseleave", end);
     });
     bindPress(document.getElementById("btnPick"), function () { game.pickUp(); afterAction(); });
     bindPress(document.getElementById("btnDown"), function () { game.descendIfStairs(); afterAction(); });
     bindPress(document.getElementById("btnWait"), function () { game.wait(); afterAction(); });
-    bindPress(document.getElementById("btnAbility"), function () { game.useAbility(); afterAction(); });
+    bindPress(document.getElementById("btnShoot"), function () { game.shoot(); afterAction(); });
+    document.querySelectorAll("[data-skillbtn]").forEach(function (b) {
+      var sl = parseInt(b.getAttribute("data-skillbtn"), 10);
+      bindPress(b, function () { game.useSkill(sl); afterAction(); });
+    });
 
     loadBest();
     view.resize();
@@ -366,7 +491,14 @@
         hp: game.player.hp, maxhp: game.player.maxhp,
         level: game.player.level, xp: game.player.xp,
         atk: game.power(), def: game.guard(),
-        cls: game.cls.id, cooldown: game.player.cooldown,
+        cls: game.cls.id,
+        skills: game.player.skills.map(function (s) { return { id: s.id, rank: s.rank, cd: s.cd }; }),
+        crit: game.stats().crit, critMult: game.stats().critMult,
+        ail: Object.keys(game.player.ail),
+        perkOpen: !!game.pendingPerks, shopOpen: !!game.shop,
+        merchant: !!game.merchant,
+        weapon: game.player.weapon ? game.player.weapon.name : null,
+        rarity: game.player.weapon ? game.player.weapon.rarity : null,
         monsters: game.monsters.length, items: game.items.length,
         bag: game.player.inventory.length,
         seed: game.seed,
@@ -378,6 +510,20 @@
       };
     };
     window.__start = function (id) { newGame(id); };
+    /* 점검기가 창을 닫을 창구 — 상점·레벨업이 열려 있으면 모든 행동이 막히므로
+     * 자동 주행이 거기서 멈춘다. 게임 로직은 이 함수들을 쓰지 않는다. */
+    /* 점검기가 창을 실제 경로로 띄울 창구 — 화면 모양을 눈으로 보려면 필요하다 */
+    window.__force = function (what) {
+      if (what === "perk") { game.gainXp(10000); }
+      else if (what === "shop") {
+        game.gold += 4000;
+        if (!game.merchant) game.merchant = { x: game.player.x, y: game.player.y, stock: game.rollShop(game.depth + 2) };
+        game.openShop();
+      }
+      refresh();
+    };
+    window.__closeShop = function () { game.closeShop(); refresh(); };
+    window.__pickPerk = function (i) { game.choosePerk(i || 0); afterAction(); };
 
     /* 점검기가 "칸 사이에 있는 순간" 을 잡을 창구.
      * ⚠ 논리 좌표만 보면 애니메이션이 도는지 알 수 없다(그건 즉시 바뀐다).
