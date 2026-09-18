@@ -422,6 +422,96 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     heldTurns = hold2.turn - hold.turn;
   }
 
+  // ── 3-h) 칸을 눌러 걸어가기 ──
+  //    ⚠ "눌러서 움직인다" 만 재면 안 된다. 자동으로 걷는 것은 **멈추는 조건이
+  //      맞아야** 쓸 수 있는 기능이다 — 안 멈추면 걸어가다 맞아 죽는다.
+  //      그래서 셋을 따로 잰다: ① 여러 칸을 실제로 걸었나 ② 목적지에 닿았나
+  //      ③ 걷는 중에 키를 누르면 멈추나.
+  //    ⚠ 목적지는 **지도를 읽어 이미 본 칸(seen)** 중에서 고른다. 안 본 칸을
+  //      누르면 길을 모르는 것이 정상이라 "안 걷는다" 로 오진한다.
+  let tapCheck = null;
+  if (canAct) {
+    const far = await ev(
+      "(function(){" +
+      "  var m = window.__map(), p = window.__peek();" +
+      "  var best = null, bd = 0;" +
+      "  for (var y = 0; y < m.h; y++) for (var x = 0; x < m.w; x++) {" +
+      "    var i = y * m.w + x;" +
+      "    if (!m.walk[i] || !m.seen[i]) continue;" +
+      "    var d = Math.abs(x - p.x) + Math.abs(y - p.y);" +
+      "    if (d > bd) { bd = d; best = { x: x, y: y, d: d }; }" +
+      "  }" +
+      "  return best;" +
+      "})()");
+    if (far && far.d >= 3) {
+      const t0 = await ev("window.__peek()");
+      await ev(`window.__tap(${far.x}, ${far.y})`);
+      await sleep(140);
+      const midTravel = await ev("window.__travel()");     /* 걷는 중이어야 한다 */
+      await sleep(900);
+      const t1 = await ev("window.__peek()");
+      /* 걷는 중에 키를 누르면 멈추는가 — 멈춘 뒤에는 __travel() 이 null 이다 */
+      await ev(`window.__tap(${far.x}, ${far.y})`);
+      await sleep(120);
+      const beforeKey = await ev("window.__travel()");
+      await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key: ".", code: "Period",
+                                          windowsVirtualKeyCode: 190 });
+      await S("Input.dispatchKeyEvent", { type: "keyUp", key: ".", code: "Period" });
+      await sleep(120);
+      const afterKey = await ev("window.__travel()");
+      /* 좌표 변환을 **검사가 직접 뒤집어** 확인한다. 어떤 칸의 화면 좌표를
+       * 카메라로 계산해 그 점을 눌러 보고, 같은 칸이 나오는지 본다.
+       * ⚠ devicePixelRatio 를 잘못 쓰면(캔버스 실제 픽셀 ≠ CSS 픽셀) 2배 어긋나는데
+       *   눈으로는 "엉뚱한 데로 걸어간다" 로만 나타난다. */
+      const center = await ev(
+        "(function(){" +
+        "  var cam = window.__cam(), T = cam.tile;" +
+        "  var box = document.getElementById('view').getBoundingClientRect();" +
+        "  var p = window.__peek();" +
+        "  var px = box.left + (p.x * T + T / 2) - cam.x;" +
+        "  var py = box.top  + (p.y * T + T / 2) - cam.y;" +
+        "  var got = window.__tapAtPoint(px, py);" +
+        "  return { ok: !!got && got.x === p.x && got.y === p.y," +
+        "           want: p.x + ',' + p.y, got: got ? got.x + ',' + got.y : 'null' };" +
+        "})()");
+      /* ── 안전 규칙: 못 보던 적이 눈에 들어오면 멈춘다 ──
+       * ⚠ 이게 안 되면 걸어가다 맞아 죽는다. 자동 이동에서 제일 중요한 규칙인데
+       *   "걸었다" 만 재면 통과해 버린다. 적을 심어 직접 확인한다. */
+      let stopOnMonster = null;
+      const t2 = await ev("window.__peek()");
+      if (!t2.over) {
+        const far2 = await ev(
+          "(function(){" +
+          "  var m = window.__map(), p = window.__peek(), best = null, bd = 0;" +
+          "  for (var y = 0; y < m.h; y++) for (var x = 0; x < m.w; x++) {" +
+          "    var i = y * m.w + x;" +
+          "    if (!m.walk[i] || !m.seen[i]) continue;" +
+          "    var d = Math.abs(x - p.x) + Math.abs(y - p.y);" +
+          "    if (d > bd) { bd = d; best = { x: x, y: y, d: d }; }" +
+          "  }" +
+          "  return best;" +
+          "})()");
+        if (far2 && far2.d >= 4) {
+          await ev(`window.__tap(${far2.x}, ${far2.y})`);
+          await sleep(130);
+          const walking = await ev("window.__travel()");
+          const put = await ev(`window.__putMonster("rat")`);
+          await sleep(320);                      /* 걸음 두 번 — 그 사이에 멈춰야 한다 */
+          const after = await ev("window.__travel()");
+          stopOnMonster = { set: !!walking, put: put, stopped: !!walking && !!put && !after };
+          await ev("window.__tap(" + t2.x + "," + t2.y + ")");   /* 남은 이동 정리 */
+        }
+      }
+
+      tapCheck = {
+        goal: far, started: !!midTravel, stopOnMonster: stopOnMonster, moved: Math.abs(t1.x - t0.x) + Math.abs(t1.y - t0.y),
+        turns: t1.turn - t0.turn,
+        stoppedByKey: !!beforeKey && !afterKey,
+        hadTravel: !!beforeKey, center: center.ok, centerWant: center.want, centerGot: center.got
+      };
+    }
+  }
+
   //  기록이 눈에 들어오는가.
   //  ⚠ 판정이 화면 폭에 따라 **다르다**. 좁은 화면에서는 기록 패널을 아예 감췄고
   //    (사용자 지시) 대신 캔버스 위 토스트가 그 일을 한다 — 그쪽에서 패널을
@@ -592,6 +682,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       ? (layout.laps.length ? "겹침 " + layout.laps.join(", ") : "") + (layout.spill.length ? " · 내용이 패널 밖으로: " + layout.spill.join(", ") : "")
       : "없음");
   console.log("세로 넘침    :", ok(!layout.pageOverflowY), layout.pageOverflowY ? "페이지가 화면보다 길다" : "없음");
+  let padPass = true;
   if (TOUCH) {
     const pad = await ev(`(()=>{
       const p=document.querySelector(".pad");
@@ -625,6 +716,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
        pad.skillsBelowActs && pad.dpadSpansBoth);
     console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=8 && pad.tooSmall===0 && padPlaced),
       "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
+    padPass = pad.display !== "none" && pad.count >= 8 && pad.tooSmall === 0 && padPlaced;
     console.log("  패드 배치  :", ok(padPlaced), pad.narrow
       ? pad.geo + " · 행동 " + pad.actsRows + "줄 · 스킬 " + pad.skillRows + "줄" +
         (pad.dpadLeftmost ? " · 십자 맨 왼쪽" : " · ⚠십자가 왼쪽이 아니다") +
@@ -662,6 +754,32 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("누르고 걷기  :", ok(!canAct || (heldTurns >= 2 && heldTurns <= 9)),
     heldTurns < 0 ? "열린 방향을 못 찾아 검사 못 함"
       : "600ms 에 " + heldTurns + "걸음 (OS 반복 20번을 그대로 받으면 20걸음)");
+  let tapPass = true;
+  if (tapCheck) {
+    //  900ms · 걸음 115ms → 여러 칸 갔어야 한다. 한 칸이면 걷지 않고 멈춘 것이다.
+    const sm = tapCheck.stopOnMonster;
+    //  적을 못 심었으면(시야 안에 빈 칸이 없음) 그 항목은 판정하지 않는다 —
+    //  검사 못 한 것을 통과로도 실패로도 세지 않는다.
+    const smOk = !sm || !sm.set || !sm.put || sm.stopped;
+    const ok2 = tapCheck.started && tapCheck.moved >= 2 && tapCheck.turns >= 2 &&
+                tapCheck.center && smOk && (!tapCheck.hadTravel || tapCheck.stoppedByKey);
+    tapPass = ok2;
+    console.log("탭 이동      :", ok(ok2),
+      "목적지 " + tapCheck.goal.x + "," + tapCheck.goal.y + "(" + tapCheck.goal.d + "칸) → " +
+      tapCheck.moved + "칸 이동 · 턴 +" + tapCheck.turns +
+      (tapCheck.started ? " · 자동 이동 시작됨" : " · ⚠자동 이동이 안 걸렸다") +
+      (tapCheck.hadTravel ? (tapCheck.stoppedByKey ? " · 키로 멈춤" : " · ⚠키를 눌러도 안 멈춘다")
+                          : " · (멈춤 검사 못 함 — 이미 도착)") +
+      (tapCheck.center ? " · 좌표 변환 맞음" : " · ⚠좌표 변환 어긋남(원했다 " + tapCheck.centerWant + " 나왔다 " + tapCheck.centerGot + ")"));
+    console.log("  적 보면 멈춤:", ok(smOk),
+      !sm ? "검사 못 함(게임이 끝났거나 갈 곳이 없다)"
+        : !sm.set ? "검사 못 함(자동 이동이 안 걸렸다)"
+        : !sm.put ? "검사 못 함(시야에 적을 놓을 빈 칸이 없다)"
+        : (sm.stopped ? "쥐를 " + sm.put.x + "," + sm.put.y + " 에 놓자 멈췄다"
+                      : "⚠ 적이 나타났는데 계속 걸어간다 — 걸어가다 맞아 죽는다"));
+  } else {
+    console.log("탭 이동      : — 검사 못 함(게임이 끝났거나 갈 곳이 없다)");
+  }
   console.log("기록 가시성  :", ok(logBox.inView && logBox.atBottom),
     logBox.mode === "panel"
       ? "패널 y" + logBox.top + "~" + logBox.bottom + " (높이 " + logBox.h + ") · " +
@@ -671,6 +789,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         logBox.lines + "줄" + (logBox.inView ? "" : " · ⚠기록이 비었다"));
   console.log("상태창       :", ui.stats);
   console.log("마지막 기록  :", ui.lastLog);
+
+  // ── 6) 캔버스에 그린 기록이 화면 밖으로 새지 않는가 ──
+  //    ⚠ 위의 "가로 넘침" 은 DOM 만 본다. **캔버스에 그린 글자는 거기 안 잡힌다** —
+  //      실제로 390px 에서 긴 문장이 오른쪽으로 새어 나가고 있었는데 검사는 전부
+  //      초록이었다. 휴대폰에서는 토스트가 유일한 기록이라 잘리면 정보가 사라진다.
+  //    ⚠ 이 검사는 기록을 **더럽힌다**(긴 문장을 밀어 넣는다) — 그래서 맨 끝이다.
+  const toastFit = await ev(`(()=>{
+    if (!window.__say || !window.__toastBoxes) return { skip: true };
+    [ "관리소 장부에 층수 칸만 비워 두고 계단을 내려간다. 10층 아래에 심연의 군주가 있다.",
+      "역병의곪은비늘갑옷을주웠고치명타확률이올랐다그리고상태이상피해도함께올랐다띄어쓰기가없다"
+    ].forEach(t => window.__say(t, "item"));
+    const cv = document.getElementById("view").getBoundingClientRect();
+    const boxes = window.__toastBoxes();
+    const over = boxes.filter(b => b.right > cv.width + 0.5 || b.top < 0);
+    return { skip: false, lines: boxes.length, over: over.length,
+             worst: boxes.length ? Math.round(Math.max(...boxes.map(b => b.right))) : 0,
+             cw: Math.round(cv.width), sample: over.slice(0, 2).map(b => b.text.slice(0, 16)) };
+  })()`);
+  const toastOk = toastFit.skip || toastFit.over === 0;
+  console.log("기록 넘침    :", ok(toastOk), toastFit.skip ? "창구 없음 — 검사 못 함"
+    : "접힌 줄 " + toastFit.lines + "개 · 제일 오른쪽 " + toastFit.worst + "px / 캔버스 " + toastFit.cw + "px" +
+      (toastFit.over ? " · ⚠새어 나감 " + toastFit.over + "줄: " + toastFit.sample.join(" / ") : ""));
 
   if (SHOT) {
     const { data } = await S("Page.captureScreenshot", { format: "png" });
@@ -691,6 +831,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                startCheck.art.every(a => a > 8) &&
                layout.wrapped.length === 0 && (layout.cut === 0 || layout.sideScroll) && !layout.pageOverflowY &&
                layout.laps.length === 0 && layout.spill.length === 0 &&
+               /* ⚠ 새 검사를 여기 넣지 않으면 빨간 줄이 떠도 "통과" 가 나온다.
+                *   실제로 탭 이동 실패가 통과로 나왔다 — 판정에 없었기 때문이다. */
+               !hud.missing && hud.shown && hud.inView && hud.aboveCanvas &&
+               hud.bars.length >= 2 && hud.bars.every(b => b.w > 60) &&
+               (!tapCheck || tapPass) && padPass && toastOk &&
                (!endCheck || (endCheck.over && endCheck.shown));
   ws.close(); ch.kill(); srv.close();
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}

@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>심연의 계단</title>
 <meta name="description" content="10층 아래 심연의 군주를 쓰러뜨리는 턴제 던전 크롤러.">
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=10">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <body>
@@ -66,6 +66,12 @@
        줄바꿈에 맡기지 않고 격자로 자리를 못박는다(css 의 .pad 참조). -->
   <nav class="pad" aria-label="이동">
     <div class="dpad">
+      <!-- 접기 손잡이는 **십자의 비어 있는 왼쪽 위 칸**에 넣는다.
+           ⚠ 패드 바깥에 작게 붙였다가 21px 가 되어 손가락으로 못 눌렀다(검사에서
+              잡혔다). 여기에 두면 44×42 짜리 제 칸을 얻으면서 자리를 더 안 쓴다.
+           ⚠ 접혀도 이 버튼은 남는다 — 완전히 감추면 되돌릴 방법이 없어진다
+              (옛 rl_pad 토글이 그렇게 사고를 냈다). -->
+      <button id="padFold" class="padfold" aria-expanded="true" title="방향 패드 접기">▼</button>
       <button data-dir="0,-1" class="p-up" aria-label="위">↑</button>
       <button data-dir="-1,0" class="p-left" aria-label="왼쪽">←</button>
       <button id="btnWait" class="p-mid" aria-label="한 턴 쉬기">·</button>
@@ -104,7 +110,8 @@
 
     <h3>조작</h3>
     <div class="guide">
-      <div class="guide-row"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd><span>움직인다. <b>4방향</b>이고 <b>적에게 걸어 들어가면 공격</b>이다 (공격 키는 없다)</span></div>
+      <div class="guide-row"><kbd>화면</kbd><span><b>칸을 누르면 거기까지 걸어간다.</b> 적을 누르면 다가가 때린다 — 못 보던 적이 나타나면 스스로 멈춘다</span></div>
+      <div class="guide-row"><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd><span>한 칸씩 움직인다. <b>4방향</b>이고 <b>적에게 걸어 들어가면 공격</b>이다 (공격 키는 없다)</span></div>
       <div class="guide-row"><kbd>Space</kbd><span>발 밑의 물건을 <b>줍는다</b></span></div>
       <div class="guide-row"><kbd>우클릭</kbd><span>가방의 물건을 <b>버린다</b>. 자리가 없을 때 쓴다 — 발 밑에 뭐가 있으면 <b>교환</b>된다</span></div>
       <div class="guide-row"><kbd>Enter</kbd><span>계단에서 <b>다음 층으로</b> 내려간다</span></div>
@@ -118,7 +125,7 @@
     <p class="warn-line">⚠ <b>죽으면 끝이다.</b> 세이브도 되돌리기도 없다. 대신 매번 던전이 새로 만들어진다.
       물약은 <b>마셔 봐야</b> 무엇인지 알고, 바닥에는 <b>숨은 함정</b>이 있다.</p>
 
-    <p class="hint">직업을 고르면 시작한다 · 휴대폰은 화면 아래 방향 패드로 조작</p>
+    <p class="hint">직업을 고르면 시작한다 · 휴대폰은 <b>칸을 눌러</b> 움직인다(방향 패드는 접을 수 있다)</p>
   </div>
 </div>
 
@@ -171,7 +178,8 @@
       <div>
         <h3>움직임</h3>
         <table class="keys">
-          <tr><td>← ↑ ↓ →</td><td>상하좌우 (<b>4방향</b> · 대각선은 없다)</td></tr>
+          <tr><td>칸 누르기</td><td>거기까지 <b>걸어간다</b> (적을 누르면 다가가 때린다)</td></tr>
+          <tr><td>← ↑ ↓ →</td><td>한 칸씩 (<b>4방향</b> · 대각선은 없다)</td></tr>
           <tr><td>. 또는 Numpad5</td><td>한 턴 쉬기</td></tr>
         </table>
 
@@ -185,6 +193,7 @@
           <tr><td>1 ~ 9</td><td>가방의 물건 쓰기</td></tr>
           <tr><td>Enter 또는 &gt;</td><td>계단 내려가기</td></tr>
           <tr><td>M</td><td>효과음 켜기/끄기 (버튼은 없다 — 키로만)</td></tr>
+          <tr><td>▼ 접기</td><td>방향 패드를 접는다 (화면이 그만큼 넓어진다)</td></tr>
           <tr><td>?</td><td>이 도움말</td></tr>
         </table>
       </div>
@@ -194,6 +203,7 @@
         <ul class="rules">
           <li><b>턴제다.</b> 내가 한 번 움직이면 적도 한 번 움직인다. 아무리 오래 생각해도 손해가 없다.</li>
           <li><b>적에게 걸어 들어가면 공격이다.</b> 따로 공격 키가 없다.</li>
+          <li><b>걸어가는 중에는 스스로 멈춘다.</b> 못 보던 적이 눈에 들어오거나 · 맞거나 · 길이 막히면 그 자리에 선다. 아무 키나 눌러도 멈춘다.</li>
           <li><b>이동은 4방향이다.</b> 대각선이 없으므로 몬스터도 대각선으로 오지 않고 대각선에서 때리지도 않는다 — 같은 규칙이다.</li>
           <li><b>가방이 꽉 차면 우클릭으로 버린다.</b> 발 밑에 물건이 있으면 그것과 교환된다.</li>
           <li><b>죽으면 끝이다.</b> 세이브도 되돌리기도 없다. 대신 매번 던전이 새로 만들어진다.</li>
@@ -216,14 +226,14 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=9"></script>
-<script src="js/sprites-art.js?v=9"></script>
-<script src="js/sound.js?v=9"></script>
-<script src="js/data.js?v=9"></script>
-<script src="js/items.js?v=9"></script>
-<script src="js/dungeon.js?v=9"></script>
-<script src="js/game.js?v=9"></script>
-<script src="js/render.js?v=9"></script>
-<script src="js/main.js?v=9"></script>
+<script src="js/sprites.js?v=10"></script>
+<script src="js/sprites-art.js?v=10"></script>
+<script src="js/sound.js?v=10"></script>
+<script src="js/data.js?v=10"></script>
+<script src="js/items.js?v=10"></script>
+<script src="js/dungeon.js?v=10"></script>
+<script src="js/game.js?v=10"></script>
+<script src="js/render.js?v=10"></script>
+<script src="js/main.js?v=10"></script>
 </body>
 </html>

@@ -191,6 +191,47 @@
     this.camReady = true;
   };
 
+  /* 화면의 한 점이 어느 칸인가.
+   * ⚠ 카메라 흔들림(shake)은 **빼고** 계산한다. 그걸 넣으면 맞는 순간에 누른
+   *   칸이 한둘 어긋난다 — 사람은 흔들리기 전 화면을 보고 눌렀다.
+   * ⚠ 캔버스는 CSS 픽셀과 실제 픽셀이 다르다(devicePixelRatio) — 반드시
+   *   getBoundingClientRect 로 CSS 기준을 쓴다. */
+  Renderer.prototype.tileAtPoint = function (clientX, clientY) {
+    if (!this.camReady) return null;
+    var box = this.canvas.getBoundingClientRect();
+    var px = clientX - box.left + this.cam.x;
+    var py = clientY - box.top + this.cam.y;
+    var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
+    if (!this.game.level.inside(tx, ty)) return null;
+    return { x: tx, y: ty };
+  };
+
+  /* 목적지 표시 — 걸어가는 동안 어디로 가는지 보여 준다.
+   * ⚠ 이게 없으면 "왜 혼자 움직이지" 가 된다. 누른 자리를 반드시 표시한다.
+   *   깜박이게 두는 편이 정지된 표식보다 눈에 걸린다(대신 아주 약하게). */
+  Renderer.prototype.drawGoal = function () {
+    var gl = this.goalMark;
+    if (!gl) return false;
+    var ctx = this.ctx;
+    var ox = -Math.round(this.cam.x), oy = -Math.round(this.cam.y);
+    var x = gl.x * TILE + ox, y = gl.y * TILE + oy;
+    if (x < -TILE || y < -TILE || x > this.viewW || y > this.viewH) return true;
+    gl.t = (gl.t || 0) + 0.04;
+    var a = 0.35 + 0.25 * Math.sin(gl.t * 3);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.strokeStyle = "#c9a227";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 3.5, y + 3.5, TILE - 7, TILE - 7);
+    ctx.globalAlpha = a * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(x + TILE / 2, y + 8); ctx.lineTo(x + TILE / 2, y + TILE - 8);
+    ctx.moveTo(x + 8, y + TILE / 2); ctx.lineTo(x + TILE - 8, y + TILE / 2);
+    ctx.stroke();
+    ctx.restore();
+    return true;                                    /* 깜박이므로 계속 다시 그려야 한다 */
+  };
+
   Renderer.prototype.hit = function () { this.shake = 6; };
   Renderer.prototype.hurt = function () { this.shake = 10; this.flash = 0.45; };
 
@@ -400,6 +441,7 @@
       busy = true;
     }
 
+    if (this.drawGoal()) busy = true;
     this.drawDepthBadge();
     this.drawToasts();
     return busy;
@@ -407,28 +449,79 @@
 
   /* 최근 메시지 — 캔버스 아래쪽에 쌓아 올리고 서서히 사라진다.
    * 아래가 최신이다(기록 패널과 같은 순서라 헷갈리지 않는다). */
+  /* 한 줄이 상자보다 길면 접어서 여러 줄로 만든다.
+   * ⚠ 휴대폰에서는 **토스트가 유일한 기록이다**(기록 패널을 감췄다). 그래서 넘치는
+   *   글을 잘라 버리면 정보가 통째로 사라진다 — 실측 390px 에서 "관리소 장부에
+   *   층수 칸만 비워 두고 계단을 내려간다. 10층 아래에" 가 오른쪽으로 새어 나갔다.
+   * ⚠ 말줄임(…)도 쓰지 않는다. 같은 이유다 — 접는다.
+   * ⚠ 한국어는 띄어쓰기가 드물어 한 덩어리가 상자보다 길 수 있다. 그때는
+   *   글자 단위로 끊는다(안 그러면 그 줄만 다시 새어 나간다). */
+  function wrapText(ctx, text, maxW) {
+    if (ctx.measureText(text).width <= maxW) return [text];
+    var out = [], words = String(text).split(" "), line = "";
+    function pushHard(chunk) {
+      var cur = "";
+      for (var c = 0; c < chunk.length; c++) {
+        if (ctx.measureText(cur + chunk[c]).width > maxW && cur) { out.push(cur); cur = ""; }
+        cur += chunk[c];
+      }
+      return cur;
+    }
+    for (var i = 0; i < words.length; i++) {
+      var probe = line ? line + " " + words[i] : words[i];
+      if (ctx.measureText(probe).width <= maxW) { line = probe; continue; }
+      if (line) { out.push(line); line = ""; }
+      if (ctx.measureText(words[i]).width > maxW) line = pushHard(words[i]);
+      else line = words[i];
+    }
+    if (line) out.push(line);
+    return out;
+  }
+
   Renderer.prototype.drawToasts = function () {
     if (!this.toasts.length) return;
     var ctx = this.ctx;
-    var lh = 20, pad = 9;
-    var bottom = this.viewH - 12;
+    var lh = 20, pad = 9, left = 14;
+    var maxW = Math.max(60, this.viewW - left * 2 - pad * 2);
     ctx.font = "600 12.5px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif');
     ctx.textBaseline = "middle";
-    for (var i = 0; i < this.toasts.length; i++) {
+
+    /* 먼저 전부 접어 줄 수를 센다 — 아래가 최신이라 총 높이를 알아야 자리가 정해진다 */
+    var blocks = [], total = 0, i, j;
+    for (i = 0; i < this.toasts.length; i++) {
       var m = this.toasts[i];
+      var lines = wrapText(ctx, m.text, maxW);
+      blocks.push({ m: m, lines: lines });
+      total += lines.length;
+    }
+    /* 화면보다 높으면 오래된 것부터 버린다 — 게임을 덮으면 안 된다 */
+    var room = Math.max(1, Math.floor((this.viewH - 60) / lh));
+    while (total > room && blocks.length > 1) { total -= blocks[0].lines.length; blocks.shift(); }
+
+    var y = this.viewH - 12 - (total - 1) * lh;
+    /* 그린 상자를 남긴다 — 캔버스 위 글자는 DOM 넘침 검사에 안 잡히므로
+     * 점검기가 이 값으로 "새어 나갔는가" 를 센다. */
+    this.toastBoxes = [];
+    for (i = 0; i < blocks.length; i++) {
+      var bl = blocks[i], t = bl.m.t;
       /* 마지막 25% 구간에서만 사라진다 — 바로 흐려지면 읽을 시간이 없다 */
-      var a = m.t < 0.75 ? 1 : Math.max(0, 1 - (m.t - 0.75) / 0.25);
-      var y = bottom - (this.toasts.length - 1 - i) * lh;
-      var w = ctx.measureText(m.text).width + pad * 2;
-      ctx.globalAlpha = a * 0.78;
-      ctx.fillStyle = "#0b0a0f";
-      ctx.fillRect(14, y - lh / 2 + 1, w, lh - 2);
-      ctx.globalAlpha = a * 0.5;
-      ctx.fillStyle = TONE_COLOR[m.tone] || TONE_COLOR[""];
-      ctx.fillRect(14, y - lh / 2 + 1, 2, lh - 2);          /* 색 띠로 종류를 표시 */
-      ctx.globalAlpha = a;
-      ctx.fillStyle = TONE_COLOR[m.tone] || TONE_COLOR[""];
-      ctx.fillText(m.text, 14 + pad, y);
+      var al = t < 0.75 ? 1 : Math.max(0, 1 - (t - 0.75) / 0.25);
+      var color = TONE_COLOR[bl.m.tone] || TONE_COLOR[""];
+      for (j = 0; j < bl.lines.length; j++) {
+        var w = ctx.measureText(bl.lines[j]).width + pad * 2;
+        ctx.globalAlpha = al * 0.78;
+        ctx.fillStyle = "#0b0a0f";
+        ctx.fillRect(left, y - lh / 2 + 1, w, lh - 2);
+        ctx.globalAlpha = al * 0.5;
+        ctx.fillStyle = color;
+        ctx.fillRect(left, y - lh / 2 + 1, 2, lh - 2);      /* 색 띠로 종류를 표시 */
+        ctx.globalAlpha = al;
+        ctx.fillStyle = color;
+        ctx.fillText(bl.lines[j], left + pad, y);
+        this.toastBoxes.push({ left: left, right: left + w, top: y - lh / 2, bottom: y + lh / 2,
+                               text: bl.lines[j] });
+        y += lh;
+      }
     }
     ctx.globalAlpha = 1;
     ctx.textBaseline = "alphabetic";
@@ -754,4 +847,5 @@
   global.TILE = TILE;
   /* 입력 반복 간격을 여기에 맞춘다 — 어긋나면 걸음이 끊기거나 겹친다 */
   global.STEP_MS = STEP_MS;
+  global.TILE_PX = TILE;     /* 점검기가 좌표 변환을 뒤집어 확인하는 데 쓴다 */
 })(window);

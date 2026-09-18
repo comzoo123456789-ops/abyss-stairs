@@ -513,6 +513,47 @@ body.is-touch .pad { display: grid; }
 .acts { display: flex; flex-direction: column; gap: 6px; }
 .acts button { padding: 12px 16px; font-size: 13px; white-space: nowrap; }
 
+/* 패드 접기 손잡이 — 십자의 비어 있는 왼쪽 위 칸(1/1)을 쓴다.
+ * ⚠ 패드 바깥에 작게 붙였다가 21px 가 되어 손가락으로 못 눌렀다(실측에서 잡혔다).
+ *   십자에는 이미 빈 모서리가 둘 있으므로 **자리를 더 쓰지 않고** 제 칸을 얻는다.
+ * ⚠ 접혀도 이 버튼은 남는다 — 되돌릴 수 없는 상태를 만들지 않는다. */
+.padfold {
+  grid-area: 1 / 1;
+  background: transparent;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--ink-dim);
+  font-size: 13px;
+  padding: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.padfold:hover { color: var(--gold); border-color: var(--gold); }
+
+/* 접힌 상태 — 손잡이 하나만 남고 패드가 한 줄로 줄어든다 */
+body.pad-folded .pad {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto;
+  justify-content: stretch;
+  padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
+}
+body.pad-folded .pad > *:not(.dpad) { display: none; }
+body.pad-folded .dpad {
+  grid-area: auto;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto;
+  gap: 0;
+}
+body.pad-folded .dpad > *:not(.padfold) { display: none; }
+body.pad-folded .padfold {
+  grid-area: auto;
+  border-style: solid;
+  min-height: 34px;
+  font-size: 12px;
+}
+/* 접었으면 사이드바가 그 자리를 먹지 않게 둔다 — 캔버스가 커져야 접은 뜻이 산다 */
+body.pad-folded .side { max-height: 24vh; }
+
 /* ── 오버레이 ─────────────────────────────────────────── */
 
 .overlay {

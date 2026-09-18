@@ -82,6 +82,55 @@ console.log("던전 연결성 :", ok(unreachable === 0), 200 * DATA.MAX_DEPTH + 
 console.log("보물방      :", ok(treasureSealed === 0),
   treasureCount + "개 생성 · 들어갈 수 없는 방 " + treasureSealed + "개");
 
+// 2-b) 탭 이동의 길찾기 — 이어진 길만 내놓는가
+//    ⚠ 화면 검사는 "걸었다" 까지만 본다. 길 자체가 옳은지(칸마다 인접 · 벽 없음 ·
+//      본 칸만 · 드러난 함정 피함)는 규칙으로 재야 잡힌다. 한 칸이라도 끊기면
+//      캐릭터가 벽을 통과하거나 제자리에서 멈춘다.
+{
+  let paths = 0, broken = 0, missed = 0, unseenLeak = 0, trapStep = 0, nullOnUnseen = 0, tries = 0;
+  for (let s = 1; s <= 120; s++) {
+    const g = new Game("warrior");
+    g.reset((s * 2654435761) >>> 0, "warrior");
+    const lv = g.level;
+    /* 절반은 "다 본" 상태, 절반은 실제 시야 그대로 둔다 — 두 조건을 다 밟는다 */
+    if (s % 2 === 0) lv.seen.fill(1);
+    const floors = [];
+    for (let y = 0; y < lv.h; y++) for (let x = 0; x < lv.w; x++)
+      if (!lv.blocked(x, y) && lv.seen[lv.idx(x, y)]) floors.push([x, y]);
+    for (let k = 0; k < 6 && floors.length; k++) {
+      const [tx, ty] = floors[(s * 7 + k * 13) % floors.length];
+      tries++;
+      const p = g.pathTo(tx, ty);
+      if (!p) continue;                       /* 몬스터가 막고 있으면 길이 없는 게 맞다 */
+      paths++;
+      let cx = g.player.x, cy = g.player.y;
+      for (let i = 0; i < p.length; i++) {
+        const st = p[i];
+        if (Math.abs(st.x - cx) + Math.abs(st.y - cy) !== 1) broken++;
+        if (lv.blocked(st.x, st.y)) broken++;
+        if (!lv.seen[lv.idx(st.x, st.y)]) unseenLeak++;
+        const isGoal = (i === p.length - 1);
+        if (!isGoal && lv.traps[lv.idx(st.x, st.y)] === 2) trapStep++;
+        cx = st.x; cy = st.y;
+      }
+      if (cx !== tx || cy !== ty) missed++;
+    }
+    /* 아직 못 본 칸은 **길을 몰라야 한다**(그래야 탐험이 산다) */
+    for (let y = 0; y < lv.h && nullOnUnseen === 0; y++)
+      for (let x = 0; x < lv.w; x++) {
+        const i = lv.idx(x, y);
+        if (lv.blocked(x, y) || lv.seen[i]) continue;
+        if (g.pathTo(x, y) !== null) { nullOnUnseen = 1; }
+        break;
+      }
+  }
+  console.log("탭 길찾기   :", ok(broken === 0 && missed === 0 && unseenLeak === 0 &&
+                                trapStep === 0 && nullOnUnseen === 0 && paths > 100),
+    paths + "개 길(" + tries + "회 시도) · 끊긴 걸음 " + broken + " · 목적지 못 닿음 " + missed +
+    " · 못 본 칸 지나감 " + unseenLeak + " · 드러난 함정 밟음 " + trapStep +
+    " · 안 본 칸에 길 내줌 " + nullOnUnseen);
+}
+
 // 3) 조사
 const JOSA = [["굶주린 쥐", "를"], ["고블린", "을"], ["해골 병사", "를"], ["오크 전사", "를"],
               ["망령", "을"], ["동굴 트롤", "을"], ["심연의 군주", "를"], ["치유 물약", "을"],

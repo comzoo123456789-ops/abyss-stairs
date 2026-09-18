@@ -61,6 +61,120 @@
     afterAction();
   }
 
+  /* ── 칸을 눌러 걸어가기 ───────────────────────────────
+   *
+   * Shattered Pixel Dungeon 이 휴대폰에서 정통 로그라이크를 성립시킨 자리다 —
+   * 가상 방향키를 쓰지 않고 **빈 칸을 누르면 거기까지 걸어가고 적을 누르면 때린다.**
+   * 방향 패드가 화면 아래 150px 를 먹고 있었는데(사용자: "화면이 좁아 조작이
+   * 힘들다") 이걸 넣으면 패드를 접을 수 있다.
+   *
+   * ⚠ **자동으로 걷는 중에는 반드시 멈출 조건이 있어야 한다.** 안 두면 걸어가다
+   *   맞아 죽는다 — 정통 로그라이크가 전부 이렇게 한다. 멈추는 이유는 여섯이다:
+   *     ① 못 보던 몬스터가 눈에 들어왔다   ② 체력이 줄었다
+   *     ③ 층이 바뀌었다                     ④ 레벨업·상점 창이 열렸다
+   *     ⑤ 길이 막혔다(문이 닫혔거나 몬스터가 섰다) ⑥ 도착했다
+   * ⚠ 이미 보이던 몬스터로는 **멈추지 않는다.** 그것까지 멈추면 적을 눌러 다가가는
+   *   조작이 첫 걸음에서 취소된다(그래서 '시작할 때 보였던 놈' 을 기억해 둔다). */
+  var travel = null;
+
+  function travelStop(why) {
+    if (!travel) return;
+    if (travel.timer) clearInterval(travel.timer);
+    travel = null;
+    view.goalMark = null;
+    if (why) { game.say(why, "warn"); refresh(); }
+    else refresh();
+  }
+
+  function travelTick() {
+    if (!travel) return;
+    if (!started() || game.over) { travelStop(null); return; }
+    if (game.busy()) { travelStop(null); return; }              /* ④ 창이 열렸다 */
+    if (game.depth !== travel.depth) { travelStop(null); return; }   /* ③ */
+
+    var p = game.player;
+    var next = travel.path[travel.i];
+    if (!next) {                                                /* ⑥ 도착 */
+      travelStop(null);
+      arriveAt(p.x, p.y);
+      return;
+    }
+
+    /* 목적지가 몬스터면 붙었을 때 한 번 때리고 끝낸다(누른 뜻이 그것이다) */
+    var mon = game.monsterAt(next.x, next.y);
+    if (mon && travel.i === travel.path.length - 1) {
+      var d = [next.x - p.x, next.y - p.y];
+      travelStop(null);
+      game.move(d[0], d[1]);
+      afterAction();
+      return;
+    }
+    /* ⑤ 길이 막혔다 — 다시 길을 내 본다. 그래도 없으면 멈춘다 */
+    if (mon || game.level.blocked(next.x, next.y)) {
+      var again = game.pathTo(travel.goal.x, travel.goal.y);
+      if (!again || !again.length) { travelStop("길이 막혔다."); return; }
+      travel.path = again; travel.i = 0;
+      next = travel.path[0];
+      if (!next) { travelStop(null); return; }
+    }
+
+    var hpBefore = p.hp;
+    if (!game.move(next.x - p.x, next.y - p.y)) { travelStop("더 갈 수 없다."); return; }
+    travel.i++;
+    afterAction();
+
+    if (p.hp < hpBefore) { travelStop(null); return; }            /* ② 맞았다 */
+    var now = game.visibleMonsters();
+    for (var i = 0; i < now.length; i++) {
+      if (travel.known.indexOf(now[i]) < 0) {                     /* ① 새로 나타났다 */
+        travelStop(null);
+        return;
+      }
+    }
+  }
+
+  /* 발 밑에 뭔가 있으면 도착하면서 처리한다 — 한 번 더 누르게 하면 번거롭다 */
+  function arriveAt(x, y) {
+    if (game.itemAt(x, y)) { game.pickUp(); afterAction(); return; }
+    if (game.level.at(x, y) === window.DUNGEON.STAIRS) { game.descendIfStairs(); afterAction(); }
+  }
+
+  /* 누른 칸을 해석한다. 붙어 있으면 한 걸음(=적이면 공격), 멀면 걸어간다. */
+  function tapTile(tx, ty) {
+    if (!started() || game.over || game.busy()) return;
+    stopHold();
+    travelStop(null);
+    var p = game.player;
+    var dx = tx - p.x, dy = ty - p.y;
+
+    if (dx === 0 && dy === 0) {                 /* 제자리 — 줍기·내려가기·쉬기 */
+      if (game.itemAt(p.x, p.y)) game.pickUp();
+      else if (game.level.at(p.x, p.y) === window.DUNGEON.STAIRS) game.descendIfStairs();
+      else game.wait();
+      afterAction();
+      return;
+    }
+    if (Math.abs(dx) + Math.abs(dy) === 1) {    /* 바로 옆 — 한 걸음(적이면 공격) */
+      doMove([dx, dy]);
+      /* 아무것도 없는 칸으로 한 걸음 갔으면 발 밑을 확인한다 */
+      if (game.player.x === tx && game.player.y === ty) arriveAt(tx, ty);
+      return;
+    }
+
+    var path = game.pathTo(tx, ty);
+    if (!path || !path.length) {
+      game.say("거기로 가는 길을 모른다.", "warn");
+      refresh();
+      return;
+    }
+    view.goalMark = { x: tx, y: ty, t: 0 };
+    travel = { path: path, i: 0, goal: { x: tx, y: ty }, depth: game.depth,
+               known: game.visibleMonsters() };
+    travelTick();                                /* 첫 걸음은 바로 — 반응이 있어야 한다 */
+    if (travel) travel.timer = setInterval(travelTick, stepInterval());
+    kick();
+  }
+
   function loop(now) {
     rafId = 0;
     var dt = lastT ? (now - lastT) : 16;
@@ -121,6 +235,9 @@
   function started() { return els.start.hidden; }
 
   function onKey(e) {
+    /* 걸어가는 중에 키를 누르면 **먼저 멈춘다.** 안 멈추면 자동 이동과 손 조작이
+     * 서로 밀어 캐릭터가 엉뚱하게 간다(그 상태를 사람은 고장으로 읽는다). */
+    if (travel) travelStop(null);
     /* 시작 화면에서는 1·2·3 으로 직업을 고른다 */
     if (!started()) {
       if (e.key >= "1" && e.key <= "3") {
@@ -325,6 +442,38 @@
       if (btn) newGame(btn.getAttribute("data-cls"));
     });
 
+    /* ── 캔버스 입력 ─────────────────────────────────
+     * ⚠ click 하나로 끝내면 안 된다. 터치에서 click 은 **300ms 뒤**에 오고
+     *   그 사이에 스크롤·확대 판정이 끼어 반응이 느리게 느껴진다.
+     *   touchstart 로 먼저 처리하고, 그때 click 을 막는다(둘 다 받으면 두 번 눌린다).
+     * ⚠ 손가락이 움직였으면 취소한다 — 화면을 쓸어 보려던 것을 이동으로 읽으면
+     *   안 된다. */
+    var tapSwallow = 0;
+    canvas.addEventListener("touchstart", function (e) {
+      if (!e.touches.length) return;
+      var t = e.touches[0];
+      canvas._tapAt = { x: t.clientX, y: t.clientY };
+    }, { passive: true });
+    canvas.addEventListener("touchend", function (e) {
+      var at = canvas._tapAt;
+      canvas._tapAt = null;
+      if (!at) return;
+      var t = e.changedTouches && e.changedTouches[0];
+      if (t && (Math.abs(t.clientX - at.x) > 14 || Math.abs(t.clientY - at.y) > 14)) return;
+      e.preventDefault();
+      tapSwallow = Date.now();
+      var tile = view.tileAtPoint(at.x, at.y);
+      if (tile) tapTile(tile.x, tile.y);
+    });
+    canvas.addEventListener("touchmove", function () { canvas._tapAt = null; }, { passive: true });
+    canvas.addEventListener("click", function (e) {
+      if (Date.now() - tapSwallow < 600) return;     /* 방금 터치로 처리했다 */
+      var tile = view.tileAtPoint(e.clientX, e.clientY);
+      if (tile) tapTile(tile.x, tile.y);
+    });
+    /* 캔버스 우클릭은 브라우저 메뉴만 띄운다 — 막아 둔다(가방 우클릭과 헷갈린다) */
+    canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", function (e) { if (e.key === heldKey) stopHold(); });
     /* 창을 떠나면 keyup 을 못 받는다 — 그대로 두면 돌아왔을 때 혼자 걷고 있다 */
@@ -408,10 +557,32 @@
                   (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
     if (isTouch) document.body.classList.add("is-touch");
 
-    /* ⚠ 사람이 켜고 끄는 토글 버튼은 지웠다. 그래서 **전에 껐던 기록도 지운다** —
-     *   남겨 두면 그 브라우저에서는 패드가 영영 안 뜨는데 되돌릴 버튼이 없다
-     *   (휴대폰에는 키보드가 없으므로 조작 수단이 통째로 사라진다). */
+    /* ⚠ 옛 토글(rl_pad)은 지운다 — 버튼이 없어졌으므로 "꺼짐" 이 남으면 되돌릴
+     *   방법이 없었다(휴대폰에는 키보드가 없다). */
     try { localStorage.removeItem("rl_pad"); } catch (err) {}
+
+    /* ── 방향 패드 접기 ──────────────────────────────
+     * 탭 이동이 생겼으니 패드는 **선택**이다. 접으면 캔버스가 그만큼 커진다.
+     * ⚠ 접은 상태에서도 **펴는 손잡이는 항상 보인다.** 완전히 감추면 저장된
+     *   "접힘" 때문에 조작 수단이 사라지는 사고가 다시 난다(옛 rl_pad 가 그랬다).
+     * ⚠ 접고 펼 때마다 view.resize() 를 부른다 — 안 부르면 캔버스가 옛 크기로
+     *   남아 아래가 검게 비거나 잘린다. */
+    var padEl = document.querySelector(".pad");
+    var padFold = document.getElementById("padFold");
+    function setPadFold(folded, save) {
+      document.body.classList.toggle("pad-folded", folded);
+      padFold.textContent = folded ? "▲ 방향 패드 펴기" : "▼";
+      padFold.setAttribute("aria-expanded", folded ? "false" : "true");
+      if (save) { try { localStorage.setItem("rl_pad2", folded ? "1" : "0"); } catch (err) {} }
+      view.resize();
+      refresh();
+    }
+    padFold.addEventListener("click", function () {
+      setPadFold(!document.body.classList.contains("pad-folded"), true);
+    });
+    try {
+      if (localStorage.getItem("rl_pad2") === "1") setPadFold(true, false);
+    } catch (err) {}
 
     /* 패드 버튼은 touchstart 에서 바로 처리한다.
      *
@@ -497,6 +668,45 @@
       };
     };
     window.__toasts = function () { return view.toasts.length; };
+    /* 긴 기록이 캔버스 밖으로 새지 않는지 재려면 긴 문장을 직접 밀어 넣어야 한다.
+     * 실제 판에서 제일 긴 문장이 언제 나올지 정할 수 없어 검사가 성립하지 않는다. */
+    window.__say = function (text, tone) { game.say(text, tone || ""); refresh(); };
+    /* 그려진 토스트의 실제 상자 — 캔버스 위 글자는 DOM 넘침 검사에 안 잡힌다 */
+    window.__toastBoxes = function () { return view.toastBoxes || []; };
+    /* 점검기가 칸을 눌러 보는 창구 — 화면 좌표가 아니라 **칸 좌표**를 받는다
+     * (좌표 변환은 tileAtPoint 가 따로 검사된다). */
+    window.__tap = function (x, y) { tapTile(x, y); };
+    window.__tapAtPoint = function (px, py) {
+      var t = view.tileAtPoint(px, py);
+      if (t) tapTile(t.x, t.y);
+      return t;
+    };
+    /* 걷는 중에 **못 보던 적이 나타나면 멈추는가** 를 재려면 적을 심을 수단이
+     * 필요하다. 이 규칙이 안 지켜지면 걸어가다 맞아 죽는데, 실제 판에서는
+     * 언제 적이 나타날지 정할 수 없어 검사가 성립하지 않는다. */
+    window.__putMonster = function (id) {
+      var DATA = window.DATA, p = game.player, lv = game.level;
+      var def = DATA.byId(DATA.MONSTERS, id || "rat");
+      if (!def) return null;
+      for (var r = 2; r <= 6; r++) {
+        for (var dy = -r; dy <= r; dy++) for (var dx = -r; dx <= r; dx++) {
+          var x = p.x + dx, y = p.y + dy;
+          if (!lv.inside(x, y) || lv.blocked(x, y)) continue;
+          if (game.monsterAt(x, y) || (x === p.x && y === p.y)) continue;
+          if (!game.isVisible(x, y)) continue;
+          var mon = game.spawn(def, x, y, true);
+          mon.awake = false;                 /* 깨우지 않는다 — 보이는 것만으로 멈춰야 한다 */
+          /* ⚠ spawn() 은 객체만 돌려준다 — 목록에 넣는 것은 부르는 쪽 일이다.
+           *   빠뜨렸다가 "적이 나타났는데 안 멈춘다" 는 거짓 실패를 봤다. */
+          game.monsters.push(mon);
+          return { x: x, y: y };
+        }
+      }
+      return null;
+    };
+    window.__travel = function () {
+      return travel ? { goal: travel.goal, left: travel.path.length - travel.i } : null;
+    };
     window.__start = function (id) { newGame(id); };
     /* 점검기가 창을 닫을 창구 — 상점·레벨업이 열려 있으면 모든 행동이 막히므로
      * 자동 주행이 거기서 멈춘다. 게임 로직은 이 함수들을 쓰지 않는다. */
@@ -525,11 +735,19 @@
     /* 점검기가 길을 찾을 수 있게 통행 가능 여부만 넘긴다(지형 종류는 안 넘긴다).
      * 탐욕적 이동만으로는 L 자 복도에서 막혀 계단에 못 닿았다 — 908턴 동안 1층이었다. */
     window.__map = function () {
-      var lv = game.level, walk = [];
+      var lv = game.level, walk = [], seen = [];
       for (var y = 0; y < lv.h; y++)
-        for (var x = 0; x < lv.w; x++) walk.push(lv.blocked(x, y) ? 0 : 1);
-      return { w: lv.w, h: lv.h, walk: walk };
+        for (var x = 0; x < lv.w; x++) {
+          walk.push(lv.blocked(x, y) ? 0 : 1);
+          /* 탭 이동은 **본 칸만** 지나간다 — 검사도 같은 조건으로 목적지를 골라야
+           * "안 걷는다" 로 오진하지 않는다. */
+          seen.push(lv.seen[lv.idx(x, y)] ? 1 : 0);
+        }
+      return { w: lv.w, h: lv.h, walk: walk, seen: seen };
     };
+    /* 화면 좌표 ↔ 칸 좌표 변환을 검사가 **스스로 뒤집어** 확인할 수 있게 카메라를
+     * 내놓는다(devicePixelRatio 를 잘못 쓰면 여기서 어긋난다). */
+    window.__cam = function () { return { x: view.cam.x, y: view.cam.y, tile: window.TILE_PX || 32 }; };
   }
 
   if (document.readyState === "loading") {

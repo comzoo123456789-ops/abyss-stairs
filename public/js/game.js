@@ -1227,6 +1227,77 @@
     return best;
   };
 
+  /* ── 목적지까지의 길 ──────────────────────────────────
+   *
+   * 칸을 눌러 걸어가기(탭 이동)에 쓴다. 몬스터가 쓰는 흐름장과 **방향이 반대**다 —
+   * 그쪽은 "플레이어까지", 이쪽은 "플레이어에서 목적지까지" 라 따로 만든다.
+   *
+   * ⚠ **한 번이라도 본 칸(seen)만 지나간다.** 안 막으면 아직 못 본 지형을 뚫고
+   *   최적 경로로 가 버린다 — 탐험이 통째로 사라지고, 사람이 모르는 길을
+   *   캐릭터만 아는 셈이 된다.
+   * ⚠ 몬스터가 선 칸은 **지나가지 않는다**(목적지인 경우만 허용). 지나갈 수 있게
+   *   두면 길이 막힌 걸 모르고 걸어 들어가 얻어맞는다.
+   * ⚠ 함정은 **아는 것만** 피한다(도적이 알아챈 것). 모르는 함정을 피하면
+   *   캐릭터가 사람보다 많이 아는 것이 된다. */
+  Game.prototype.pathTo = function (tx, ty) {
+    var lv = this.level;
+    if (!lv.inside(tx, ty) || lv.blocked(tx, ty)) return null;
+    if (!lv.seen[lv.idx(tx, ty)]) return null;
+    if (tx === this.player.x && ty === this.player.y) return [];
+
+    var n = lv.w * lv.h;
+    if (!this.pathPrev || this.pathPrev.length !== n) this.pathPrev = new Int32Array(n);
+    var prev = this.pathPrev;
+    prev.fill(-1);
+    var q = new Int32Array(n), head = 0, tail = 0;
+    var start = lv.idx(this.player.x, this.player.y);
+    var goal = lv.idx(tx, ty);
+    prev[start] = start;
+    q[tail++] = start;
+
+    var found = false;
+    while (head < tail) {
+      var cur = q[head++];
+      if (cur === goal) { found = true; break; }
+      var cx = cur % lv.w, cy = (cur / lv.w) | 0;
+      for (var s = 0; s < STEPS.length; s++) {
+        var nx = cx + STEPS[s][0], ny = cy + STEPS[s][1];
+        if (!lv.inside(nx, ny) || lv.blocked(nx, ny)) continue;
+        var id = ny * lv.w + nx;
+        if (prev[id] !== -1) continue;
+        if (!lv.seen[id]) continue;
+        if (id !== goal) {
+          if (this.monsterAt(nx, ny)) continue;
+          if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) continue;
+          if (lv.traps[id] === 2) continue;                /* 드러난 함정만 피한다(0=없음 1=숨음 2=드러남) */
+        }
+        prev[id] = cur;
+        q[tail++] = id;
+      }
+    }
+    if (!found) return null;
+
+    /* 뒤에서 앞으로 되짚어 뒤집는다 */
+    var out = [], cur2 = goal;
+    while (cur2 !== start) {
+      out.push({ x: cur2 % lv.w, y: (cur2 / lv.w) | 0 });
+      cur2 = prev[cur2];
+      if (out.length > n) return null;                     /* 있을 수 없는 일 — 무한 방지 */
+    }
+    out.reverse();
+    return out;
+  };
+
+  /* 지금 눈에 보이는 몬스터들. 탭 이동이 "새로 나타난 놈" 을 알아채는 데 쓴다. */
+  Game.prototype.visibleMonsters = function () {
+    var out = [];
+    for (var i = 0; i < this.monsters.length; i++) {
+      var m = this.monsters[i];
+      if (m.hp > 0 && this.isVisible(m.x, m.y)) out.push(m);
+    }
+    return out;
+  };
+
   Game.prototype.score = function () {
     return this.gold + this.player.xp * 2 + this.depth * 100 +
            this.crits * 3 + (this.won ? 5000 : 0);
