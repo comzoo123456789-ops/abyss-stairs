@@ -319,10 +319,10 @@
    * ⚠ **행동은 수치보다 세게 느껴진다.** 같은 공격력이라도 멀리서 던지는 놈과
    *   붙어야 때리는 놈은 전혀 다른 상대다. 수치를 올리기 전에 여기를 먼저 본다. */
   var MONSTERS = [
-    { id: "rat",      name: "굶주린 쥐", sprite: "rat",      hp: 7,   atk: 3,  def: 0, xp: 3,   depth: 1, last: 4,  weight: 10, timid: 0.30 },
+    { id: "rat",      name: "굶주린 쥐", sprite: "rat",      hp: 7,   atk: 3,  def: 0, xp: 3,   depth: 1, last: 3,  weight: 10, timid: 0.30 },
     /* ⚠ 고블린은 2층부터다. 1층에 섞었더니 300판 중 32판이 1층에서 끝났다 —
      *   시작하자마자 죽는 게임은 다시 안 하게 된다. 1층은 쥐만 나오는 연습 층이다. */
-    { id: "goblin",   name: "고블린",    sprite: "goblin",   hp: 13,  atk: 5,  def: 1, xp: 8,   depth: 2, last: 6,  weight: 10, timid: 0.25 },
+    { id: "goblin",   name: "고블린",    sprite: "goblin",   hp: 13,  atk: 5,  def: 1, xp: 8,   depth: 2, last: 5,  weight: 10, timid: 0.25 },
     /* 투석꾼 — **이 게임 첫 원거리 몬스터다.** 이것이 생겨야 모서리와 엄폐가
      * 처음으로 의미를 가진다. 맷집을 낮게 두어 "먼저 저놈부터" 가 정답이 되게 한다.
      * ⚠ 3층부터다. 1~2층은 연습 층으로 두되 너무 늦게 가르치면 뒤에서 처음 만나
@@ -334,6 +334,18 @@
      *   크게 먹는다. 여기 값을 만질 때는 반드시 다시 잴 것. */
     { id: "slinger",  name: "고블린 투석꾼", sprite: "slinger", hp: 10, atk: 3, def: 0, xp: 12, depth: 3, last: 7, weight: 4,
       ranged: 4, swing: "stone", timid: 0.35 },
+    /* ── 구역 전속 ──────────────────────────────────
+     * 구역은 다섯인데 나오는 놈이 겹쳐서 1층과 9층의 싸움이 같았다.
+     * 구역마다 하나씩, **지금 몬스터 출처가 없던 상태이상**을 들려 보낸다
+     * (둔화·실명·공포는 스킬에만 있었다). */
+    { id: "mist",     name: "물안개",     sprite: "mist",     hp: 18, atk: 6,  def: 0, xp: 18, depth: 3, last: 5,  weight: 7,
+      ail: "slow", spd: 80 },
+    { id: "inkling",  name: "먹물 그림자", sprite: "inkling",  hp: 22, atk: 8,  def: 1, xp: 26, depth: 5, last: 8,  weight: 4,
+      ail: "blind", ranged: 3, swing: "stone" },
+    { id: "archer",   name: "해골 궁수",   sprite: "archer",   hp: 20, atk: 9,  def: 1, xp: 34, depth: 7, last: 10, weight: 4,
+      ranged: 5, swing: "stone", timid: 0.30 },
+    { id: "eraser",   name: "지운 자",     sprite: "eraser",   hp: 40, atk: 16, def: 4, xp: 70, depth: 9, last: 10, weight: 6,
+      ail: "fear", spd: 130 },
     { id: "skeleton", name: "해골 병사", sprite: "skeleton", hp: 20,  atk: 7,  def: 2, xp: 16,  depth: 3, last: 8,  weight: 8, ail: "bleed" },
     { id: "orc",      name: "오크 전사", sprite: "orc",      hp: 30,  atk: 10, def: 3, xp: 28,  depth: 4, last: 10, weight: 8 },
     /* 망령은 **빠르다**(두 턴에 세 걸음). 걸어서는 절대 못 떼어놓는 상대가
@@ -434,7 +446,7 @@
       why: "자기 이름을 되찾으려고",
       story: "심연을 처음 측량해 지도를 그린 사람이다. 그 대가로 이름이 절반 지워져 " +
              "스스로도 제 이름을 확신하지 못한다.",
-      hp: 38, atk: 4, def: 0, hpPerLevel: 8, atkPerLevel: 2, defPerLevel: 1,
+      hp: 38, atk: 4, def: 0, hpPerLevel: 8, atkPerLevel: 2, defPerLevel: 0.5,
       base: { crit: 0.04, critMult: 1.8, skillPower: 0.35, cdReduce: 1 },
       startWeapon: { kind: "staff", tier: 0 }, startArmor: 0,
       skill: "blast", scrollBoost: 1.5,
