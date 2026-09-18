@@ -13,6 +13,16 @@
   var MAP_W = 62, MAP_H = 38;
   var FOV_RADIUS = 8;
 
+  /* ⚠ 이동은 4방향이다(화살표만). 그래서 **근접 판정도 4방향**이어야 한다.
+   *   체비쇼프 거리(대각 포함)로 두면 플레이어는 대각에 있는 적을 때릴 수 없는데
+   *   적은 대각에서 때린다 — 일방적으로 맞는다. 인접은 맨해튼 거리 1 이다.
+   *   범위 효과(화염·폭발)는 그대로 대각을 포함한다 — 그건 '폭발' 이라 자연스럽다. */
+  var STEPS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+  function adjacent(ax, ay, bx, by) {
+    return Math.abs(ax - bx) + Math.abs(ay - by) === 1;
+  }
+  global.STEPS = STEPS;
+
   /* 소리는 없어도 게임이 돌아야 한다 — 파일을 안 읽었을 때를 대비해 감싼다. */
   function sfx(name) { if (global.SFX) global.SFX.play(name); }
 
@@ -505,21 +515,48 @@
     return this.act(true);
   };
 
+  /* 버리기 — 가방 자리를 비우는 수단이다.
+   *
+   * ⚠ 발 밑에 물건이 있으면 **교환**한다. 전에는 "발 밑에 이미 뭔가 있다" 며 거절했는데,
+   *   그게 정확히 막다른 골목이었다: 가방이 꽉 찬 상태로 물건 위에 서 있으면
+   *   ① 주울 수 없고(가방이 참) ② 버릴 수도 없다(그 자리에 물건이 있음) —
+   *   자리를 비우려고 부른 기능이 그때 안 되는 셈이다.
+   *   교환으로 두면 한 칸에 물건이 둘 쌓이는 일도 없다. */
   Game.prototype.dropItem = function (index) {
     if (this.over) return false;
     var it = this.player.inventory[index];
     if (!it) return false;
-    if (this.itemAt(this.player.x, this.player.y)) {
-      this.say("발 밑에 이미 뭔가 있다.", "warn");
-      sfx("deny");
-      return false;
-    }
+
+    var under = this.itemAt(this.player.x, this.player.y);
+
     if (it === this.player.weapon) this.player.weapon = null;
     if (it === this.player.armor) this.player.armor = null;
     this.player.inventory.splice(index, 1);
     it.x = this.player.x; it.y = this.player.y;
     this.items.push(it);
-    this.say(josa(this.itemName(it), "을", "를") + " 내려놓았다.");
+
+    if (!under) {
+      this.say(josa(this.itemName(it), "을", "를") + " 내려놓았다.");
+      sfx("pickup");
+      return this.act(true);
+    }
+
+    this.items.splice(this.items.indexOf(under), 1);
+    if (under.kind === "gold") {
+      this.gold += under.amount;
+      this.say(josa(this.itemName(it), "을", "를") + " 내려놓고 " + josa(under.name, "을", "를") + " 챘다.", "good");
+      sfx("gold");
+    } else {
+      this.player.inventory.push(under);
+      this.say(josa(this.itemName(it), "을", "를") + " 내려놓고 " +
+               josa(this.itemName(under), "을", "를") + " 집었다.", "item");
+      sfx("pickup");
+      if (under.kind === "weapon" && (!this.player.weapon || under.power > this.player.weapon.power)) {
+        this.equip(under);
+      } else if (under.kind === "armor" && (!this.player.armor || under.power > this.player.armor.power)) {
+        this.equip(under);
+      }
+    }
     return this.act(true);
   };
 
@@ -548,6 +585,12 @@
     var i, m, hit = 0, dmg;
 
     if (ab.kind === "cleave") {
+      /* 휩쓸기라 **주위 8칸**을 다 때린다(평타는 4방향이다).
+       *
+       * ⚠ 이걸 인접 4칸으로 맞췄더니 전사 승률이 21% 로 떨어지고 직업 격차가
+       *   41%p 가 됐다 — 전사의 유일한 화력 증폭기가 반토막 나서다.
+       *   몸을 한 바퀴 돌려 휘두르는 동작이니 대각을 포함하는 편이 자연스럽고,
+       *   4방향 이동에서 전사가 갖는 유일한 우위가 된다. */
       dmg = Math.round(this.power() * ab.power);
       for (i = this.monsters.length - 1; i >= 0; i--) {
         m = this.monsters[i];
@@ -676,7 +719,48 @@
 
   /* ── 몬스터 턴 ──────────────────────────────────────── */
 
+  /* 플레이어까지의 거리 지도(흐름장)를 한 턴에 **한 번** 만든다.
+   *
+   * ⚠ 전에는 몬스터마다 탐욕적으로 한 걸음씩 골랐다. 4방향이 되자 그 방식이
+   *   깨졌다 — 두 축이 다 막히면 아무 방향으로나 한 칸 갔다가 다음 턴에 되돌아와
+   *   제자리에서 떨었고, 쫓는 플레이어와 거울처럼 오가며 **영원히 안 만났다**
+   *   (실측: 두 칸을 6만 턴 왕복, 깨어 있는 해골 1마리를 못 잡음).
+   *   거리 지도를 깔면 몬스터는 값이 줄어드는 칸으로만 가므로 그런 순환이 없다.
+   *
+   * 비용은 턴당 BFS 한 번이다(몬스터 수와 무관). 반경을 잘라 두어 먼 칸은
+   * 아예 계산하지 않는다 — 그래서 멀리 있는 놈은 여전히 못 쫓아온다(도망이 통한다). */
+  var FLOW_MAX = 20;
+  var FLOW_UNREACHED = 65535;
+
+  Game.prototype.buildFlow = function () {
+    var lv = this.level, n = lv.w * lv.h;
+    if (!this.flow || this.flow.length !== n) this.flow = new Uint16Array(n);
+    this.flow.fill(FLOW_UNREACHED);
+    if (!this.flowQ || this.flowQ.length !== n) this.flowQ = new Int32Array(n);
+
+    var q = this.flowQ, head = 0, tail = 0;
+    var start = lv.idx(this.player.x, this.player.y);
+    this.flow[start] = 0;
+    q[tail++] = start;
+
+    while (head < tail) {
+      var cur = q[head++];
+      var d = this.flow[cur];
+      if (d >= FLOW_MAX) continue;
+      var cx = cur % lv.w, cy = (cur / lv.w) | 0;
+      for (var s = 0; s < STEPS.length; s++) {
+        var nx = cx + STEPS[s][0], ny = cy + STEPS[s][1];
+        if (!lv.inside(nx, ny) || lv.blocked(nx, ny)) continue;
+        var id = ny * lv.w + nx;
+        if (this.flow[id] !== FLOW_UNREACHED) continue;
+        this.flow[id] = d + 1;
+        q[tail++] = id;
+      }
+    }
+  };
+
   Game.prototype.monsterTurn = function () {
+    this.buildFlow();
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (m.hp <= 0) continue;
@@ -696,38 +780,34 @@
       else return;
     }
 
-    if (dist <= 1) { this.attack(m, p); return; }
-    if (dist > 14) return;   /* 너무 멀면 굳이 계산하지 않는다 */
+    /* 때리는 것도 4방향이다 — 대각에서 맞으면 되받아칠 방법이 없다 */
+    if (adjacent(m.x, m.y, p.x, p.y)) { this.attack(m, p); return; }
 
-    var step = this.stepToward(m, p.x, p.y);
+    var step = this.stepToward(m);
     if (step) { m.x = step.x; m.y = step.y; }
   };
 
-  /* 탐욕적 한 걸음 + 막히면 옆으로 비껴 간다.
-   * 완전한 길찾기(A*)는 이 규모에선 과하고, 살짝 멍청한 편이 도망칠 틈을 준다. */
-  Game.prototype.stepToward = function (m, tx, ty) {
-    var dx = Math.sign(tx - m.x), dy = Math.sign(ty - m.y);
-    var self = this;
-    function free(x, y) {
-      if (!self.level.inside(x, y)) return false;
-      if (self.level.blocked(x, y)) return false;
-      if (self.monsterAt(x, y)) return false;
-      if (self.player.x === x && self.player.y === y) return false;
-      return true;
-    }
-    var tries = [
-      { x: m.x + dx, y: m.y + dy },
-      { x: m.x + dx, y: m.y },
-      { x: m.x, y: m.y + dy }
-    ];
-    /* 벽에 정면으로 막히면 좌우로 한 칸 — 안 그러면 모서리에 붙어 떤다 */
-    if (dx === 0) { tries.push({ x: m.x + 1, y: m.y + dy }); tries.push({ x: m.x - 1, y: m.y + dy }); }
-    if (dy === 0) { tries.push({ x: m.x + dx, y: m.y + 1 }); tries.push({ x: m.x + dx, y: m.y - 1 }); }
+  /* 거리 지도를 내려가는 한 걸음. **4방향만** 쓴다.
+   *
+   * ⚠ 몬스터가 대각으로 오면 플레이어(화살표 4방향)는 도망칠 수도 되받아칠 수도 없다.
+   *   같은 규칙을 양쪽에 걸어야 한다 — 이동 규칙을 한쪽만 바꾸면 일방적으로 맞는다.
+   * ⚠ 값이 **줄어드는 칸만** 고른다. 같거나 커지는 칸을 허용하면 왕복이 생긴다. */
+  Game.prototype.stepToward = function (m) {
+    var lv = this.level, flow = this.flow;
+    if (!flow) return null;
+    var here = flow[lv.idx(m.x, m.y)];
+    if (here === FLOW_UNREACHED) return null;    /* 너무 멀다 — 못 쫓아온다 */
 
-    for (var i = 0; i < tries.length; i++) {
-      if (free(tries[i].x, tries[i].y)) return tries[i];
+    var best = null, bestD = here;
+    for (var s = 0; s < STEPS.length; s++) {
+      var nx = m.x + STEPS[s][0], ny = m.y + STEPS[s][1];
+      if (!lv.inside(nx, ny) || lv.blocked(nx, ny)) continue;
+      if (this.monsterAt(nx, ny)) continue;
+      if (this.player.x === nx && this.player.y === ny) continue;
+      var d = flow[ny * lv.w + nx];
+      if (d < bestD) { bestD = d; best = { x: nx, y: ny }; }
     }
-    return null;
+    return best;
   };
 
   /* ── 점수 ───────────────────────────────────────────── */

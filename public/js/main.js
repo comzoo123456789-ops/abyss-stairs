@@ -12,15 +12,13 @@
   var game, view;
   var els = {};
 
-  /* dx, dy */
+  /* 이동은 **화살표 4방향만** 이다. dx, dy
+   *
+   * ⚠ WASD·HJKL·YUBN·숫자패드를 되살리지 말 것. 대각선을 없앤 결정이라
+   *   YUBN 을 남겨 두면 그 키로만 대각 이동이 되어 규칙이 두 개가 된다.
+   *   몬스터도 4방향으로 움직이고 근접 판정도 4방향이다(js/game.js 의 adjacent). */
   var MOVE = {
-    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
-    w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0],
-    k: [0, -1], j: [0, 1], h: [-1, 0], l: [1, 0],
-    y: [-1, -1], u: [1, -1], b: [-1, 1], n: [1, 1],
-    /* 숫자패드 — 대각선이 여기 다 있다 */
-    Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0],
-    Numpad7: [-1, -1], Numpad9: [1, -1], Numpad1: [-1, 1], Numpad3: [1, 1]
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]
   };
 
   function refresh() {
@@ -68,7 +66,7 @@
     }
 
     var k = e.key;
-    var mv = MOVE[k] || MOVE[e.code];
+    var mv = MOVE[k];
     if (mv) {
       e.preventDefault();
       game.move(mv[0], mv[1]);
@@ -224,6 +222,39 @@
       game.useItem(parseInt(btn.getAttribute("data-idx"), 10));
       afterAction();
     });
+
+    /* 오른쪽 버튼 = 버리기(가방 자리 비우기).
+     * ⚠ 브라우저 기본 메뉴를 반드시 막는다 — 안 막으면 메뉴가 떠서 눌린 줄 모른다. */
+    els.inv.addEventListener("contextmenu", function (e) {
+      var btn = e.target.closest(".inv-item");
+      if (!btn) return;
+      e.preventDefault();
+      game.dropItem(parseInt(btn.getAttribute("data-idx"), 10));
+      afterAction();
+    });
+
+    /* 터치에는 오른쪽 버튼이 없다 — 길게 누르면 버린다(0.45초).
+     * 안 넣으면 휴대폰에서는 가방을 비울 방법이 아예 없다. */
+    var holdTimer = null, holdIdx = -1, holdFired = false;
+    els.inv.addEventListener("touchstart", function (e) {
+      var btn = e.target.closest(".inv-item");
+      if (!btn) return;
+      holdIdx = parseInt(btn.getAttribute("data-idx"), 10);
+      holdFired = false;
+      holdTimer = setTimeout(function () {
+        holdFired = true;
+        game.dropItem(holdIdx);
+        afterAction();
+      }, 450);
+    }, { passive: true });
+    function cancelHold() { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } }
+    els.inv.addEventListener("touchend", function (e) {
+      cancelHold();
+      /* 길게 눌러 이미 버렸으면 그 뒤의 click(=사용)을 막는다 */
+      if (holdFired) { e.preventDefault(); holdFired = false; }
+    });
+    els.inv.addEventListener("touchmove", cancelHold, { passive: true });
+    els.inv.addEventListener("touchcancel", cancelHold, { passive: true });
 
     document.getElementById("again").addEventListener("click", showStart);
     document.getElementById("helpBtn").addEventListener("click", function () { els.help.hidden = false; });

@@ -305,6 +305,36 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const looks = window.DATA.POTION_LOOKS.map(l=>l.label);
     return { names, looks };
   })()`);
+  // ── 3-d) 4방향 조작과 우클릭 버리기 ──
+  //    ⚠ 대각선 키(YUBN)가 정말 죽었는지, 우클릭이 브라우저 메뉴만 띄우고
+  //      끝나지 않는지는 화면에서 눌러 봐야 안다.
+  //  ⚠ --play 뒤에는 게임이 끝나 있어 이동도 버리기도 거절된다 — 그때는 건너뛴다.
+  const canAct = !PLAY && !(await ev(`window.__peek().over`));
+  const diagBefore = await ev(`window.__peek()`);
+  for (const k of ["y","u","b","n","w","a","s","d","h","j","k","l"]) {
+    await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key: k, code: "Key" + k.toUpperCase(),
+      windowsVirtualKeyCode: k.toUpperCase().charCodeAt(0) });
+    await S("Input.dispatchKeyEvent", { type: "keyUp", key: k, code: "Key" + k.toUpperCase() });
+  }
+  await sleep(150);
+  const diagAfter = await ev(`window.__peek()`);
+  const oldKeysDead = !canAct || (diagAfter.x === diagBefore.x && diagAfter.y === diagBefore.y);
+
+  //  가방에 물건이 있으면 우클릭으로 버려 본다(시작 장비가 있으니 항상 하나는 있다)
+  const dropTest = await ev(`(()=>{
+    const before = window.__peek().bag;
+    const btn = document.querySelector(".inv-item");
+    if (!btn) return { skipped: true };
+    if (window.__peek().over) return { skipped: true };
+    const ev2 = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 });
+    const notCancelled = btn.dispatchEvent(ev2);
+    return { before: before, after: window.__peek().bag, prevented: !notCancelled,
+             log: (document.querySelector("#log .m:last-child")||{}).textContent || "" };
+  })()`);
+
+  //  터치 패드에 대각선 버튼이 남아 있지 않은가
+  const padDirs = await ev(`[...document.querySelectorAll(".pad [data-dir]")].map(b=>b.getAttribute("data-dir"))`);
+  const noDiagButtons = padDirs.every(d => d.split(",").some(v => v === "0"));
   // ── 4) 도움말이 열리고 닫히는가 ──
   await ev(`document.getElementById("helpBtn").click()`);
   const helpOpen = await ev(`!document.getElementById("help").hidden`);
@@ -406,7 +436,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       return { display:cs.display, count:btns.length, tooSmall:small.length, touchClass:document.body.classList.contains("is-touch"),
                minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(b.getBoundingClientRect().width,b.getBoundingClientRect().height)))):0 };
     })()`);
-    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=11 && pad.tooSmall===0),
+    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=8 && pad.tooSmall===0),
       "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
   }
   const abilityWorks = (feat.btnText !== "(없음)") &&
@@ -416,6 +446,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("함정·보물방  :", ok(true), "이 층 함정 " + feat.traps + "개 · 보물방 " + (feat.treasure ? "있음" : "없음"));
   console.log("미식별 물약  :", ok(potions.looks.length >= potions.names.length),
     "물약 " + potions.names.length + "종 · 겉모습 후보 " + potions.looks.length + "개");
+  console.log("대각선 제거  :", ok(oldKeysDead && noDiagButtons),
+    (oldKeysDead ? "YUBN·WASD·HJKL 무반응" : "⚠ 옛 키가 아직 움직인다") +
+    " · 패드 방향 " + padDirs.length + "개" + (noDiagButtons ? "(대각 없음)" : " ⚠대각 남음"));
+  console.log("우클릭 버리기:", ok(dropTest.skipped ? true : (dropTest.prevented && dropTest.after < dropTest.before)),
+    dropTest.skipped ? "가방이 비어 검사 못 함"
+      : "가방 " + dropTest.before + " → " + dropTest.after + " · 기본메뉴 " +
+        (dropTest.prevented ? "막음" : "⚠안 막음") + " · \"" + dropTest.log.trim() + "\"");
   console.log("상태창       :", ui.stats);
   console.log("마지막 기록  :", ui.lastLog);
 
@@ -427,6 +464,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const pass = errs.length === 0 && canvas.litPct > 3 && moved && turned && canvas2.hash !== canvas.hash &&
                !overflow.docScroll && overflow.count === 0 && helpOpen && helpClosed &&
+               oldKeysDead && noDiagButtons &&
+               (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                abilityWorks && potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&
                startCheck.art.every(a => a > 8) &&

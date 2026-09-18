@@ -351,13 +351,20 @@ body.is-touch .pad,
 body.pad-on .pad { display: flex; }
 body.pad-off .pad { display: none; }   /* 토글로 끈 경우가 항상 이긴다 */
 
+/* 십자 4방향. 대각선 버튼을 지운 만큼 남은 버튼을 키웠다 —
+ * 9칸일 때 46×42 였는데 손가락으로 누르면 옆 칸이 잘 눌렸다. */
 .dpad {
   display: grid;
-  grid-template-columns: repeat(3, 46px);
-  grid-template-rows: repeat(3, 42px);
-  gap: 4px;
+  grid-template-columns: repeat(3, 56px);
+  grid-template-rows: repeat(3, 50px);
+  gap: 5px;
 }
 .dpad > * { min-width: 0; }
+.dpad .p-up    { grid-area: 1 / 2; }
+.dpad .p-left  { grid-area: 2 / 1; }
+.dpad .p-mid   { grid-area: 2 / 2; }
+.dpad .p-right { grid-area: 2 / 3; }
+.dpad .p-down  { grid-area: 3 / 2; }
 .dpad button, .acts button {
   background: var(--panel-2);
   border: 1px solid var(--line);

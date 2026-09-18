@@ -28,7 +28,9 @@ function loadRules() {
   return win;
 }
 
-const DIRS = [[0,-1],[0,1],[-1,0],[1,0],[-1,-1],[1,-1],[-1,1],[1,1]];
+//  ⚠ 이동이 4방향이 된 뒤로는 검사도 4방향이어야 한다. 8방향으로 두면 AI 가
+//    사람이 갈 수 없는 길로 가서 승률이 실제보다 높게 나온다.
+const DIRS = [[0,-1],[0,1],[-1,0],[1,0]];
 let fails = 0;
 const ok = (b) => { if (!b) fails++; return b ? "✔" : "✘"; };
 
@@ -201,6 +203,60 @@ if (abBad.length) abBad.forEach(r => console.log("   ✘ " + r.name + " " + JSON
     "\"" + nameBefore + "\" → 마신 뒤 \"" + nameAfter + "\"");
 }
 
+// 7-f) 버리기 — 가방을 비울 수 있고, 발 밑에 물건이 있으면 교환되는가.
+//      ⚠ 전에는 "발 밑에 이미 뭔가 있다" 며 거절했다. 그게 정확히 막다른 골목이었다:
+//        가방이 꽉 찬 채 물건 위에 서 있으면 주울 수도 버릴 수도 없어서,
+//        자리를 비우려고 만든 기능이 필요한 순간에 안 됐다.
+{
+  const g = new Game("warrior");
+  g.reset(9001, "warrior");
+  const dagger = g.makeItem(DATA.byId(DATA.ITEMS, "dagger"), 0, 0);
+  g.player.inventory = [dagger];
+  g.monsters = [];                                  /* 턴이 흘러 죽는 것을 막는다 */
+  /* (1) 빈 바닥에 버리기 */
+  const bag0 = g.player.inventory.length;
+  g.dropItem(0);
+  const dropped = g.player.inventory.length === bag0 - 1 &&
+                  !!g.itemAt(g.player.x, g.player.y);
+  /* (2) 가방을 꽉 채우고 물건 위에 서서 버리기 → 교환 */
+  g.player.inventory = [];
+  for (let i = 0; i < 16; i++) g.player.inventory.push(g.makeItem(DATA.byId(DATA.ITEMS, "dagger"), 0, 0));
+  const floorItem = g.makeItem(DATA.byId(DATA.ITEMS, "plate"), g.player.x, g.player.y);
+  g.items = [floorItem];
+  const bagFull = g.player.inventory.length;
+  g.dropItem(0);
+  const swapped = g.player.inventory.indexOf(floorItem) >= 0 &&
+                  g.player.inventory.length === bagFull &&
+                  g.items.length === 1;               /* 한 칸에 둘이 쌓이지 않았다 */
+  console.log("버리기·교환 :", ok(dropped && swapped),
+    (dropped ? "빈 바닥 버리기 정상" : "✘ 버려지지 않음") + " · " +
+    (swapped ? "가방 꽉 찬 상태에서 교환됨(바닥 " + g.items.length + "개)" : "✘ 교환 안 됨"));
+}
+
+// 7-g) 4방향 — 몬스터가 대각선으로 움직이지 않는가(플레이어와 같은 규칙인가)
+{
+  let diagMoves = 0, steps = 0;
+  for (let run = 0; run < 25; run++) {
+    const g = new Game("warrior");
+    g.reset(run * 7919 + 5, "warrior");
+    /* ⚠ 제자리에서 쉬면 몬스터가 안 깨어나 표본이 5걸음밖에 안 나왔다 —
+     *   돌아다녀서 깨워야 실제로 쫓아오는 걸음을 잰다. */
+    for (let t = 0; t < 300 && !g.over; t++) {
+      const snap = g.monsters.map(m => ({ m: m, x: m.x, y: m.y }));
+      const d = DIRS[(Math.random() * DIRS.length) | 0];
+      if (!g.move(d[0], d[1])) g.wait();
+      for (const s of snap) {
+        if (g.monsters.indexOf(s.m) < 0) continue;
+        const d = Math.abs(s.m.x - s.x) + Math.abs(s.m.y - s.y);
+        if (d > 0) steps++;
+        if (Math.abs(s.m.x - s.x) > 0 && Math.abs(s.m.y - s.y) > 0) diagMoves++;
+      }
+    }
+  }
+  console.log("몬스터 4방향:", ok(diagMoves === 0),
+    steps.toLocaleString() + "걸음 중 대각선 " + diagMoves + "걸음");
+}
+
 // 8) 무작위 조작 내구 — 예외 0 (직업을 돌려 가며)
 let crashes = 0;
 const CLS = DATA.CLASSES.map(c => c.id);
@@ -214,7 +270,7 @@ for (let run = 0; run < 120; run++) {
       else if (r < 0.09) g.descendIfStairs();
       else if (r < 0.13) g.useAbility();
       else if (r < 0.17 && g.player.inventory.length) g.useItem((Math.random() * g.player.inventory.length) | 0);
-      else { const d = DIRS[(Math.random() * 8) | 0]; g.move(d[0], d[1]); }
+      else { const d = DIRS[(Math.random() * DIRS.length) | 0]; g.move(d[0], d[1]); }
     }
   } catch (e) { crashes++; if (crashes < 3) console.log("   예외:", e.message); }
 }
@@ -275,7 +331,7 @@ function play(seed, clsId) {
     if (p.cooldown <= 0) {
       const ab = g.cls.ability;
       let worth = false;
-      if (ab.kind === "cleave") worth = !!adj;
+      if (ab.kind === "cleave") worth = g.monsters.some(m => Math.max(Math.abs(m.x-p.x), Math.abs(m.y-p.y)) <= ab.range);
       else if (ab.kind === "throw") worth = near && (Math.abs(near.x - p.x) + Math.abs(near.y - p.y)) <= ab.range;
       else if (ab.kind === "blast") worth = g.monsters.some(m =>
         Math.max(Math.abs(m.x - p.x), Math.abs(m.y - p.y)) <= ab.range);

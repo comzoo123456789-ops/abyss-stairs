@@ -34,8 +34,8 @@
       hp: 58, atk: 6, def: 2, hpPerLevel: 14, atkPerLevel: 2, defPerLevel: 1,
       start: ["dagger", "leather"],
       evade: 0, scrollBoost: 1, goldBoost: 1,
-      ability: { name: "강타", kind: "cleave", cd: 6, power: 1.9, range: 1,
-                 desc: "인접한 모든 적에게 공격력의 1.9배 피해" },
+      ability: { name: "강타", kind: "cleave", cd: 5, power: 1.9, range: 1,
+                 desc: "주위 8칸의 모든 적에게 공격력의 1.9배 피해" },
       blurb: "실수를 한 번은 견딘다. 가장 멀리 가지만 마무리 화력은 약하다. 처음이라면 이쪽."
     },
     {
@@ -43,8 +43,8 @@
       hp: 40, atk: 6, def: 0, hpPerLevel: 8, atkPerLevel: 3, defPerLevel: 0,
       start: ["dagger"],
       evade: 0.14, scrollBoost: 1, goldBoost: 1.5,
-      ability: { name: "투척 단검", kind: "throw", cd: 7, power: 1.35, range: 7,
-                 desc: "보이는 가장 가까운 적에게 원거리로 공격력의 1.35배 피해" },
+      ability: { name: "투척 단검", kind: "throw", cd: 8, power: 1.3, range: 5,
+                 desc: "5칸 안의 가장 가까운 적에게 원거리로 공격력의 1.3배 피해" },
       blurb: "화력은 가장 세지만 방어가 자라지 않는다. 14% 회피와 함정 감지로 버틴다."
     },
     {
