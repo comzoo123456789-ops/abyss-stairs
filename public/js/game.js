@@ -650,7 +650,7 @@
 
     var it = this.itemAt(nx, ny);
     if (it) this.say(josa(this.itemName(it), "이", "가") + " 발 밑에 있다. (Space 로 줍기)", "item");
-    if (this.level.at(nx, ny) === D.STAIRS) this.say("아래로 내려가는 계단이다. (Enter 로 내려가기)", "depth");
+    if (this.level.at(nx, ny) === D.STAIRS) this.say("아래로 내려가는 계단이다. (Space 로 내려가기)", "depth");
 
     return this.act(true);
   };

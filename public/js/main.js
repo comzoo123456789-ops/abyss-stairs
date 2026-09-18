@@ -292,10 +292,22 @@
       return;
     }
 
-    /* ⚠ Space 는 줍기다. 기본 동작(페이지 스크롤·버튼 재클릭)을 반드시 막는다 —
+    /* Space 는 **발 밑에 대고 하는 것 하나**다: 물건이 있으면 줍고, 없는데
+     * 계단이면 내려간다(사용자 지시 2026-09-18 · 전에는 계단이 Enter 였다).
+     * ⚠ 순서를 뒤집지 말 것. 계단 위에 물건이 있으면 **먼저 줍는다** — 내려가기가
+     *   먼저면 그 물건을 영영 못 줍는다. 한 번 더 누르면 내려간다.
+     * ⚠ 칸을 눌러 제자리를 찍었을 때(tapTile)와 **같은 순서**여야 한다. 두 길이
+     *   다르게 굴면 "어떤 때는 줍고 어떤 때는 내려간다" 가 된다.
+     * ⚠ 기본 동작(페이지 스크롤·버튼 재클릭)을 반드시 막는다 —
      *   안 막으면 마지막으로 누른 버튼이 다시 눌린다. */
     if (k === " " || e.code === "Space" || k === "g" || k === "G" || k === ",") {
-      e.preventDefault(); game.pickUp(); afterAction(); return;
+      e.preventDefault();
+      var fp = game.player;
+      if (!game.itemAt(fp.x, fp.y) &&
+          game.level.at(fp.x, fp.y) === window.DUNGEON.STAIRS) game.descendIfStairs();
+      else game.pickUp();
+      afterAction();
+      return;
     }
     if (k === "." || e.code === "Numpad5") {
       e.preventDefault(); game.wait(); afterAction(); return;
@@ -308,7 +320,7 @@
     if (k === "f" || k === "F") {
       e.preventDefault(); game.shoot(); afterAction(); return;
     }
-    if (k === ">" || k === "Enter") {
+    if (k === ">") {
       e.preventDefault(); game.descendIfStairs(); afterAction(); return;
     }
     if (k >= "1" && k <= "9") {

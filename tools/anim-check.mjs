@@ -51,10 +51,14 @@ await sleep(400);
 let fails = 0;
 const ok = b => { if (!b) fails++; return b ? "✔" : "✘"; };
 
-const VK = { ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
+const VK = { ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39, " ": 32, Enter: 13 };
+/* ⚠ 스페이스는 key 가 " " 이고 code 는 "Space" 다. 둘을 같은 값으로 보내면
+ *   제품의 e.code === "Space" 갈래가 안 걸려 조용히 아무 일도 안 일어난다. */
+const CODE = { " ": "Space" };
 async function tap(key) {
-  await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key, code: key, windowsVirtualKeyCode: VK[key] });
-  await S("Input.dispatchKeyEvent", { type: "keyUp", key, code: key });
+  const code = CODE[key] || key;
+  await S("Input.dispatchKeyEvent", { type: "rawKeyDown", key, code, windowsVirtualKeyCode: VK[key] });
+  await S("Input.dispatchKeyEvent", { type: "keyUp", key, code });
 }
 
 /* ① 칸 사이에 있는 순간 — 여러 방향을 시도해 실제로 움직이는 걸음을 찾는다 */
@@ -138,10 +142,16 @@ while (!st.onStairs && guard++ < 900 && !st.over) {
   st = await ev("window.__peek()");
   lastSt = st;
 }
-let snap = null;
+let snap = null, enterDead = null;
 if (st.onStairs) {
   const posBefore = { x: st.x, y: st.y };
+  /* ⚠ 계단은 **Space** 다(2026-09-18 사용자 지시). Enter 는 더 안 받는다 —
+   *   옛 키가 살아 있으면 규칙이 둘이 되므로 죽었는지도 함께 잰다. */
   await tap("Enter");
+  await sleep(140);
+  enterDead = (await ev("window.__peek()")).depth === depth0;
+
+  await tap(" ");
   await sleep(30);                       /* 애니메이션이 있다면 아직 중간일 시각 */
   const v = await ev("window.__vis()");
   const p = await ev("window.__peek()");
@@ -155,6 +165,11 @@ console.log("⑤ 층 이동 스냅 :",
           " · 보간 " + (snap.v.moving ? "함(⚠ 지도를 미끄러져 간다)" : "안 함"))
        : "계단에 못 닿아 검사 못 함 (guard=" + guard + " · " +
          (lastSt && lastSt.over ? "걸어가다 죽었다" : "길이 끊겼다") + ")");
+
+console.log("⑥ 계단은 Space :",
+  enterDead === null ? "— 계단에 못 닿아 검사 못 함"
+    : ok(enterDead) + " Enter 로는 안 내려간다 · Space 로 " + depth0 + "층 → " +
+      (snap ? snap.p.depth : "?") + "층");
 
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ 실패 " + fails + "건");
 ws.close(); ch.kill(); srv.close();
