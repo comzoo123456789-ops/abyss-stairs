@@ -993,7 +993,7 @@
         '<b>' + esc(c.title) + "</b>" +
         '<em>' + esc(c.name) + " · Lv." + p.level + "</em>" +
       "</div>" +
-      '<span class="who-gold">' + g.gold.toLocaleString() + "<i>금</i></span>" +
+      '<span class="who-gold"><i class="ic ic-gold"></i>' + g.gold.toLocaleString() + "<i>금</i></span>" +
       "</div>";
 
     /* ⚠ 체력·경험 막대는 여기 없다 — **상단 상태줄(drawHud)** 로 옮겼다.
@@ -1037,11 +1037,13 @@
      * ⚠ 2×2 상자표였다. 네 칸에 테두리를 두르니 좁은 화면에서 세로를 80px 넘게
      *   먹었는데, 담긴 것은 숫자 네 개뿐이었다(사용자 지적: "표로 보여주지 말고
      *   그냥 간략하게"). 같은 정보를 한 줄에 담으면 20px 다. */
+    /* ⚠ 아이콘을 글자 **앞**에 둔다. 반복되는 네 수치를 눈이 모양으로 먼저
+     *   집으므로 읽는 속도가 달라진다(제안서 원칙 3). */
     html += '<div class="stat-line">' +
-      '<span><em>공격</em><b>' + g.power() + "</b></span>" +
-      '<span><em>방어</em><b>' + g.guard() + "</b></span>" +
-      '<span><em>치명</em><b>' + pct(st.crit) + "</b><s>×" + st.critMult.toFixed(1) + "</s></span>" +
-      '<span><em>이상</em><b>' + pct(st.ailChance) + "</b></span>" +
+      '<span><i class="ic ic-atk"></i><em>공격</em><b>' + g.power() + "</b></span>" +
+      '<span><i class="ic ic-def"></i><em>방어</em><b>' + g.guard() + "</b></span>" +
+      '<span><i class="ic ic-crit"></i><em>치명</em><b>' + pct(st.crit) + "</b><s>×" + st.critMult.toFixed(1) + "</s></span>" +
+      '<span><i class="ic ic-ail"></i><em>이상</em><b>' + pct(st.ailChance) + "</b></span>" +
       "</div>";
 
     /* 쌓인 옵션 — 이게 "내 빌드" 다. 0 인 것은 안 보여 준다(줄만 늘어난다) */
@@ -1065,14 +1067,17 @@
     html += relicHtml(g, false);
 
     /* 장비 — 등급 색으로 한눈에 */
+    /* ⚠ 빈 칸도 **보여 준다.** 비어 있다는 것이 정보다(제안서: "빈 칸도 정보").
+     *   안 보여 주면 보조 장비를 낄 수 있다는 것조차 모른다. */
     html += '<div class="equip">';
-    var slots = [["weapon", "무기"], ["armor", "갑옷"], ["offhand", "보조"]];
+    var slots = [["weapon", "무기", "ic-atk"], ["armor", "갑옷", "ic-armor"], ["offhand", "보조", "ic-off"]];
     for (var q = 0; q < slots.length; q++) {
       var it = p[slots[q][0]];
-      html += "<div><em>" + slots[q][1] + "</em>" +
-        (it ? '<b style="color:' + esc(it.color) + '">' + esc(it.name) +
-              "<s>+" + it.power + "</s></b>"
-            : "<b>없음</b>") + "</div>";
+      html += '<div class="eq-row' + (it ? "" : " none") + '">' +
+        '<span class="eq-slot' + (it ? " on" + rarCls(it) : "") + '"><i class="ic ' + slots[q][2] + '"></i></span>' +
+        "<em>" + slots[q][1] + "</em>" +
+        (it ? '<b class="' + rarCls(it).trim() + '">' + esc(it.name) + "<s>+" + it.power + "</s></b>"
+            : '<b class="dim">비어 있다</b>') + "</div>";
     }
     html += "</div>";
 
@@ -1156,11 +1161,9 @@
   /* 가방 — 등급 색 + 옵션 줄. 아이템을 고르는 것이 빌드이므로 옵션이 보여야 한다. */
   Renderer.prototype.drawInventory = function (el) {
     var g = this.game, p = g.player;
-    if (!p.inventory.length) {
-      el.innerHTML = '<div class="empty">가방이 비어 있다.</div>';
-      return;
-    }
+    var cap = global.DATA.BAG_MAX;
     var html = "";
+    if (!p.inventory.length) html += '<div class="empty">가방이 비어 있다.</div>';
     for (var i = 0; i < p.inventory.length; i++) {
       var it = p.inventory[i];
       var worn = it.slot && p[it.slot] === it;
@@ -1176,6 +1179,21 @@
         esc(nm) + (worn ? " <i>착용</i>" : "") + "</span>" +
         '<span class="ds">' + lines.map(esc).join(" · ") + "</span>" +
         "</button>";
+    }
+    /* 남은 자리를 **한 줄짜리 띠**로 그린다. 몇 칸이 비었는지가 숫자가 아니라
+     * 모양으로 보인다(제안서: 슬롯 그리드).
+     * ⚠ 칸마다 한 줄씩 그렸더니 빈 칸 다섯이 세로 130px 를 먹어 정작 가진 물건이
+     *   스크롤 밖으로 밀렸다. 작은 네모를 한 줄에 늘어놓는 편이 같은 말을 한다.
+     * ⚠ button 이 아니라 div 다 — 눌러도 아무 일이 없어야 하고, 점검기가
+     *   .inv-item 을 세는 것도 흐트러지면 안 된다. */
+    var free = cap - p.inventory.length;
+    if (free > 0) {
+      /* ⚠ 네모를 스무 개 늘어놓으면 그것대로 시끄럽다. 열두 개까지만 그리고
+       *   나머지는 숫자로 말한다. */
+      var boxes = Math.min(free, 12);
+      html += '<div class="inv-free" title="남은 자리 ' + free + '칸">';
+      for (var e = 0; e < boxes; e++) html += "<i></i>";
+      html += "<span>남은 자리 " + free + "</span></div>";
     }
     el.innerHTML = html;
   };
