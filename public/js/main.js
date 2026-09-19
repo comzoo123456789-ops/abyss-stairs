@@ -919,6 +919,17 @@
         foes: game.adjacentFoes(game.player.x, game.player.y).length,
         /* 지금 **보이는** 적 수. 자동 이동은 못 보던 적이 나타나면 멈추는데,
          * 점검기가 그걸 모르면 멀쩡히 멈춘 것을 고장으로 부른다(실제로 그랬다). */
+        /* 보이는 적들의 위험도 — 점검기가 표식이 맞는지 잰다 */
+        threats: (function () {
+          var out = [];
+          for (var i = 0; i < game.monsters.length; i++) {
+            var m = game.monsters[i];
+            if (!game.isVisible(m.x, m.y)) continue;
+            var t = game.threatOf(m);
+            out.push({ name: m.name, hitsOnMe: t.hitsOnMe, hitsToKill: t.hitsToKill });
+          }
+          return out;
+        })(),
         foesSeen: (function () {
           var n = 0;
           for (var i = 0; i < game.monsters.length; i++)
@@ -1038,6 +1049,14 @@
       *   뒤로는 가는 길에 맞아 죽어 **검사 자체가 못 돌았다**. 애니메이션 검사가
       *   전투 생존 검사를 겸할 이유가 없다. */
      window.__clearMonsters = function () { game.monsters = []; refresh(); return true; };
+    /* 점검기 전용 — 그 칸까지 길이 있는가(몇 걸음인가).
+      * ⚠ 자동 이동이 **한 칸도 안 갔을 때** 고장인지 "길이 막힌 것" 인지 갈라야
+      *   한다. 몬스터가 늘면서 외길이 막히는 일이 늘었다 — 그건 제품이 맞게 군
+      *   것이다(pathTo 는 몬스터가 선 칸을 안 지나간다). */
+     window.__pathLen = function (x, y) {
+       var pth = game.pathTo(x, y);
+       return pth ? pth.length : -1;
+     };
     window.__travel = function () {
       return travel ? { goal: travel.goal, left: travel.path.length - travel.i } : null;
     };

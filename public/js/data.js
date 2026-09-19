@@ -55,8 +55,8 @@
   var SPECS = {
     warrior: [
       { id: "guard", name: "성벽", tag: "살아남는 쪽",
-        note: "방어 +3 · 최대 체력 +18. 오래 버틴다",
-        mods: { defFlat: 3, hpFlat: 18 } },
+        note: "방어 +4 · 최대 체력 +26. 오래 버틴다",
+        mods: { defFlat: 4, hpFlat: 26 } },
       { id: "berserk", name: "돌파", tag: "몰아치는 쪽",
         note: "공격 +4 · 치명타 +8% · 최대 체력 −10. 먼저 끝낸다",
         mods: { atkFlat: 4, crit: 0.08, hpFlat: -10 } }
@@ -276,7 +276,28 @@
    * ⚠ 효과는 **game.js 의 정해진 자리에서만** 읽는다(hasRelic). 여기저기서 읽으면
    *   어디가 그 유물 때문인지 추적이 안 된다.
    */
+  /* ⚠ 유물은 **수치가 아니라 규칙**을 바꾼다. 그래서 stats() 로는 표현되지 않고
+   *   정해진 자리에서 hasRelic() 으로 읽힌다(game.js 의 유물 목록 주석 참조).
+   * ⚠ 새 유물을 넣을 때는 **이미 있는 체계에 물리는 것**을 고른다. 아무 데도 안
+   *   물리는 유물은 "수치 +N" 과 다를 것이 없다 — 아래 넷은 기회 공격 · 치명타 ·
+   *   깊은 계단 · 도망에 각각 물린다. */
   var RELICS = [
+    { id: "r_venomstep", name: "물러선 자리", cost: 250,
+      note: "물러서다 맞으면 그 적이 중독된다",
+      why: "물러서는 것이 손해가 아니게 된다 — 치고 빠지는 빌드의 값" },
+
+    { id: "r_coldedge", name: "식은 칼날", cost: 290,
+      note: "치명타가 터지면 모든 스킬 쿨다운이 1 줄어든다",
+      why: "치명타 확률과 스킬을 한 줄로 잇는다" },
+
+    { id: "r_deeppact", name: "깊은 약속", cost: 220,
+      note: "깊은 계단으로 내려가면 그 층에 물건이 둘 더 있다",
+      why: "위험한 길을 고르는 값을 올려 준다" },
+
+    { id: "r_bell", name: "겁쟁이의 종", cost: 230,
+      note: "적이 등을 돌리면 취약해진다 (받는 피해 +18%)",
+      why: "도망치는 놈과 공포를 쫓을 이유가 생긴다" },
+
     { id: "r_brush", name: "두 번 새기는 붓", cost: 240,
       note: "중독·출혈이 두 배로 오래 간다",
       why: "상태이상 확률을 올렸다면 여기서 값이 난다" },
@@ -435,6 +456,13 @@
     { id: "cure",    name: "해독 물약",     sprite: "potion", kind: "potion", effect: "cure",  power: 0,   depth: 3, weight: 5,  cost: 34,  desc: "상태이상을 모두 씻는다." },
 
     { id: "fire",    name: "화염 두루마리", sprite: "scroll", kind: "scroll", effect: "fire",  power: 26,  depth: 2, weight: 8, cost: 46, desc: "주변 3칸의 모든 적에게 26 피해." },
+    /* 전술 두루마리 — **피해가 아니라 시간을 산다.**
+     * ⚠ 공포·실명은 몬스터만 걸던 것이었다. 플레이어 쪽 출처가 없으면 그 상태가
+     *   무엇인지 배울 자리가 없다 — 당해 보기만 하고 써 보지는 못한다.
+     * ⚠ 이 둘이 이 게임의 **도망 수단**이다. 기회 공격 때문에 걸어서는 못
+     *   빠져나오는데, 겁주거나 눈을 가리면 빠져나올 수 있다. */
+    { id: "scare",   name: "겁주는 두루마리", sprite: "scroll", kind: "scroll", effect: "scare", power: 0,  depth: 3, weight: 7, cost: 54, desc: "보이는 적이 모두 등을 돌린다 (공포)." },
+    { id: "fog",     name: "먹구름 두루마리", sprite: "scroll", kind: "scroll", effect: "fog",   power: 0,  depth: 4, weight: 6, cost: 58, desc: "보이는 적이 모두 앞을 못 본다 (실명)." },
     { id: "bolt",    name: "번개 두루마리", sprite: "scroll", kind: "scroll", effect: "bolt",  power: 38,  depth: 2, weight: 8, cost: 46, desc: "보이는 가장 가까운 적에게 38 피해." },
     { id: "blink",   name: "도약 두루마리", sprite: "scroll", kind: "scroll", effect: "blink", power: 0,   depth: 2, weight: 6, cost: 38, desc: "이 층의 무작위 위치로 순간이동한다." },
     { id: "mapping", name: "지도 두루마리", sprite: "scroll", kind: "scroll", effect: "map",   power: 0,   depth: 2, weight: 6, cost: 38, desc: "이 층의 지형과 함정이 드러난다." },

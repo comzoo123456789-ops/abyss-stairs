@@ -326,7 +326,9 @@
       this.monsters.push(this.spawn(def, spot.x, spot.y));
     }
 
-    var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1));
+    /* 유물: 깊은 약속 — 깊은 계단으로 내려온 층에 물건이 둘 더 있다 */
+    var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1)) +
+                 ((deep && this.hasRelic("r_deeppact")) ? 2 : 0);
     for (i = 0; i < icount; i++) {
       spot = freeSpot(null);
       if (!spot) continue;
@@ -802,6 +804,9 @@
       if (m.hp <= 0 || m.ail.stun) continue;
       if (manhattan(m.x, m.y, nx, ny) === 1) continue;   /* 아직 붙어 있으면 아니다 */
       this.attack(m, this.player, josa(m.name, "이", "가") + " 물러서는 틈을 노렸다.");
+      /* 유물: 물러선 자리 — 물러서다 맞으면 그 적이 중독된다.
+       * ⚠ **맞은 뒤에** 건다. 앞에 두면 그 적이 반사로 죽었을 때 시체에 거는 셈이다. */
+      if (this.hasRelic("r_venomstep") && m.hp > 0) this.applyAil(m, "poison", this.stats().ailPower);
       if (this.over) return;
     }
   };
@@ -882,7 +887,7 @@
     /* 장비는 **더 좋을 때만** 자동 착용한다. 옵션까지 비교해야 하므로 점수로 잰다 */
     if (it.slot) {
       var cur = this.player[it.slot];
-      if (!cur || this.gearScore(it) > this.gearScore(cur)) this.equip(it);
+      if (!it.cursed && (!cur || this.gearScore(it) > this.gearScore(cur))) this.equip(it);
     }
     return this.act(true);
   };
@@ -898,9 +903,22 @@
     return v;
   };
 
+  /* 이 칸을 바꿀 수 있는가 — 저주받은 것을 끼고 있으면 못 바꾼다.
+   * ⚠ **나가는 문을 하나 남긴다**(벼림 두루마리가 저주를 끊는다). 끝까지 갇히면
+   *   그 판이 통째로 재미없어진다 — 무게는 주되 사형은 아니어야 한다. */
+  Game.prototype.slotLocked = function (slot) {
+    var cur = this.player[slot];
+    return !!(cur && cur.cursed);
+  };
+
   Game.prototype.equip = function (it, quiet) {
     if (!it.slot) return;
     var p = this.player;
+    if (this.slotLocked(it.slot) && p[it.slot] !== it) {
+      this.say(josa(p[it.slot].name, "이", "가") + " 손에서 떨어지지 않는다.", "warn");
+      sfx("deny");
+      return;
+    }
     var before = p.hp / Math.max(1, this.maxhp());
     p[it.slot] = it;
     /* 최대 체력이 바뀌면 비율을 유지한다 — 안 하면 체력 옵션을 갈 때마다 손해/이득이 난다 */
@@ -982,6 +1000,22 @@
       p.x = spot.x; p.y = spot.y;
       this.say("몸이 어딘가로 튕겨 나갔다.", "good"); sfx("ability");
 
+    } else if (it.effect === "scare" || it.effect === "fog") {
+      /* 보이는 적 전부에게 건다. ⚠ **보이는 것만**이다 — 안 보이는 데까지 걸면
+       * 무엇이 일어났는지 알 수가 없고, 기억으로만 아는 자리까지 닿게 된다. */
+      var kind = it.effect === "scare" ? "fear" : "blind";
+      var got = 0;
+      for (i = 0; i < this.monsters.length; i++) {
+        var mm = this.monsters[i];
+        if (!this.isVisible(mm.x, mm.y)) continue;
+        this.applyAil(mm, kind, this.stats().ailPower);
+        this.fx("burst", mm.x, mm.y);
+        got++;
+      }
+      if (!got) { this.say("보이는 적이 없다. 두루마리를 도로 넣었다.", "warn"); sfx("deny"); return false; }
+      this.say(got + "마리가 " + (kind === "fear" ? "등을 돌렸다." : "앞을 못 본다."), "good");
+      sfx("ability");
+
     } else if (it.effect === "map") {
       D.revealAll(this.level);
       for (i = 0; i < this.level.traps.length; i++) if (this.level.traps[i] === 1) this.level.traps[i] = 2;
@@ -994,6 +1028,18 @@
       if (p.armor) slots.push(p.armor);
       if (p.offhand) slots.push(p.offhand);
       if (!slots.length) { this.say("벼릴 장비가 없다.", "warn"); sfx("deny"); return false; }
+      /* ⚠ 저주받은 장비가 있으면 **그것부터** 끊는다. 무작위로 고르면 갇힌
+       *   사람이 나갈 문을 못 찾는다 — 이 두루마리가 그 문이다. */
+      var curst = null;
+      for (var ci = 0; ci < slots.length; ci++) if (slots[ci].cursed) { curst = slots[ci]; break; }
+      if (curst) {
+        curst.cursed = false;
+        curst.name = curst.name.replace("저주받은 ", "");
+        this.say(josa(curst.name, "이", "가") + " 저주가 끊겼다. 이제 벗을 수 있다.", "level");
+        sfx("level");
+        this.player.inventory.splice(index, 1);
+        return this.act(true);
+      }
       var tgt = slots[Math.floor(this.rng() * slots.length)];
       var extra = IT.makeGear(tgt.slot, this.depth, this.rng, { affixes: 1, tier: tgt.tier }).affixes[0];
       if (extra) {
@@ -1037,7 +1083,7 @@
       sfx("pickup");
       if (under.slot) {
         var cur = this.player[under.slot];
-        if (!cur || this.gearScore(under) > this.gearScore(cur)) this.equip(under);
+        if (!under.cursed && (!cur || this.gearScore(under) > this.gearScore(cur))) this.equip(under);
       }
     }
     return this.act(true);
@@ -1050,6 +1096,29 @@
    * ⚠ 전에는 `공격 − 방어` 였다. 그게 절벽이라 방어가 공격을 넘는 순간 피해가
    *   통째로 1 로 떨어졌다 — 실측에서 레벨당 방어 +1 을 +0.5 로 줄인 것만으로
    *   승률이 72.7% → 11.7% 로 뒤집혔다(밸런스를 잡을 수가 없는 형태다). */
+  /* 이 놈이 얼마나 위험한가 — **몇 대에 죽는가**로 잰다.
+   *
+   * Brogue 의 원칙을 따른다: 난이도를 모호함으로 만들지 않는다. 몬스터를 보면
+   * "몇 대 맞으면 죽는지" 를 알려 준다. 숫자(공격력 13)는 내 방어와 견줘야
+   * 뜻이 생기는데 사람은 그 암산을 안 한다 — **대수**로 바꿔 준다.
+   *
+   * ⚠ roll() 의 **평균**으로 잰다. 최댓값으로 재면 모든 것이 위험해 보이고,
+   *   최솟값으로 재면 아무것도 안 위험해 보인다.
+   *   roll = (atk + swing) * 14/(14+def), swing 은 0~atk/3 이므로 평균 atk/6.
+   * ⚠ 방벽은 셈에 안 넣는다. 한 번 쓰면 사라지는 것을 상시 방어로 치면
+   *   위험이 실제보다 낮게 보인다.
+   * ⚠ 0 으로 나누지 않게 한 대 피해는 최소 1 이다(roll 과 같은 규칙). */
+  Game.prototype.threatOf = function (m) {
+    var mit = 14 / (14 + Math.max(0, this.guard()));
+    var each = Math.max(1, Math.round((m.atk + m.atk / 6) * mit));
+    var mine = Math.max(1, Math.round((this.power() + this.power() / 6) * (14 / (14 + Math.max(0, m.def)))));
+    return {
+      hitsOnMe: Math.max(1, Math.ceil(this.player.hp / each)),
+      hitsToKill: Math.max(1, Math.ceil(m.hp / mine)),
+      each: each
+    };
+  };
+
   Game.prototype.roll = function (atk, def) {
     var swing = Math.floor(this.rng() * (atk / 3 + 1));
     var mitigation = 14 / (14 + Math.max(0, def));
@@ -1087,7 +1156,17 @@
         dmg = Math.round(dmg * (1 + 0.7 * Math.max(0, Math.min(1, lack))));
       }
       var crit = this.critRoll(1);
-      if (crit) { dmg = Math.round(dmg * crit); this.crits += 1; }
+      if (crit) {
+        dmg = Math.round(dmg * crit); this.crits += 1;
+        /* 유물: 식은 칼날 — 치명타가 쿨다운을 깎는다. 치명타 빌드와 스킬 빌드를
+         * 한 줄로 잇는다. ⚠ 0 밑으로 안 내린다. */
+        if (this.hasRelic("r_coldedge")) {
+          for (var ce = 0; ce < this.player.skills.length; ce++) {
+            var cs = this.player.skills[ce];
+            if (cs.cd > 0) cs.cd = Math.max(0, cs.cd - 1);
+          }
+        }
+      }
       /* 유물: 빈 이름 — 치명타가 터지고 상대가 이미 약하면 그 자리에서 지운다.
        * ⚠ 보스에는 안 통한다. 통하면 10층이 치명타 한 방으로 끝난다. */
       if (crit && !target.boss && this.hasRelic("r_blank") &&
@@ -1339,7 +1418,7 @@
     sfx("gold");
     if (it.slot) {
       var cur = this.player[it.slot];
-      if (!cur || this.gearScore(it) > this.gearScore(cur)) this.equip(it);
+      if (!it.cursed && (!cur || this.gearScore(it) > this.gearScore(cur))) this.equip(it);
     }
     return true;
   };
@@ -1627,7 +1706,11 @@
      * ⚠ 갈 곳이 없으면 그 자리에서 싸운다(구석에서 떨기만 하면 안 된다). */
     if (ailHas(m, "flee")) {
       var scared = this.stepAway(m);
-      if (scared) { m.x = scared.x; m.y = scared.y; return; }
+      if (scared) {
+        /* 유물: 겁쟁이의 종 — 공포로 돌아선 놈도 취약해진다(도망과 같은 뜻이어야 한다) */
+        if (this.hasRelic("r_bell")) this.applyAil(m, "weak", 0);
+        m.x = scared.x; m.y = scared.y; return;
+      }
     }
 
     /* 소환 — 부르는 것이 곧 그 턴의 행동이다(부르고 때리면 두 배가 된다) */
@@ -1646,7 +1729,12 @@
     if (m.timid && !m.brave && m.hp <= m.maxhp * m.timid) {
       var away = m.fleeLeft > 0 ? this.stepAway(m) : null;
       if (away) {
-        if (!m.fleeing) { this.say(josa(m.name, "이", "가") + " 등을 돌렸다.", "warn"); m.fleeing = true; }
+        if (!m.fleeing) {
+          this.say(josa(m.name, "이", "가") + " 등을 돌렸다.", "warn");
+          m.fleeing = true;
+          /* 유물: 겁쟁이의 종 — 등을 돌린 놈은 취약해진다 */
+          if (this.hasRelic("r_bell")) this.applyAil(m, "weak", 0);
+        }
         m.fleeLeft -= 1;
         m.x = away.x; m.y = away.y;
         return;

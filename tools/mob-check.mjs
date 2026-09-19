@@ -185,5 +185,44 @@ console.log("── 상태이상 ──");
     "화상 " + t + "턴에 " + burned + " · 중독 " + t2 + "턴에 " + (hp1 - b.m.hp) + " (화상이 더 짧아야 한다)");
 }
 
+/* ⑦ 저주받은 장비 — 값은 크되 **못 벗는가**, 그리고 **나갈 문이 있는가**. */
+console.log("");
+console.log("── 저주받은 장비 ──");
+{
+  const a = makeArena(W, { mon: "orc", calm: true });
+  const IT = W.ITEMS, DATA2 = W.DATA;
+  /* 같은 조건에서 저주받은 것과 아닌 것의 값을 견준다 */
+  let cur = null, plain = null, tries = 0;
+  while ((!cur || !plain) && tries++ < 4000) {
+    const it = IT.makeGear("weapon", 5, a.g.rng, { tier: 3, rarity: DATA2.RARITY[0] });
+    if (it.cursed && !cur) cur = it;
+    if (!it.cursed && !plain) plain = it;
+  }
+  row("저주는 세다", !!(cur && plain) && cur.power > plain.power,
+    cur && plain ? "저주 " + cur.power + " vs 보통 " + plain.power : "표본을 못 만들었다");
+  row("이름에 드러남", !!cur && cur.name.indexOf("저주받은") === 0,
+    cur ? cur.name : "?");
+
+  /* 끼면 그 칸이 잠긴다 */
+  const b = makeArena(W, { mon: "orc", calm: true });
+  b.g.player.weapon = cur;
+  cur.slot = "weapon";
+  const other = IT.makeGear("weapon", 5, b.g.rng, { tier: 3 });
+  other.cursed = false;
+  b.g.equip(other);
+  row("못 바꾼다", b.g.player.weapon === cur,
+    "저주받은 무기를 낀 채 다른 무기로 바꾸려 하면 " + (b.g.player.weapon === cur ? "거절된다" : "✘ 바뀐다"));
+
+  /* 벼림 두루마리가 문이다 */
+  const c = makeArena(W, { mon: "orc", calm: true });
+  const cur2 = IT.makeGear("weapon", 5, c.g.rng, { tier: 3 });
+  cur2.cursed = true; cur2.name = "저주받은 " + cur2.name;
+  c.g.player.weapon = cur2;
+  c.g.player.inventory.push(c.g.makeItem(DATA2.byId(DATA2.CONSUMABLES, "forge"), 0, 0));
+  c.g.useItem(c.g.player.inventory.length - 1);
+  row("나갈 문", !cur2.cursed,
+    "벼림 두루마리를 쓰면 " + (cur2.cursed ? "✘ 그대로다" : "저주가 끊긴다"));
+}
+
 console.log(fails === 0 ? "\n전부 통과" : "\n✘ " + fails + "건");
 process.exit(fails === 0 ? 0 : 1);

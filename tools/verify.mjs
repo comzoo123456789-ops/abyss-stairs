@@ -842,6 +842,17 @@ function play(seed, clsId) {
     }
     if (usedSkill) continue;
 
+    /* 저주받은 장비 — **사람은 값이 크면 낀다.** 시뮬도 그래야 그 선택지가
+     *   밸런스에 잡힌다. 안 끼면 저주받은 것이 그냥 없어진 전리품이 되어
+     *   승률이 통째로 내려앉는다(실측 −7.4%p — 제품이 아니라 AI 탓이었다).
+     * ⚠ 한 번 끼면 그 칸이 잠기므로 **확실히 나을 때만**(25% 넘게) 낀다.
+     *   사람도 그 정도는 재고 낀다. */
+    {
+      const ci = p.inventory.findIndex(it => it.cursed && it.slot && !g.slotLocked(it.slot) &&
+        (!p[it.slot] || g.gearScore(it) > g.gearScore(p[it.slot]) * 1.25));
+      if (ci >= 0) { g.useItem(ci); continue; }
+    }
+
     /* 활 — 붙기 전에 쏜다 */
     if (p.weapon && p.weapon.ranged && !adj && near) {
       if (g.shoot() !== false) continue;

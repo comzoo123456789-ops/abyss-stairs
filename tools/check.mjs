@@ -447,6 +447,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       "})()");
     if (far && far.d >= 3) {
       const t0 = await ev("window.__peek()");
+      /* 누르기 **직전**에 길이 있는지 본다. 누른 뒤에 보면 이미 움직여서 달라진다. */
+      const pathLen = await ev(`window.__pathLen(${far.x}, ${far.y})`);
       await ev(`window.__tap(${far.x}, ${far.y})`);
       await sleep(140);
       const midTravel = await ev("window.__travel()");     /* 걷는 중이어야 한다 */
@@ -509,7 +511,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         goal: far, started: !!midTravel, stopOnMonster: stopOnMonster, moved: Math.abs(t1.x - t0.x) + Math.abs(t1.y - t0.y),
         turns: t1.turn - t0.turn,
         foes: t0.foes, hp0: t0.hp, hp1: t1.hp,
-        seen0: t0.foesSeen, seen1: t1.foesSeen,
+        seen0: t0.foesSeen, seen1: t1.foesSeen, pathLen: pathLen,
         stoppedByKey: !!beforeKey && !afterKey,
         hadTravel: !!beforeKey, center: center.ok, centerWant: center.want, centerGot: center.got
       };
@@ -792,14 +794,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const hurt = tapCheck.hp1 < tapCheck.hp0;
     const newFoe = tapCheck.seen1 > tapCheck.seen0;
     const nearFoe = tapCheck.foes > 0;
-    const stoppedRight = hurt || newFoe;
-    const ok2 = stoppedRight
+    /* ⚠ **길이 막혀 한 칸도 못 간 것**도 맞게 군 것이다. pathTo 는 몬스터가 선
+     *   칸을 안 지나간다(지나가면 막힌 걸 모르고 걸어 들어가 얻어맞는다).
+     *   몬스터가 늘면서 외길이 막히는 일이 늘었다 — 이걸 모르면 또 오진한다. */
+    const noPath = tapCheck.pathLen <= 0;
+    const stoppedRight = hurt || newFoe || noPath;
+    const ok2 = noPath
+      ? tapCheck.center
+      : stoppedRight
       ? (tapCheck.moved >= 1 && tapCheck.center)
       : (tapCheck.started && tapCheck.moved >= 2 && tapCheck.turns >= 2 &&
          tapCheck.center && smOk && (!tapCheck.hadTravel || tapCheck.stoppedByKey));
     tapPass = ok2;
     console.log("탭 이동      :", ok(ok2),
-      (hurt ? "걷다 맞아 멈춰야 정상(" + (nearFoe ? "옆에 적 " + tapCheck.foes + "마리" : "원거리") +
+      (noPath ? "길이 막혀 못 가는 것이 정상(몬스터가 외길을 막았다) · "
+            : hurt ? "걷다 맞아 멈춰야 정상(" + (nearFoe ? "옆에 적 " + tapCheck.foes + "마리" : "원거리") +
               ") · 체력 " + tapCheck.hp0 + "→" + tapCheck.hp1 + " · "
             : (newFoe ? "못 보던 적이 나타나 멈춰야 정상 · 보이는 적 " +
                         tapCheck.seen0 + "→" + tapCheck.seen1 + " · " : "")) +

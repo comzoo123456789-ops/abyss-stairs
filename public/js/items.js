@@ -72,6 +72,20 @@
       base: {}
     };
 
+    /* 저주 — **보이는 도박**이다.
+     *
+     * ⚠ 숨기지 않는다. 조사한 바로는 "귀찮기만 하고 쉽게 벗는 저주" 가 제일
+     *   나쁘고, 반대로 몰래 걸리는 저주는 이 게임의 **자동 착용**과 만나면
+     *   사고가 된다(주웠더니 갇힌다). 그래서 이름과 색으로 먼저 알리고,
+     *   대신 **벗을 수 없게** 해 무게를 준다.
+     * ⚠ 저주받은 것은 **자동 착용하지 않는다**(game.js). 스스로 끼는 것이라야
+     *   도박이다 — 밟았더니 걸려 있으면 그건 함정이지 선택이 아니다.
+     * ⚠ 값은 크게 준다(1.35배). 벗을 수 없다는 대가가 그만큼 무겁다. */
+    if (rng() < 0.10) {
+      it.cursed = true;
+      it.curseMul = 1.45;
+    }
+
     if (slot === "weapon") {
       var wk = opt.weaponKind
         ? DATA.byId(DATA.WEAPON_KINDS, opt.weaponKind)
@@ -87,15 +101,15 @@
        *   알 수 없어 종류를 나눈 의미가 사라진다. */
       it.sprite = wk.id;
       /* 공격력 = 티어 기본 × 종류 배수 × 등급 배수 */
-      it.power = Math.max(1, Math.round((2 + tier * 4.2 + depth * 0.5) * wk.atkMul * rar.mul));
+      it.power = Math.max(1, Math.round((2 + tier * 4.2 + depth * 0.5) * wk.atkMul * rar.mul * (it.curseMul || 1)));
       it.baseName = nameFrom(DATA.WEAPON_NAMES[wk.id], tier, rng);
     } else if (slot === "armor") {
       it.sprite = "armor";
-      it.power = Math.max(1, Math.round((1 + tier * 2.1 + depth * 0.22) * rar.mul));
+      it.power = Math.max(1, Math.round((1 + tier * 2.1 + depth * 0.22) * rar.mul * (it.curseMul || 1)));
       it.baseName = nameFrom(DATA.ARMOR_NAMES, tier, rng);
     } else {
       it.sprite = "shield";      /* 보조 장비는 방패 — 갑옷과 실루엣이 달라야 한다 */
-      it.power = Math.max(1, Math.round((1 + tier * 1.5 + depth * 0.16) * rar.mul));
+      it.power = Math.max(1, Math.round((1 + tier * 1.5 + depth * 0.16) * rar.mul * (it.curseMul || 1)));
       it.baseName = nameFrom(DATA.OFFHAND_NAMES, tier, rng);
     }
 
@@ -112,7 +126,8 @@
     var head = "", adj = "";
     if (it.affixes.length >= 2) head = it.affixes[1].suf + " ";
     if (it.affixes.length >= 1) adj = it.affixes[0].pre + " ";
-    return head + adj + it.baseName;
+    /* ⚠ 저주는 **이름 맨 앞**에 드러낸다. 숨기면 자동 착용과 만나 사고가 된다. */
+    return (it.cursed ? "저주받은 " : "") + head + adj + it.baseName;
   }
 
   function priceOf(it) {

@@ -346,6 +346,32 @@ row("무기별로 다름", sig.length >= 4 && new Set(sig).size === sig.length,
   }
 }
 
+/* ⑩ **위험 표식이 위험한 놈에게만 뜨는가.**
+ * ⚠ "표식을 그렸다" 는 통과가 아니다. 약한 놈과 센 놈을 나란히 두고 다르게
+ *   뜨는지 본다. 다 뜨거나 하나도 안 뜨면 아무 말도 안 하는 것과 같다. */
+{
+  await arena({ mon: "rat", calm: true, at: 2 });
+  await sleep(220);
+  const w = JSON.parse(await ev("JSON.stringify(window.__peek().threats)"));
+  await arena({ mon: "troll", calm: true, at: 2, depth: 9 });
+  await sleep(220);
+  const t = JSON.parse(await ev("JSON.stringify(window.__peek().threats)"));
+  const wOK = w.length > 0 && w[0].hitsOnMe >= 8;
+  const tOK = t.length > 0 && w.length > 0 && t[0].hitsOnMe < w[0].hitsOnMe;
+  row("위험도 셈", wOK && tOK,
+    (w[0] ? w[0].name + " " + w[0].hitsOnMe + "대" : "?") + " vs " +
+    (t[0] ? t[0].name + " " + t[0].hitsOnMe + "대" : "?") + " (약한 놈은 8대 이상이어야 한다)");
+
+  /* 화면에도 정말 뜨는가 — 머리 위 띠의 표식 색 픽셀을 센다 */
+  const a2 = await arena({ mon: "troll", calm: true, at: 2, depth: 9 });
+  await sleep(260);
+  const pip = await ev("window.__pixMatch(" + (a2.x * 32 - 6) + ", " + (a2.y * 32 - 11) + ", 44, 6, [[224,90,90],[224,160,58],[201,192,136]], 26)");
+  const b2 = await arena({ mon: "rat", calm: true, at: 2 });
+  await sleep(260);
+  const none = await ev("window.__pixMatch(" + (b2.x * 32 - 6) + ", " + (b2.y * 32 - 11) + ", 44, 6, [[224,90,90],[224,160,58],[201,192,136]], 26)");
+  row("위험 표식", pip > none, "센 놈 위 표식 픽셀 " + pip + " · 약한 놈 " + none);
+}
+
 /* ⑩ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */
 {
   for (let i = 0; i < 6; i++) {

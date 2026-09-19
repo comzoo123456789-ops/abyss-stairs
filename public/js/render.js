@@ -807,11 +807,27 @@
         ctx.fillStyle = frac > 0.5 ? "#6ec06e" : frac > 0.25 ? "#e0b84a" : "#e05a5a";
         ctx.fillRect(sx + 4, sy - 4, Math.round((TILE - 8) * frac), 2);
       }
+      /* 위험 표식 — **몇 대에 죽는가**를 머리 위 삼각으로 보인다.
+       * ⚠ 숫자를 적지 않는다. 32px 칸 위에 숫자를 얹으면 지도가 표가 된다.
+       *   셋 · 둘 · 하나로 세기만 하면 눈이 훑으며 읽는다.
+       * ⚠ 색만 쓰지 않는다(색맹). **개수**가 같이 말한다.
+       * ⚠ 안전한 놈에게는 아무것도 안 그린다 — 다 그리면 아무것도 안 읽힌다. */
+      var th = g.threatOf(mo);
+      var pips = th.hitsOnMe <= 2 ? 3 : (th.hitsOnMe <= 4 ? 2 : (th.hitsOnMe <= 7 ? 1 : 0));
+      if (pips) {
+        ctx.fillStyle = pips === 3 ? "#e05a5a" : (pips === 2 ? "#e0a03a" : "#c9c088");
+        for (var pi = 0; pi < pips; pi++) {
+          var px2 = sx + TILE / 2 - (pips * 4 - 1) / 2 + pi * 4;
+          ctx.fillRect(px2, sy - 9, 3, 1);
+          ctx.fillRect(px2, sy - 8, 3, 2);
+        }
+      }
+
       /* 엘리트 — 이름만으로는 화면에서 못 가린다. 머리 위에 표식을 둔다 */
       if (mo.elite) {
         ctx.fillStyle = "#e0742a";
-        ctx.fillRect(sx + TILE / 2 - 4, sy - 10, 8, 3);
-        ctx.fillRect(sx + TILE / 2 - 1, sy - 12, 2, 2);
+        ctx.fillRect(sx + TILE / 2 - 4, sy - 14, 8, 3);
+        ctx.fillRect(sx + TILE / 2 - 1, sy - 16, 2, 2);
       }
       /* 걸린 상태이상 — 색 점. "독이 일하고 있다" 가 보여야 빌드가 재미있다 */
       var adx = 0;
