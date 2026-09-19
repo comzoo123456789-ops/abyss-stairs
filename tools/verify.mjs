@@ -51,6 +51,11 @@ function why(r) {
 
 const W = loadRules();
 const { Game, DUNGEON: D, DATA, ITEMS, josa } = W;
+/* 맹세 값을 밖에서 갈아끼운다 — **대조군을 돌리려고** 둔 문이다.
+ * ⚠ 제품 코드(data.js)에는 이 손잡이를 두지 않는다. 측정용 갈래가 제품에
+ *   섞이면 배포된 값이 무엇인지가 흐려진다. */
+if (process.env.MB_OATH_HP) DATA.ALTAR.oathHp = parseFloat(process.env.MB_OATH_HP);
+if (process.env.MB_OATH_CRIT) DATA.ALTAR.oathCrit = parseFloat(process.env.MB_OATH_CRIT);
 
 console.log("── 로직 ──");
 
@@ -825,6 +830,10 @@ function play(seed, clsId) {
    *   쓰지 않으므로 턴이 안 늘고 영원히 돈다 — 실측: 40판 전부 미결).
    *   한 층에 한 번만 본다. */
   const shopped = new Set();
+  /* ⚠ "안 쓰기로 했다" 도 기억해야 한다. used 만 보면 지나치기로 한 제단을
+   *   다시 목표로 삼아 밟고 닫기를 끝없이 반복한다 — 실측 360판 중 57판이
+   *   그렇게 안 끝났다. 상인에서 겪은 것과 같은 왕복이다. */
+  const altared = new Set();
   let t = 0, stuck = 0;
 
   while (!g.over && t < 60000) {
@@ -858,6 +867,30 @@ function play(seed, clsId) {
         if (g.buy(i)) { bought = true; break; }
       }
       if (!bought) { shopped.add(g.depth); g.closeShop(); }
+      continue;
+    }
+
+    /* 제단 — **새 선택지는 AI 에게도 가르쳐야 한다.** 안 가르치면 사람은 쓰는데
+     * 밸런스에는 한 번도 안 잡힌다(깊은 계단·특화·저주받은 장비에서 세 번 겪었다).
+     * 사람이 할 법한 순서로 고른다: 저주가 제일 급하고, 등급을 무기로 옮기는
+     * 것이 다음이고, 금화가 남으면 담금질, 그것도 아니면 맹세. */
+    if (g.altarPanel) {
+      const row = id => g.altarPanel.find(r => r.id === id && !r.poor);
+      const ab = row("absolve"), sw = row("swap"), tp = row("temper"), oa = row("oath");
+      /* 치환은 **더 좋은 등급이 무기가 아닌 자리에 붙어 있을 때만** 뜻이 있다.
+       * 무기에 이미 붙어 있으면 바꾸는 순간 손해다. */
+      const swapWorth = sw && sw.a !== "weapon";
+      /* MB_ALTAR 로 정책을 갈아끼운다 — **대조군을 돌리려고** 둔 문이다.
+       *   none: 늘 지나친다 / oath: 맹세만 / 기본: 사람이 할 법한 순서 */
+      const POL = process.env.MB_ALTAR || "";
+      if (POL === "none") { altared.add(g.depth); g.closeAltar(); continue; }
+      if (POL === "oath") { if (oa) g.useAltar("oath"); else { altared.add(g.depth); g.closeAltar(); } continue; }
+      const noOath = POL === "noath";
+      if (ab) g.useAltar("absolve");
+      else if (swapWorth) g.useAltar("swap");
+      else if (tp && g.gold >= tp.cost + 150) g.useAltar("temper");
+      else if (oa && !noOath && g.player.hp / g.maxhp() > 0.75 && g.depth <= 6) g.useAltar("oath");
+      else { altared.add(g.depth); g.closeAltar(); }
       continue;
     }
 
@@ -945,6 +978,9 @@ function play(seed, clsId) {
     const exit = wantDeep ? lv.deepAt : lv.downAt;
     if (desperate && g.depth < DATA.MAX_DEPTH) { goals = [lv.downAt]; toStairs = true; }
     else if (g.merchant && g.gold >= 60 && !shopped.has(g.depth)) goals = [g.merchant];
+    /* ⚠ 다 쓴 제단으로는 안 간다. 안 걸러 두면 같은 칸을 계속 목표로 삼아
+     *   층을 못 벗어난다(상인에서 이미 겪은 무한 왕복이다). */
+    else if (g.altar && !g.altar.used && !altared.has(g.depth)) goals = [g.altar];
     else if (g.items.some(it => !skip.has(key(it)))) goals = g.items.filter(it => !skip.has(key(it)));
     else if (g.monsters.length) goals = g.monsters;
     else { goals = [exit]; toStairs = true; }
@@ -1091,6 +1127,18 @@ for (const [label, args] of SCREENS) {
   console.log("장비 창".padEnd(20), ok(rg.status === 0),
     (bad ? "문제 " + bad + "건" : (rg.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(rg));
   if (bad) rg.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
+// 제단 — 거래 넷이 실제로 돌고, 창이 좁은 화면에서도 눌리는가
+{
+  const ra = spawnSync(process.execPath, [path.join(ROOT, "tools", "altar-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (ra.stdout.match(/✘/g) || []).length;
+  if (ra.status !== 0) fails++;
+  console.log("제단".padEnd(20), ok(ra.status === 0),
+    (bad ? "문제 " + bad + "건" : (ra.stdout.match(/✔/g) || []).length + "개 항목 통과") + why(ra));
+  if (bad) ra.stdout.split(String.fromCharCode(10))
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 

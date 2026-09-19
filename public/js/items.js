@@ -190,7 +190,41 @@
     return s;
   }
 
+  /* 등급만 갈아끼운다 — 제단이 쓴다.
+   *
+   * ⚠ **다시 굴리지 않는다.** makeGear 로 새로 만들면 같은 자리에 전혀 다른 물건이
+   *   놓여 "내 검이 세졌다" 가 아니라 "내 검이 사라졌다" 가 된다. 기본명·종류·티어는
+   *   그대로 두고 등급이 정하는 것(색·이름표·공격력 배수·옵션 개수)만 바꾼다.
+   * ⚠ 옵션은 **있던 것을 앞에서부터 남긴다.** 줄어들 때 뒤를 자르고, 늘어날 때만
+   *   새로 굴린다. 전부 다시 굴리면 공들여 맞춘 옵션이 조용히 날아간다.
+   * ⚠ power 는 옛 배수로 **나눈 뒤** 새 배수를 곱한다. 원본을 안 들고 있으니
+   *   이 길뿐이다. 저주 배수는 등급과 무관하니 건드리지 않는다. */
+  function regrade(it, rarityId, depth, rng) {
+    var old = DATA.byId(DATA.RARITY, it.rarity), nw = DATA.byId(DATA.RARITY, rarityId);
+    if (!old || !nw || old === nw) return false;
+    /* ⚠ 곱하고 반올림만 하면 **낮은 값에서 아무 일도 안 일어난다.**
+     *   실측: 방어력 3 을 일반 → 고급으로 올리면 round(3/1.00*1.12) = 3 이다.
+     *   "불을 먹었다" 고 해 놓고 숫자가 그대로면 거래가 아니다. 등급이 오르면
+     *   **반드시 오르고** 내리면 반드시 내리게, 방향을 한 칸 보장한다. */
+    var np = Math.round(it.power / old.mul * nw.mul);
+    if (nw.mul > old.mul) np = Math.max(np, it.power + 1);
+    else np = Math.min(np, it.power - 1);
+    it.power = Math.max(1, np);
+    it.rarity = nw.id; it.rarityName = nw.name; it.color = nw.color;
+    if (nw.affixes < it.affixes.length) it.affixes = it.affixes.slice(0, nw.affixes);
+    else if (nw.affixes > it.affixes.length) {
+      var used = {}, i;
+      for (i = 0; i < it.affixes.length; i++) used[it.affixes[i].id] = 1;
+      var add = rollAffixes(nw.affixes - it.affixes.length, depth, rng);
+      for (i = 0; i < add.length; i++) if (!used[add[i].id]) { used[add[i].id] = 1; it.affixes.push(add[i]); }
+    }
+    it.name = composeName(it);
+    it.cost = priceOf(it);
+    return true;
+  }
+
   global.ITEMS = {
+    regrade: regrade,
     makeGear: makeGear,
     gearLines: gearLines,
     affixText: affixText,

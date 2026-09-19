@@ -224,6 +224,14 @@
       els.shop.hidden = true;
     }
 
+    if (game.altarPanel) {
+      els.altarGold.textContent = game.gold.toLocaleString();
+      view.drawAltar(els.altarList);
+      els.altar.hidden = false;
+    } else {
+      els.altar.hidden = true;
+    }
+
     if (game.over) showEnd();
   }
 
@@ -267,6 +275,16 @@
     }
     if (els.shop.hidden === false) {
       if (e.key === "Escape" || e.key === "Enter") { e.preventDefault(); game.closeShop(); refresh(); }
+      return;
+    }
+    /* ⚠ 제단은 **Enter 로 안 닫는다.** 상점과 달리 줄을 숫자로 고르는 창이라,
+     *   Enter 를 닫기로 두면 "고르려다 닫는" 사고가 난다. Esc 만 닫는다. */
+    if (els.altar.hidden === false) {
+      if (e.key === "Escape") { e.preventDefault(); game.closeAltar(); refresh(); }
+      else if (e.key >= "1" && e.key <= "9") {
+        var row = game.altarPanel && game.altarPanel[parseInt(e.key, 10) - 1];
+        if (row) { e.preventDefault(); game.useAltar(row.id); afterAction(); }
+      }
       return;
     }
     if (els.end.hidden === false) {
@@ -690,6 +708,9 @@
     els.classes = document.getElementById("classes");
     els.perks = document.getElementById("perks");
     els.perkList = document.getElementById("perkList");
+    els.altar = document.getElementById("altar");
+    els.altarList = document.getElementById("altarList");
+    els.altarGold = document.getElementById("altarGold");
     els.shop = document.getElementById("shop");
     els.shopBuy = document.getElementById("shopBuy");
     els.shopSell = document.getElementById("shopSell");
@@ -817,6 +838,18 @@
       game.choosePerk(parseInt(b.getAttribute("data-perk"), 10));
       afterAction();
     });
+    /* ⚠ 목록이 다시 그려지니 **위임**으로 받는다. 줄마다 붙이면 drawAltar 가
+     *   innerHTML 을 갈아끼울 때 통째로 죽는다(함정표에 이미 있다). */
+    els.altarList.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-altar]");
+      if (!b || b.disabled) return;
+      game.useAltar(b.getAttribute("data-altar"));
+      afterAction();
+    });
+    document.getElementById("altarClose").addEventListener("click", function () {
+      game.closeAltar(); refresh();
+    });
+
     els.shopBuy.addEventListener("click", function (e) {
       var b = e.target.closest("[data-buy]");
       if (!b) return;
@@ -975,6 +1008,10 @@
         ail: Object.keys(game.player.ail),
         perkOpen: !!game.pendingPerks, shopOpen: !!game.shop,
         merchant: !!game.merchant,
+        altar: game.altar ? { x: game.altar.x, y: game.altar.y, used: game.altar.used } : null,
+        altarOpen: !!game.altarPanel,
+        altarRows: game.altarPanel ? game.altarPanel.map(function (r) { return r.id; }) : [],
+        oaths: game.oaths, altarUses: game.altarUses, maxhp: game.maxhp(),
         weapon: game.player.weapon ? game.player.weapon.name : null,
         rarity: game.player.weapon ? game.player.weapon.rarity : null,
         monsters: game.monsters.length, items: game.items.length,
@@ -1174,6 +1211,11 @@
         game.gold += 4000;
         if (!game.merchant) game.merchant = { x: game.player.x, y: game.player.y, stock: game.rollShop(game.depth + 2) };
         game.openShop();
+      }
+      else if (what === "altar") {
+        game.gold += 4000;
+        game.altar = { x: game.player.x, y: game.player.y, used: false };
+        game.openAltar();
       }
       refresh();
     };

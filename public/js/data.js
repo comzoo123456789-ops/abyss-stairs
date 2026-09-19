@@ -96,7 +96,10 @@
     { id: "f_nopot", name: "맨정신",       note: "물약 한 모금 없이 군주를 쓰러뜨렸다" },
     { id: "f_curse", name: "손에 붙은 것",  note: "저주받은 장비를 낀 채 군주를 쓰러뜨렸다" },
     { id: "f_deep",  name: "험한 길만",     note: "깊은 계단만 골라 8층까지 내려갔다" },
-    { id: "f_relic", name: "장부 수집가",   note: "한 판에 유물 다섯을 모았다" }
+    { id: "f_relic", name: "장부 수집가",   note: "한 판에 유물 다섯을 모았다" },
+    /* ⚠ 맹세 셋은 최대 체력이 0.88³ = 68% 로 줄어든 채 내려간다는 뜻이다.
+     *   "제단을 세 번 썼다" 가 아니라 **몸을 세 번 팔았다** 여야 과제가 된다. */
+    { id: "f_oath",  name: "세 번 맹세한 자", note: "한 판에 제단에서 맹세를 셋 맺었다" }
   ];
 
   /* 특화를 고르는 층. ⚠ 1층이나 9층이면 뜻이 없다 — 절반이어야 한다. */
@@ -144,6 +147,12 @@
     { id: "rare",   name: "희귀", color: "#d8c24a", affixes: 2, mul: 1.26, weight: 17 },
     { id: "relic",  name: "유물", color: "#e0742a", affixes: 3, mul: 1.44, weight: 7 }
   ];
+
+  /* 제단 — 한 층에 많아야 하나. 1층엔 안 둔다(바칠 것이 아직 없다).
+   * ⚠ 보스층(10)에는 안 둔다. 보스 앞에서 최대 체력을 파는 것은 선택이 아니라 사고다. */
+  /* ⚠ 맹세의 두 수는 **여기 한 곳**에 둔다. game.js 에 박아 두면 값을 재보려고
+   *   고칠 때마다 규칙과 화면이 따로 논다. hpMul 은 곱이고 crit 은 더하기다. */
+  var ALTAR = { minDepth: 2, maxDepth: 9, chance: 0.45, oathHp: 0.88, oathCrit: 0.18 };
 
   /* ── 아이템 옵션(접두·접미) ───────────────────────────────
    * ⚠ 상한을 두지 않는다. 같은 옵션이 셋 붙으면 셋만큼 세진다 —
@@ -616,7 +625,7 @@
     SPECS: SPECS, SPEC_DEPTH: SPEC_DEPTH, FEATS: FEATS,
     WEAPON_KINDS: WEAPON_KINDS, WEAPON_NAMES: WEAPON_NAMES,
     ARMOR_NAMES: ARMOR_NAMES, OFFHAND_NAMES: OFFHAND_NAMES,
-    RARITY: RARITY, AFFIXES: AFFIXES,
+    ALTAR: ALTAR, RARITY: RARITY, AFFIXES: AFFIXES,
     SKILLS: SKILLS, SKILL_MAX_RANK: SKILL_MAX_RANK, SKILL_SLOTS: SKILL_SLOTS,
     skillPowerAt: skillPowerAt, skillCdAt: skillCdAt, skillFlatAt: skillFlatAt,
     PERKS: PERKS,

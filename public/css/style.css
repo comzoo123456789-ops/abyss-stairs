@@ -1686,3 +1686,34 @@ kbd {
 @media (pointer: coarse) and (max-width: 900px) {
   .gear-btn { display: inline-block; }
 }
+
+
+/* ── 제단 ───────────────────────────────────────────────
+ * 한 줄이 곧 하나의 거래다. 주는 것 → 받는 것을 **한 줄에 나란히** 둔다.
+ * ⚠ 격자를 auto-fill 로 두지 않는다. 줄마다 칸 위치가 같아야 눈이 세로로
+ *   훑으며 "무엇을 내주는가" 만 비교할 수 있다 — 고정 열이라야 비교가 된다. */
+.altar-card { max-width: 620px; }
+.altar-lead { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+.altar-lead b { color: var(--gold); }
+.altar-list { display: grid; gap: 8px; }
+.altar-row {
+  display: grid; grid-template-columns: 64px 1fr 18px 1fr; gap: 8px 10px;
+  align-items: center; text-align: left; width: 100%;
+  padding: 10px 12px; cursor: pointer; color: var(--fg);
+  background: var(--panel-2); border: 0; border-image: var(--frame) 4 / 4px stretch;
+}
+.altar-row:hover:not(:disabled) { border-image: var(--frame-on) 4 / 4px stretch; }
+.altar-row:disabled, .altar-row.poor { opacity: .42; cursor: not-allowed; }
+.altar-nm { grid-row: 1 / span 2; font-size: 15px; color: var(--gold); }
+.altar-give { color: var(--hp); font-size: 13px; }
+.altar-arrow { color: var(--muted); text-align: center; }
+.altar-take { color: #7fd48a; font-size: 13px; }
+.altar-note { grid-column: 2 / -1; color: var(--muted); font-size: 12px; }
+@media (max-width: 560px) {
+  /* ⚠ 좁아지면 열을 접지 말고 **줄을 쌓는다.** 64px 이름칸이 남아 있으면
+   *   본문이 20px 폭으로 눌려 글자가 한 자씩 끊긴다. */
+  .altar-row { grid-template-columns: 1fr; gap: 4px; }
+  .altar-nm { grid-row: auto; }
+  .altar-arrow { display: none; }
+  .altar-note { grid-column: 1; }
+}

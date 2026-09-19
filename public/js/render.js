@@ -768,6 +768,26 @@
       ctx.drawImage(tint ? tintedPotion(tint) : S.bake(it.sprite), ix, iy);
     }
 
+    /* 2-a2) 제단 — 다 쓰면 불을 죽인다.
+     * ⚠ **다 쓴 제단도 그린다.** 지우면 "내가 저기서 뭘 했더라" 가 안 남고,
+     *   무엇보다 방금 쓴 것이 사라져 버그처럼 보인다. 어둡게만 둔다. */
+    if (g.altar && lv.visible[lv.idx(g.altar.x, g.altar.y)]) {
+      var ax2 = g.altar.x * TILE + ox, ay2 = g.altar.y * TILE + oy;
+      if (!g.altar.used) {
+        var hal = ctx.createRadialGradient(ax2 + TILE / 2, ay2 + TILE / 2, 2,
+                                           ax2 + TILE / 2, ay2 + TILE / 2, TILE * 1.4);
+        hal.addColorStop(0, "rgba(217, 164, 65, .22)");
+        hal.addColorStop(1, "rgba(217, 164, 65, 0)");
+        ctx.fillStyle = hal;
+        ctx.fillRect(ax2 - TILE, ay2 - TILE, TILE * 3, TILE * 3);
+        ctx.drawImage(S.bake("altar"), ax2, ay2);
+      } else {
+        ctx.globalAlpha = 0.5;
+        ctx.drawImage(S.bake("altar"), ax2, ay2);
+        ctx.globalAlpha = 1;
+      }
+    }
+
     /* 2-b) 상인 — 등불을 깔아 멀리서도 눈에 띄게 한다(여기가 금화를 쓰는 자리다) */
     if (g.merchant && lv.visible[lv.idx(g.merchant.x, g.merchant.y)]) {
       var mx2 = g.merchant.x * TILE + ox, my2 = g.merchant.y * TILE + oy;
@@ -1445,6 +1465,26 @@
 
   /* ── 상점 ────────────────────────────────────────────
    * 왼쪽에 파는 물건, 오른쪽에 내 가방(팔 수 있다). 금화가 힘이 되는 자리다. */
+  /* 제단 창 — 한 줄이 곧 거래다. **주는 것과 받는 것을 한 줄에 나란히** 둔다.
+   * ⚠ 값을 작은 글씨로 밑에 깔지 않는다. 대가가 눈에 안 들어오면 거래가 아니다. */
+  Renderer.prototype.drawAltar = function (el) {
+    var g = this.game;
+    if (!g.altarPanel) return;
+    var html = "";
+    for (var i = 0; i < g.altarPanel.length; i++) {
+      var r = g.altarPanel[i];
+      html += '<button class="altar-row' + (r.poor ? " poor" : "") + '" data-altar="' + r.id + '"' +
+        (r.poor ? " disabled" : "") + '>' +
+        '<span class="altar-nm">' + r.name + "</span>" +
+        '<span class="altar-give">' + r.give + "</span>" +
+        '<span class="altar-arrow">→</span>' +
+        '<span class="altar-take">' + r.take + "</span>" +
+        '<span class="altar-note">' + r.note + "</span>" +
+        "</button>";
+    }
+    el.innerHTML = html;
+  };
+
   Renderer.prototype.drawShop = function (elBuy, elSell, elGold) {
     var g = this.game, DATA = global.DATA;
     if (!g.shop) return;

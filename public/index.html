@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
-<link rel="stylesheet" href="css/style.css?v=31">
+<link rel="stylesheet" href="css/style.css?v=32">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <script>
@@ -191,6 +191,19 @@
 </div>
 
 <!-- 상점 -->
+<!-- 제단 — 한 번뿐인 맞교환 -->
+<div id="altar" class="overlay" hidden>
+  <div class="card altar-card">
+    <div class="shop-head">
+      <h2>제단</h2>
+      <span class="shop-gold"><i class="ic ic-gold"></i>금화 <b id="altarGold">0</b></span>
+      <button id="altarClose" class="ghost">그냥 지나간다 (Esc)</button>
+    </div>
+    <p class="altar-lead">가진 것을 내주어야 가진 것이 바뀐다. <b>한 번뿐이다.</b></p>
+    <div class="altar-list" id="altarList"></div>
+  </div>
+</div>
+
 <div id="shop" class="overlay" hidden>
   <div class="card shop-card">
     <div class="shop-head">
@@ -286,6 +299,7 @@
           <li><b>머리 위 삼각</b>은 그 놈이 나를 몇 대에 죽이는지다. 셋이면 두 대 안에 죽는다.</li>
           <li><b>5층에서 갈래를 고른다.</b> 직업마다 두 길이 있다 — 살아남는 쪽과 몰아치는 쪽. 절반을 내려온 자리에서 그 판에 맞는 쪽을 고른다. 한 판에 한 번뿐이다.</li>
           <li><b>구역 끝에 보스가 있다.</b> 2·4·6·8층에 하나씩. 잡으면 쥐고 있던 물건을 떨군다 — 피해 갈 수도 있지만 그러면 그 물건도 없다.</li>
+          <li><b>제단에서는 가진 것만 판다.</b> 금화가 아니라 <b>내 것</b>을 내준다 — 장비 둘의 등급을 맞바꾸거나(치환), 저주를 풀거나(속죄), 최대 체력을 담보로 치명타를 산다(맹세). <b>제단 하나에 거래 하나뿐이고 되돌릴 수 없다.</b></li>
           <li><b>계단이 둘이다.</b> 평범한 계단과 <b>깊은 계단</b>. 깊은 쪽은 아래가 더 험한 대신(적이 1.7배 · 엘리트 두 배) 물건이 1.5배다. <b>체력을 보고 고른다.</b></li>
           <li><b>몬스터마다 다르게 움직인다.</b> 투석꾼은 <b>멀리서 던지고</b>(모서리에 숨으면 안 맞는다) · 망령은 <b>남보다 빠르며</b>(걸어서는 못 떼어놓는다) · 약해진 놈은 <b>등을 돌렸다가</b> 몇 걸음 뒤 돌아서서 문다 · 군주는 <b>부하를 부른다</b>.</li>
           <li><b>가방이 꽉 차면 우클릭으로 버린다.</b> 발 밑에 물건이 있으면 그것과 교환된다.</li>
@@ -312,15 +326,15 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=31"></script>
-<script src="js/sprites-art.js?v=31"></script>
-<script src="js/sound.js?v=31"></script>
-<script src="js/data.js?v=31"></script>
-<script src="js/daily.js?v=31"></script>
-<script src="js/items.js?v=31"></script>
-<script src="js/dungeon.js?v=31"></script>
-<script src="js/game.js?v=31"></script>
-<script src="js/render.js?v=31"></script>
-<script src="js/main.js?v=31"></script>
+<script src="js/sprites.js?v=32"></script>
+<script src="js/sprites-art.js?v=32"></script>
+<script src="js/sound.js?v=32"></script>
+<script src="js/data.js?v=32"></script>
+<script src="js/daily.js?v=32"></script>
+<script src="js/items.js?v=32"></script>
+<script src="js/dungeon.js?v=32"></script>
+<script src="js/game.js?v=32"></script>
+<script src="js/render.js?v=32"></script>
+<script src="js/main.js?v=32"></script>
 </body>
 </html>

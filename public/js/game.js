@@ -63,6 +63,8 @@
      *   뒤지면 변이 하나가 조용히 아무 일도 안 하게 된다. */
     this.mods = this.mods || {};
     this.potions = 0;          /* 마신 물약 수 */
+    this.oaths = 0;            /* 제단에서 맺은 맹세 수 — 되돌릴 수 없다 */
+    this.altarUses = 0;        /* 제단을 쓴 횟수(도전 과제·장부용) */
     this.woreCursed = false;   /* 저주받은 장비를 낀 적이 있는가 */
     this.zoneBossKills = [];   /* 넘은 구역 보스 id */
     this.deepOnly = true;      /* 내려갈 때 늘 깊은 계단이었는가 */
@@ -223,6 +225,12 @@
     s.crit += this.mut("crit", 0);
     s.cdReduce += this.mut("cdReduce", 0);
     s.goldBoost += this.mut("goldBoost", 0);
+    /* 맹세 — 제단에서 최대 체력을 담보로 치명을 산다.
+     * ⚠ 체력 배수는 **맨 마지막에** 곱한다(탐욕의 저울과 같은 이유).
+     *   중간에 곱하면 뒤에 더해지는 값이 안 깎여 대가가 흐려진다.
+     * ⚠ 두 번 맺으면 두 번 곱한다 — 0.8² = 0.64. 선형으로 빼면 다섯 번째에
+     *   최대 체력이 0 이 된다. */
+    if (this.oaths) { s.crit += DATA.ALTAR.oathCrit * this.oaths; s.hpFlat *= Math.pow(DATA.ALTAR.oathHp, this.oaths); }
     if (!s.critMult) s.critMult = 1.8;
     return s;
   };
@@ -273,6 +281,8 @@
     this.items = [];
     this.merchant = null;
     this.shop = null;
+    this.altar = null;
+    this.altarPanel = null;
 
     this.player.x = lv.upAt.x;
     this.player.y = lv.upAt.y;
@@ -281,6 +291,7 @@
     function taken(x, y) {
       if (self.player.x === x && self.player.y === y) return true;
       if (self.merchant && self.merchant.x === x && self.merchant.y === y) return true;
+      if (self.altar && self.altar.x === x && self.altar.y === y) return true;
       for (var i = 0; i < self.monsters.length; i++)
         if (self.monsters[i].x === x && self.monsters[i].y === y) return true;
       for (var j = 0; j < self.items.length; j++)
@@ -393,6 +404,20 @@
       if (spot) {
         this.merchant = { x: spot.x, y: spot.y, stock: this.rollShop(this.depth) };
         this.say("어딘가에서 등불이 흔들린다 — 상인이 있다. 걸어가면 물건을 본다.", "item");
+      }
+    }
+
+    /* 제단 — 한 번뿐인 맞교환.
+     * ⚠ 상인과 **같은 층에 같이 나와도 된다.** 둘은 다른 종류의 거래다 —
+     *   상인은 금화로 물건을 사고, 제단은 가진 것을 내주고 가진 것을 바꾼다.
+     * ⚠ 계단 옆에 두지 않는다(avoid 6칸). 내려가는 길에 그냥 밟히면
+     *   "들를까 말까" 가 사라져 선택이 아니게 된다. */
+    var AL = DATA.ALTAR;
+    if (this.depth >= AL.minDepth && this.depth <= AL.maxDepth && this.rng() < AL.chance) {
+      spot = freeSpot(lv.downAt);
+      if (spot) {
+        this.altar = { x: spot.x, y: spot.y, used: false };
+        this.say("돌 제단이 하나 서 있다. 무언가를 내주면 무언가를 준다.", "item");
       }
     }
 
@@ -794,6 +819,12 @@
      *   비켜 갈 수도 없다. 지금은 **막지 않고**, 밟으면 들어가면서 창이 열린다. */
     if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) {
       this.openShop();
+      return this.act(true);
+    }
+    /* ⚠ 제단도 상인과 **똑같이** 막지 않는다. 막으면 계단 가는 길이 제단을
+     *   지날 때 열고 닫기를 반복한다(상인에서 이미 겪었다). 다 쓴 제단은 안 연다. */
+    if (this.altar && !this.altar.used && this.altar.x === nx && this.altar.y === ny) {
+      this.openAltar();
       return this.act(true);
     }
     this.springTrap(nx, ny);
@@ -1327,6 +1358,7 @@
     }
     if (this.deepOnly && this.depth >= 8) add("f_deep");
     if ((this.player.relics || []).length >= 5) add("f_relic");
+    if (this.oaths >= 3) add("f_oath");
     return got;
   };
 
@@ -1461,6 +1493,158 @@
     return true;
   };
   Game.prototype.closeShop = function () { this.shop = null; return true; };
+
+  /* ── 제단 ───────────────────────────────────────────
+   *
+   * 조사한 로그라이크들(Brogue 의 치환·부활 제단, DCSS 의 제단)이 한목소리로 말한 것:
+   * **보상 방에는 값이 있어야 하고, 제단은 수치를 주는 곳이 아니라 한 번뿐인
+   * 맞교환을 하는 곳이다.** 그래서 여기서 파는 것은 전부 "가진 것을 내주고
+   * 가진 것을 바꾸는" 거래다. 레벨업 특성은 더하기만 하니 서로 겹치지 않는다.
+   *
+   * ⚠ 거래 목록은 **지금 판 상태에서 만든다.** 못 하는 거래를 회색으로 띄우면
+   *   네 줄 중 셋이 회색인 창이 되어 무엇을 할 수 있는지가 안 읽힌다.
+   * ⚠ 값(대가)을 문구에 **숫자로** 적는다. "체력을 조금" 은 거래가 아니다.
+   * ⚠ 한 제단은 한 번만. 쓰고 나면 꺼진다(used). 무한히 쓰면 맹세를 열 번
+   *   맺어 최대 체력 0 에 치명 150% 가 된다. */
+
+  /* ⚠ 값 계산은 **목록과 적용이 같은 함수**를 봐야 한다. 창에 적힌 값과
+   *   실제로 깎이는 값이 두 벌이 되면 조용히 어긋난다. */
+  Game.prototype.absolveCost = function (cursed) {
+    return Math.max((70 + this.depth * 26) * cursed, Math.ceil(this.gold / 2));
+  };
+
+  /* 맹세의 대가는 stats() 가 곱으로 매기니 여기서도 곱으로 센다 — 두 벌이 되면 어긋난다. */
+  Game.prototype.oathCost = function () {
+    return Math.max(1, this.maxhp() - Math.round(this.maxhp() * DATA.ALTAR.oathHp));
+  };
+
+  Game.prototype.altarOffers = function () {
+    var p = this.player, out = [], i;
+    var worn = [];
+    if (p.weapon) worn.push({ slot: "weapon", it: p.weapon });
+    if (p.armor) worn.push({ slot: "armor", it: p.armor });
+    if (p.offhand) worn.push({ slot: "offhand", it: p.offhand });
+    function ri(it) {
+      for (var k = 0; k < DATA.RARITY.length; k++) if (DATA.RARITY[k].id === it.rarity) return k;
+      return 0;
+    }
+
+    /* 치환 — 가장 높은 등급과 가장 낮은 등급을 맞바꾼다.
+     * ⚠ 어느 둘을 바꿀지 **고르게 하지 않는다.** 두 단계 창이 되고, 실제로
+     *   재미있는 경우는 "제일 좋은 등급이 쓸모없는 자리에 붙어 있다" 하나뿐이다. */
+    if (worn.length >= 2) {
+      var hi = worn[0], lo = worn[0];
+      for (i = 1; i < worn.length; i++) {
+        if (ri(worn[i].it) > ri(hi.it)) hi = worn[i];
+        if (ri(worn[i].it) < ri(lo.it)) lo = worn[i];
+      }
+      if (ri(hi.it) > ri(lo.it)) {
+        out.push({ id: "swap", name: "치환",
+          give: hi.it.rarityName + " " + hi.it.baseName,
+          take: lo.it.rarityName + " " + lo.it.baseName,
+          note: "둘의 등급을 맞바꾼다. 되돌릴 수 없다.",
+          a: hi.slot, b: lo.slot });
+      }
+    }
+
+    /* 담금질 — 가장 낮은 등급 하나를 한 단계 올린다. 대가는 금화. */
+    if (worn.length) {
+      var low = worn[0];
+      for (i = 1; i < worn.length; i++) if (ri(worn[i].it) < ri(low.it)) low = worn[i];
+      if (ri(low.it) < DATA.RARITY.length - 1) {
+        var up = DATA.RARITY[ri(low.it) + 1];
+        var cost = 60 + this.depth * 28;
+        out.push({ id: "temper", name: "담금질",
+          give: "금화 " + cost,
+          take: low.it.baseName + " → " + up.name,
+          note: "가장 낮은 등급의 장비 한 점을 한 단계 올린다.",
+          cost: cost, slot: low.slot, poor: this.gold < cost });
+      }
+    }
+
+    /* 속죄 — 저주를 푼다.
+     * ⚠ 값을 **가진 금화의 절반**으로만 두면 안 된다. 상인에게 다 쓰고 오면
+     *   0 이 되어 저주가 공짜로 풀린다 — 저주의 무게가 통째로 사라진다.
+     *   층에 비례하는 **바닥값**을 깔고, 부자에게는 절반을 물린다. */
+    var cursed = 0;
+    for (i = 0; i < worn.length; i++) if (worn[i].it.cursed) cursed++;
+    if (cursed) {
+      var ab = this.absolveCost(cursed);
+      out.push({ id: "absolve", name: "속죄",
+        give: "금화 " + ab,
+        take: "저주 " + cursed + "점을 푼다",
+        note: "벗을 수 있게 된다. 능력치는 그대로 남는다.",
+        cost: ab, poor: this.gold < ab });
+    }
+
+    /* 맹세 — 늘 있다. 바칠 것이 아무것도 없어도 몸은 있다.
+     * ⚠ 이것 하나는 **영구**다. 그래서 창에 "되돌릴 수 없다" 를 적는다. */
+    out.push({ id: "oath", name: "맹세",
+      give: "최대 체력 " + this.oathCost(),
+      take: "치명타 +" + Math.round(DATA.ALTAR.oathCrit * 100) + "%",
+      note: "영구히. 제단을 만날 때마다 거듭 맺을 수 있다.",
+      poor: this.maxhp() <= 12 });
+
+    return out;
+  };
+
+  Game.prototype.openAltar = function () {
+    if (!this.altar || this.altar.used) return false;
+    this.altarPanel = this.altarOffers();
+    this.say("제단에 손을 얹었다. 무엇을 내줄 것인가.", "item");
+    return true;
+  };
+  Game.prototype.closeAltar = function () { this.altarPanel = null; return true; };
+
+  Game.prototype.useAltar = function (id) {
+    if (!this.altarPanel || !this.altar || this.altar.used) return false;
+    var row = null, i;
+    for (i = 0; i < this.altarPanel.length; i++) if (this.altarPanel[i].id === id) row = this.altarPanel[i];
+    if (!row || row.poor) { sfx("deny"); return false; }
+    var p = this.player;
+
+    if (row.id === "swap") {
+      var A = p[row.a], B = p[row.b];
+      var ra = A.rarity, rb = B.rarity;
+      IT.regrade(A, rb, this.depth, this.rng);
+      IT.regrade(B, ra, this.depth, this.rng);
+      this.say("제단이 둘의 결을 맞바꿨다 — " + this.itemName(A) + " · " + this.itemName(B) + ".", "good");
+    } else if (row.id === "temper") {
+      if (this.gold < row.cost) { sfx("deny"); return false; }
+      this.gold -= row.cost;
+      var t = p[row.slot];
+      for (i = 0; i < DATA.RARITY.length - 1; i++) {
+        if (DATA.RARITY[i].id === t.rarity) { IT.regrade(t, DATA.RARITY[i + 1].id, this.depth, this.rng); break; }
+      }
+      this.say(josa(this.itemName(t), "이", "가") + " 불을 먹었다.", "good");
+    } else if (row.id === "absolve") {
+      if (this.gold < row.cost) { sfx("deny"); return false; }
+      this.gold -= row.cost;
+      var freed = 0;
+      var slots = ["weapon", "armor", "offhand"];
+      for (i = 0; i < slots.length; i++) {
+        var it = p[slots[i]];
+        /* ⚠ curseMul 은 **안 걷는다.** 저주가 준 힘까지 뺏으면 "저주를 푼다" 가
+         *   아니라 "장비를 약하게 만든다" 가 된다. 푸는 것은 묶임뿐이다. */
+        if (it && it.cursed) { it.cursed = false; it.name = it.name.replace("저주받은 ", ""); freed++; }
+      }
+      this.say("사슬이 풀렸다 — 저주 " + freed + "점.", "good");
+    } else if (row.id === "oath") {
+      var before = this.maxhp();
+      this.oaths++;
+      var after = this.maxhp();
+      /* ⚠ 지금 체력이 새 최대치를 넘으면 깎는다. 안 깎으면 막대가 넘쳐 보인다. */
+      if (p.hp > after) p.hp = after;
+      this.say("맹세했다. 최대 체력 " + before + " → " + after +
+        " · 치명타 +" + Math.round(DATA.ALTAR.oathCrit * 100) + "%.", "warn");
+    } else return false;
+
+    this.altar.used = true;
+    this.altarUses++;
+    this.altarPanel = null;
+    sfx("levelup");
+    return true;
+  };
 
   Game.prototype.buy = function (index) {
     if (!this.shop) return false;
@@ -1854,6 +2038,7 @@
       if (this.monsterAt(nx, ny)) continue;
       if (this.player.x === nx && this.player.y === ny) continue;
       if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) continue;
+      if (this.altar && !this.altar.used && this.altar.x === nx && this.altar.y === ny) continue;
       var d = flow[ny * lv.w + nx];
       if (d > bestD) { bestD = d; best = { x: nx, y: ny }; }
     }
@@ -1905,6 +2090,7 @@
       if (this.monsterAt(nx, ny)) continue;
       if (this.player.x === nx && this.player.y === ny) continue;
       if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) continue;
+      if (this.altar && !this.altar.used && this.altar.x === nx && this.altar.y === ny) continue;
       var d = flow[ny * lv.w + nx];
       if (d < bestD) { bestD = d; best = { x: nx, y: ny }; }
     }
@@ -1953,6 +2139,7 @@
         if (id !== goal) {
           if (this.monsterAt(nx, ny)) continue;
           if (this.merchant && this.merchant.x === nx && this.merchant.y === ny) continue;
+          if (this.altar && !this.altar.used && this.altar.x === nx && this.altar.y === ny) continue;
           if (lv.traps[id] === 2) continue;                /* 드러난 함정만 피한다(0=없음 1=숨음 2=드러남) */
         }
         prev[id] = cur;
