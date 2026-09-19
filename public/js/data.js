@@ -79,6 +79,26 @@
     ]
   };
 
+  /* ── 도전 과제 ────────────────────────────────────────
+   *
+   * ⚠ **힘을 주지 않는다.** Brogue 의 "노 그라인딩" 원칙이다 — 해금이 세지는
+   *   길이 되면 처음 여는 사람만 어려운 게임이 되고, 죽는 것이 손해가 된다.
+   *   여기 있는 것은 전부 **기록**이다. 게임 규칙을 한 톨도 안 바꾼다.
+   * ⚠ 그래서 "쌓아 두면 강해진다" 가 아니라 "이렇게도 해 봤는가" 를 묻는다.
+   *   판을 다르게 하는 이유가 되되 판을 쉽게 하지는 않는다. */
+  var FEATS = [
+    { id: "f_zone1", name: "굳은 문지기",   note: "2층의 문지기를 넘었다" },
+    { id: "f_zone2", name: "물에 잠긴 자",  note: "4층의 물에 잠긴 자를 넘었다" },
+    { id: "f_zone3", name: "멈춘 사서",     note: "6층의 멈춘 사서를 넘었다" },
+    { id: "f_zone4", name: "뼈 무덤 주인",  note: "8층의 뼈 무덤 주인을 넘었다" },
+    { id: "f_deep10", name: "바닥까지",     note: "10층에 닿았다" },
+    { id: "f_win",   name: "이름을 되찾다",  note: "군주를 쓰러뜨렸다" },
+    { id: "f_nopot", name: "맨정신",       note: "물약 한 모금 없이 군주를 쓰러뜨렸다" },
+    { id: "f_curse", name: "손에 붙은 것",  note: "저주받은 장비를 낀 채 군주를 쓰러뜨렸다" },
+    { id: "f_deep",  name: "험한 길만",     note: "깊은 계단만 골라 8층까지 내려갔다" },
+    { id: "f_relic", name: "장부 수집가",   note: "한 판에 유물 다섯을 모았다" }
+  ];
+
   /* 특화를 고르는 층. ⚠ 1층이나 9층이면 뜻이 없다 — 절반이어야 한다. */
   var SPEC_DEPTH = 5;
 
@@ -200,7 +220,7 @@
    *   **색상만 돌리고 명도는 붙잡는다**(UI 팔레트를 갈색으로 돌릴 때와 같은 규칙).
    */
   var ZONES = [
-    { id: "office", from: 1, to: 2,
+    { id: "office", from: 1, to: 2, boss: "b_warden",
       name: "관리소 아래", tag: "아직 사람 손이 닿은 곳",
       enter: "관리소 아래. 벽에 아직 등불 자국이 남아 있다.",
       props: ["crate", "lantern", "torch"],
@@ -210,7 +230,7 @@
       wall:  { mortar: "#3c3846", face: "#585264", lit: "#6d6679", dim: "#433e4e",
                grain1: "#615b6e", grain2: "#4e4859", moss: "#3f5040" } },
 
-    { id: "flood", from: 3, to: 4,
+    { id: "flood", from: 3, to: 4, boss: "b_drowned",
       name: "물이 든 계단실", tag: "어딘가에서 물이 새어 든다",
       enter: "물이 든 계단실. 발밑이 미끄럽고, 어디선가 물 떨어지는 소리가 난다.",
       props: ["puddle", "moss", "torch"],
@@ -220,7 +240,7 @@
       wall:  { mortar: "#2c3a42", face: "#455a64", lit: "#57707c", dim: "#374750",
                grain1: "#4d646f", grain2: "#3e5159", moss: "#3f5a45" } },
 
-    { id: "library", from: 5, to: 6,
+    { id: "library", from: 5, to: 6, boss: "b_librarian",
       name: "이름의 도서관", tag: "지워진 이름들이 쌓여 있다",
       enter: "이름의 도서관. 장부가 천장까지 쌓여 있고, 펼쳐진 쪽은 전부 비어 있다.",
       props: ["books", "papers", "torch"],
@@ -230,7 +250,7 @@
       wall:  { mortar: "#413522", face: "#5f5033", lit: "#786540", dim: "#4a3e28",
                grain1: "#6b5a39", grain2: "#54462d", moss: "#5a5230" } },
 
-    { id: "bones", from: 7, to: 8,
+    { id: "bones", from: 7, to: 8, boss: "b_ossuary",
       name: "뼈 무덤", tag: "먼저 내려간 사람들",
       enter: "뼈 무덤. 밟을 때마다 무언가가 바스러진다 — 전부 사람 것이다.",
       props: ["bones", "skull", "torch"],
@@ -420,6 +440,21 @@
      *   마지막 벽이 되려면 이 정도가 필요하다.
      *   실측(40판/직업): 1150/44 → 승률 43·53·43% · 보스층 사망 17 ·
      *                     1400/52 → 28·38·33% · 보스층 사망 33. */
+    /* ── 구역 보스 ──────────────────────────────────
+     * 10층 끝에 군주 하나뿐이라 가는 길에 **사건이 없었다.** 구역 끝
+     * (2·4·6·8층)에 하나씩, 그 구역의 성격을 대표하는 놈을 둔다.
+     * ⚠ `zoneBoss: true` 는 **층 배수를 안 받는다**(군주와 같다). 손잡이 하나에
+     *   두 가지가 달리면 조정이 불가능해진다 — 수치를 여기서 직접 잡는다.
+     * ⚠ `boss` 가 아니다. 그 플래그는 "잡으면 이긴다" 는 뜻이다.
+     * ⚠ weight 0 — 보통 굴림에는 안 나온다. descend() 가 직접 놓는다. */
+    { id: "b_warden",    name: "굳은 문지기",   sprite: "b_warden",    hp: 70,  atk: 9,  def: 8,  xp: 90,  depth: 99, last: 99, weight: 0, zoneBoss: true, spd: 80 },
+    { id: "b_drowned",   name: "물에 잠긴 자",  sprite: "b_drowned",   hp: 115, atk: 14, def: 6,  xp: 170, depth: 99, last: 99, weight: 0, zoneBoss: true,
+      ail: "slow", summon: { id: "mist", every: 6, max: 2 } },
+    { id: "b_librarian", name: "멈춘 사서",     sprite: "b_librarian", hp: 160, atk: 17, def: 8,  xp: 270, depth: 99, last: 99, weight: 0, zoneBoss: true,
+      ail: "blind", ranged: 4, swing: "stone" },
+    { id: "b_ossuary",   name: "뼈 무덤 주인",  sprite: "b_ossuary",   hp: 250, atk: 24, def: 12, xp: 420, depth: 99, last: 99, weight: 0, zoneBoss: true,
+      summon: { id: "archer", every: 7, max: 2 } },
+
     { id: "lord",     name: "심연의 군주", sprite: "lord",   hp: 1150, atk: 44, def: 16, xp: 900, depth: 99, last: 99, weight: 0, boss: true, ail: "bleed",
       summon: { id: "skeleton", every: 7, max: 2 } }
   ];
@@ -578,7 +613,7 @@
 
   global.DATA = {
     AILMENTS: AILMENTS,
-    SPECS: SPECS, SPEC_DEPTH: SPEC_DEPTH,
+    SPECS: SPECS, SPEC_DEPTH: SPEC_DEPTH, FEATS: FEATS,
     WEAPON_KINDS: WEAPON_KINDS, WEAPON_NAMES: WEAPON_NAMES,
     ARMOR_NAMES: ARMOR_NAMES, OFFHAND_NAMES: OFFHAND_NAMES,
     RARITY: RARITY, AFFIXES: AFFIXES,

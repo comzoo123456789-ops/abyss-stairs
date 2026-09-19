@@ -56,6 +56,12 @@
     this.gold = 0;
     this.kills = 0;
     this.crits = 0;
+    /* 도전 과제를 세는 것들. ⚠ 규칙에는 한 톨도 안 쓰인다 — 기록용이다.
+     * ⚠ reset() 에서 함께 비워야 한다. 안 비우면 지난 판의 기록이 따라온다. */
+    this.potions = 0;          /* 마신 물약 수 */
+    this.woreCursed = false;   /* 저주받은 장비를 낀 적이 있는가 */
+    this.zoneBossKills = [];   /* 넘은 구역 보스 id */
+    this.deepOnly = true;      /* 내려갈 때 늘 깊은 계단이었는가 */
     this.effects = [];
     this.pendingPerks = null;      /* 레벨업 선택이 열려 있으면 여기에 3개 */
     this.shop = null;              /* 상점 화면이 열려 있으면 목록 */
@@ -327,6 +333,21 @@
     }
 
     /* 유물: 깊은 약속 — 깊은 계단으로 내려온 층에 물건이 둘 더 있다 */
+    /* 구역 보스 — 구역의 **마지막 층**에 하나. 가는 길에 사건을 넷 만든다.
+     * ⚠ 플레이어에게서 먼 자리에 둔다. 내려서자마자 옆에 있으면 사건이 아니라
+     *   사고다(freeSpot 이 플레이어를 피한다).
+     * ⚠ 군주 층(10층)에는 안 둔다 — 마지막은 군주 혼자여야 한다. */
+    /* ⚠ zone 변수는 아래 장식 배치에서 선언된다 — 여기서 쓰면 undefined 다. */
+    var zn = DATA.zoneAt(this.depth), zb = zn && zn.boss;
+    if (zb && this.depth === zn.to && this.depth < DATA.MAX_DEPTH) {
+      var zdef = DATA.byId(DATA.MONSTERS, zb);
+      var zspot = freeSpot(this.player);
+      if (zdef && zspot) {
+        this.monsters.push(this.spawn(zdef, zspot.x, zspot.y, true));
+        this.say(zdef.name + "이(가) 이 층 어딘가에 있다.", "bad");
+      }
+    }
+
     var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1)) +
                  ((deep && this.hasRelic("r_deeppact")) ? 2 : 0);
     for (i = 0; i < icount; i++) {
@@ -521,7 +542,11 @@
      *   0.16 → 0.30 으로 올린 것만으로 승률이 95% → 10% 로 떨어졌고, 그 대부분이
      *   보스층 사망이었다. 손잡이 하나에는 한 가지만 달려 있어야 한다.
      *   보스 수치는 data.js 의 lord 항목에서 직접 잡는다. */
-    var sc = def.boss ? { hp: 1, atk: 1, def: 1 } : DATA.scaleAt(this.depth);
+    /* ⚠ 보스와 구역 보스는 **층 배수를 안 받는다.** 기울기 하나가 "잡몹 난이도" 와
+     *   "보스 난이도" 를 동시에 흔들면 조정이 불가능해진다 — 수치는 data.js 에서
+     *   직접 잡는다. */
+    var fixed = def.boss || def.zoneBoss;
+    var sc = fixed ? { hp: 1, atk: 1, def: 1 } : DATA.scaleAt(this.depth);
     var hp = def.hp * sc.hp, atk = def.atk * sc.atk, dfn = def.def * sc.def, xp = def.xp;
     var name = def.name, elite = null;
 
@@ -529,7 +554,7 @@
      *   늘어 오히려 이득이 된다(실측: 늘 깊은 계단을 타는 쪽이 더 나았다).
      *   위험은 "수" 가 아니라 "질" 로 줘야 거래가 성립한다. */
     var ec = DATA.eliteChance(this.depth) * (this.deepFloor ? 2 : 1);
-    if (!noElite && !def.boss && this.rng() < ec) {
+    if (!noElite && !fixed && this.rng() < ec) {
       elite = DATA.ELITES[Math.floor(this.rng() * DATA.ELITES.length)];
       hp *= elite.hp; atk *= elite.atk; xp = Math.round(xp * elite.xp);
       if (elite.def) dfn *= elite.def;
@@ -542,7 +567,7 @@
       atk: Math.round(atk), def: Math.round(dfn), xp: xp,
       ailKind: (elite && elite.ail) || def.ail || null,
       elite: elite ? elite.id : null,
-      awake: false, boss: !!def.boss,
+      awake: false, boss: !!def.boss, zoneBoss: !!def.zoneBoss,
       /* ── 행동 ────────────────────────────────────────
        * spd     100 이 사람과 같은 속도. 150 이면 두 턴에 세 걸음이다.
        * ranged  이 칸 수 안에서 **보이면 쏜다**. 붙으면 그냥 때린다.
@@ -855,6 +880,7 @@
     /* ⚠ **어느 계단으로 내려왔는지**를 들고 간다. 다음 층 배치가 이걸 본다.
      *   descend() 안에서 지우므로 여기서만 세운다. */
     this.deepNext = (t === D.DEEP);
+    if (t !== D.DEEP) this.deepOnly = false;   /* 한 번이라도 평범한 계단이면 깨진다 */
     this.descend();
     return this.act(true);
   };
@@ -920,6 +946,7 @@
       return;
     }
     var before = p.hp / Math.max(1, this.maxhp());
+    if (it.cursed) this.woreCursed = true;
     p[it.slot] = it;
     /* 최대 체력이 바뀌면 비율을 유지한다 — 안 하면 체력 옵션을 갈 때마다 손해/이득이 난다 */
     p.hp = Math.max(1, Math.min(this.maxhp(), Math.round(this.maxhp() * before)));
@@ -942,6 +969,7 @@
     }
 
     var p = this.player, st = this.stats(), hit, i, m;
+    if (it.kind === "potion") this.potions += 1;
     var shown = this.itemName(it);
     var boost = (it.kind === "scroll") ? (this.cls.scrollBoost || 1) : 1;
     var potBoost = 1 + st.potionBoost;
@@ -1258,6 +1286,28 @@
     }
   };
 
+  /* 이 판에서 얻은 도전 과제.
+   * ⚠ 판이 끝난 **뒤에** 한 번만 부른다. 도중에 부르면 "물약 없이" 같은 것이
+   *   아직 안 끝난 조건인데 달성으로 잡힌다.
+   * ⚠ 규칙을 안 바꾼다 — 여기서 무엇을 돌려주든 게임은 똑같이 굴러간다. */
+  Game.prototype.featsEarned = function () {
+    var got = [], self = this;
+    function add(id) { if (got.indexOf(id) < 0) got.push(id); }
+    var zmap = { b_warden: "f_zone1", b_drowned: "f_zone2", b_librarian: "f_zone3", b_ossuary: "f_zone4" };
+    for (var i = 0; i < this.zoneBossKills.length; i++) {
+      if (zmap[this.zoneBossKills[i]]) add(zmap[this.zoneBossKills[i]]);
+    }
+    if (this.depth >= DATA.MAX_DEPTH) add("f_deep10");
+    if (this.won) {
+      add("f_win");
+      if (this.potions === 0) add("f_nopot");
+      if (this.woreCursed) add("f_curse");
+    }
+    if (this.deepOnly && this.depth >= 8) add("f_deep");
+    if ((this.player.relics || []).length >= 5) add("f_relic");
+    return got;
+  };
+
   Game.prototype.kill = function (m) {
     var i = this.monsters.indexOf(m);
     if (i >= 0) this.monsters.splice(i, 1);
@@ -1279,6 +1329,17 @@
       }
     }
     this.gainXp(m.xp || m.src.xp);
+    /* 구역 보스를 잡으면 **값이 나온다.** 위험만 있고 보상이 없으면 피해 가는
+     * 것이 늘 정답이 되어 사건이 아니라 장애물이 된다.
+     * ⚠ 두 층 더 깊은 값으로 굴린다(보물방과 같은 규칙 — 두 벌로 두지 않는다). */
+    if (m.zoneBoss) {
+      if (this.zoneBossKills.indexOf(m.id) < 0) this.zoneBossKills.push(m.id);
+      var drop = this.rollFloorItem(m.x, m.y, this.depth + 2, true);
+      if (drop) {
+        this.items.push(drop);
+        this.say(josa(m.name, "이", "가") + " 쥐고 있던 것이 바닥에 떨어졌다.", "item");
+      }
+    }
     if (m.boss) {
       this.over = true;
       this.won = true;

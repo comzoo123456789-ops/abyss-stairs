@@ -558,6 +558,18 @@ button { font-family: inherit; cursor: pointer; }
   padding: 6px 8px;
 }
 .log .m { margin: 0 0 2px; color: var(--ink-dim); opacity: .62; }
+/* 도전 과제 — 끝난 뒤에만 보인다. 규칙을 안 바꾸므로 조용하게 둔다. */
+.feats { margin-top: 14px; border-top: 2px solid var(--line); padding-top: 10px; text-align: left; }
+.feats-head { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; }
+.feats-head b { color: var(--gold); font-family: var(--mono); font-size: 14px; }
+.feats-new { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.feats-new span {
+  display: block; font-size: 11px; color: var(--ink-dim);
+  border: 3px solid var(--gold); border-image: var(--frame-on);
+  background: var(--panel-2); padding: 5px 8px;
+}
+.feats-new b { display: block; color: var(--gold); font-size: 12.5px; margin-bottom: 2px; }
+
 /* 갈래 표 — 짧은 말 하나로 무슨 일인지 먼저 읽힌다 */
 .log .m .tag {
   display: inline-block;

@@ -355,7 +355,8 @@
       "<div><dt>처치</dt><dd>" + g.kills + "체</dd></div>" +
       "<div><dt>금화</dt><dd>" + g.gold.toLocaleString() + "</dd></div>" +
       "<div><dt>턴</dt><dd>" + g.turn.toLocaleString() + "</dd></div>" +
-      "</dl>";
+      "</dl>" +
+      featsHtml(mergeFeats(g.featsEarned()));
     els.end.hidden = false;
     saveBest(g.score());
     writeLedger(g);
@@ -492,6 +493,44 @@
       (d.doneToday() ? " · 오늘 몫 끝" : " · 하루 한 번") + (s >= 2 ? " · 연속 " + s + "일" : "");
   }
 
+  /* ── 도전 과제 ────────────────────────────────────────
+   * ⚠ **힘을 주지 않는다.** 여기 있는 것은 전부 기록이고 규칙을 한 톨도 안 바꾼다
+   *   (해금이 세지는 길이 되면 죽는 것이 손해가 되고, 처음 여는 사람만 어려운
+   *   게임이 된다 — Brogue 의 노 그라인딩 원칙).
+   * ⚠ 저장이 막힌 환경(시크릿 모드)에서도 게임은 그대로 돈다. 못 적을 뿐이다. */
+  function loadFeats() {
+    try {
+      var raw = localStorage.getItem("rl_feats");
+      return raw ? JSON.parse(raw) : [];
+    } catch (err) { return []; }
+  }
+  function saveFeats(list) {
+    try { localStorage.setItem("rl_feats", JSON.stringify(list)); } catch (err) {}
+  }
+  /* 이번 판에 **새로** 얻은 것만 돌려준다 — 종료 화면에 그것만 보인다 */
+  function mergeFeats(earned) {
+    var had = loadFeats(), fresh = [];
+    for (var i = 0; i < earned.length; i++) {
+      if (had.indexOf(earned[i]) < 0) { had.push(earned[i]); fresh.push(earned[i]); }
+    }
+    if (fresh.length) saveFeats(had);
+    return fresh;
+  }
+  function featsHtml(fresh) {
+    var D = window.DATA, all = loadFeats();
+    var html = '<div class="feats"><div class="feats-head">기록 <b>' + all.length +
+               "</b> / " + D.FEATS.length + "</div>";
+    if (fresh.length) {
+      html += '<div class="feats-new">';
+      for (var i = 0; i < fresh.length; i++) {
+        var f = D.byId(D.FEATS, fresh[i]);
+        if (f) html += "<span><b>" + f.name + "</b>" + f.note + "</span>";
+      }
+      html += "</div>";
+    }
+    return html + "</div>";
+  }
+
   /* 최고점만 로컬에 남긴다. 세이브는 두지 않는다 —
    * 죽으면 끝인 것이 로그라이크의 규칙이고, 되돌리기가 있으면 긴장이 사라진다. */
   function saveBest(score) {
@@ -505,6 +544,8 @@
   function loadBest() {
     try {
       els.best.textContent = parseInt(localStorage.getItem("rl_best") || "0", 10).toLocaleString();
+      /* 시작 화면 — 몇을 모았는지만. 무엇인지는 끝난 뒤에 보인다(스포일러를 안 준다) */
+      if (els.featCount) els.featCount.textContent = loadFeats().length + " / " + window.DATA.FEATS.length;
     } catch (err) { els.best.textContent = "0"; }
   }
 
@@ -632,6 +673,7 @@
     els.shopBuy = document.getElementById("shopBuy");
     els.shopSell = document.getElementById("shopSell");
     els.shopGold = document.getElementById("shopGold");
+    els.featCount = document.getElementById("featCount");
     els.modes = document.getElementById("modes");
     els.modeDailyNote = document.getElementById("modeDailyNote");
     els.dailyDone = document.getElementById("dailyDone");
