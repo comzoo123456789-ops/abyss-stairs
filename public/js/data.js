@@ -40,6 +40,48 @@
   /* ── 무기 종류 ────────────────────────────────────────────
    * 같은 "공격력 +5" 가 아니라 **종류마다 성격이 다르다**. 그래야 무엇을 줍는지가
    * 결정이 된다. atkMul 은 기본 공격력 배수, 나머지는 그 무기를 들면 붙는 태생 옵션. */
+  /* ── 특화 ─────────────────────────────────────────────
+   *
+   * 직업은 **출발점만** 정한다. 절반쯤 내려간 자리에서 한 번, 그 판에 맞는 쪽으로
+   * 갈래를 고른다. 신규 직업 셋을 만드는 것보다 3직업 x 2특화 = 여섯 갈래가 싸다.
+   *
+   * ⚠ **5층에 들어설 때** 고른다. 아무 레벨이 아니라 이정표여야 한다 — 절반을
+   *   내려왔고 자기 빌드가 어떤 모양인지 이미 보인 자리다(조사한 게임들도
+   *   보스 하나를 넘긴 뒤에 고르게 한다).
+   * ⚠ 값은 **레벨업 특성과 같은 통**(player.perks)에 더한다. 따로 두면 stats()
+   *   가 두 곳을 합쳐야 하고 반드시 한쪽을 빠뜨린다.
+   * ⚠ 둘 중 하나가 늘 정답이면 갈래가 아니다. 한쪽은 **살아남는 쪽**, 다른 쪽은
+   *   **몰아치는 쪽**으로 성격을 가른다(수치만 다르면 큰 쪽을 고르면 끝이다). */
+  var SPECS = {
+    warrior: [
+      { id: "guard", name: "성벽", tag: "살아남는 쪽",
+        note: "방어 +3 · 최대 체력 +18. 오래 버틴다",
+        mods: { defFlat: 3, hpFlat: 18 } },
+      { id: "berserk", name: "돌파", tag: "몰아치는 쪽",
+        note: "공격 +4 · 치명타 +8% · 최대 체력 −10. 먼저 끝낸다",
+        mods: { atkFlat: 4, crit: 0.08, hpFlat: -10 } }
+    ],
+    rogue: [
+      { id: "shadow", name: "그림자", tag: "몰아치는 쪽",
+        note: "치명타 +17% · 치명타 배수 +0.55. 한 방이 커진다",
+        mods: { crit: 0.17, critMult: 0.55 } },
+      { id: "venomer", name: "독날", tag: "갉는 쪽",
+        note: "상태이상 확률 +26% · 상태이상 피해 +65%. 걸어 두고 기다린다",
+        mods: { ailChance: 0.26, ailPower: 0.65 } }
+    ],
+    mage: [
+      { id: "pyre", name: "잿불", tag: "몰아치는 쪽",
+        note: "스킬 피해 +30%. 한 번에 크게 터뜨린다",
+        mods: { skillPower: 0.30 } },
+      { id: "clock", name: "시계", tag: "자주 쓰는 쪽",
+        note: "쿨다운 −1턴 · 스킬 피해 +12%. 쉬지 않고 쓴다",
+        mods: { cdReduce: 1, skillPower: 0.12 } }
+    ]
+  };
+
+  /* 특화를 고르는 층. ⚠ 1층이나 9층이면 뜻이 없다 — 절반이어야 한다. */
+  var SPEC_DEPTH = 5;
+
   var WEAPON_KINDS = [
     { id: "sword",  name: "검",     atkMul: 1.00, base: { crit: 0.02 },
       hint: "균형. 치명타가 조금 붙는다" },
@@ -508,6 +550,7 @@
 
   global.DATA = {
     AILMENTS: AILMENTS,
+    SPECS: SPECS, SPEC_DEPTH: SPEC_DEPTH,
     WEAPON_KINDS: WEAPON_KINDS, WEAPON_NAMES: WEAPON_NAMES,
     ARMOR_NAMES: ARMOR_NAMES, OFFHAND_NAMES: OFFHAND_NAMES,
     RARITY: RARITY, AFFIXES: AFFIXES,

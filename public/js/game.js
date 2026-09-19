@@ -301,6 +301,22 @@
     this.deepFloor = deep;
     if (deep) this.say("깊은 계단이었다. 공기가 더 무겁다.", "bad");
 
+    /* 특화 — 절반쯤 내려온 자리에서 한 번 고른다.
+     * ⚠ 레벨업 선택과 **같은 통**(pendingPerks)을 쓴다. 창을 따로 만들면 배선이
+     *   두 벌이 되고 한쪽만 고쳐진다. busy() 도 그대로 막아 준다.
+     * ⚠ 레벨업 선택이 이미 떠 있으면 **줄을 세운다**(pendingQueue). 덮어쓰면
+     *   레벨업 선택이 통째로 사라진다. */
+    if (this.depth === DATA.SPEC_DEPTH && !this.player.spec) {
+      var specs = DATA.SPECS[this.cls.id];
+      if (specs && specs.length) {
+        var offer = [];
+        for (i = 0; i < specs.length; i++) offer.push({ what: "spec", spec: specs[i] });
+        if (this.pendingPerks) { this.pendingQueue = this.pendingQueue || []; this.pendingQueue.push(offer); }
+        else this.pendingPerks = offer;
+        this.say("절반을 내려왔다. 어느 쪽으로 갈 것인가.", "level");
+      }
+    }
+
     var mcount = Math.round(DATA.monsterCount(this.depth) * (deep ? 1.7 : 1));
     for (i = 0; i < mcount; i++) {
       def = DATA.pick(DATA.MONSTERS, this.depth, this.rng);
@@ -1252,6 +1268,17 @@
       this.player.perks[c.perk.stat] = (this.player.perks[c.perk.stat] || 0) + c.perk.amt;
       if (c.perk.stat === "hpFlat") this.player.hp += c.perk.amt;
       this.say("「" + c.perk.label + "」 를 골랐다.", "level");
+    } else if (c.what === "spec") {
+      /* ⚠ 특성과 **같은 통**에 더한다. hpFlat 은 최대치만 올리므로 지금 체력도
+       *   같이 올려야 한다 — 안 그러면 "최대 체력이 늘었는데 안 찼다" 가 된다.
+       * ⚠ 음수 hpFlat(돌파)도 같은 길을 탄다. 지금 체력이 1 밑으로 안 가게 막는다. */
+      for (var mk in c.spec.mods) {
+        this.player.perks[mk] = (this.player.perks[mk] || 0) + c.spec.mods[mk];
+        if (mk === "hpFlat") this.player.hp = Math.max(1, this.player.hp + c.spec.mods[mk]);
+      }
+      this.player.spec = c.spec.id;
+      this.player.specName = c.spec.name;
+      this.say("「" + c.spec.name + "」 의 길을 골랐다.", "level");
     } else if (c.what === "relic") {
       this.takeRelic(c.relic.id);
     } else {

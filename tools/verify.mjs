@@ -775,6 +775,12 @@ function play(seed, clsId) {
     /* 레벨업 — 선호 순서대로, 없으면 새 스킬, 없으면 첫 번째 */
     if (g.pendingPerks) {
       let idx = -1;
+      /* ⚠ 특화는 **판마다 갈아 가며** 고른다. 늘 첫 칸을 고르면 둘째 갈래가
+       *   한 번도 안 돌아 밸런스에 안 잡힌다(새 선택지를 넣을 때마다 겪는 일이다). */
+      if (g.pendingPerks.every(c => c.what === "spec")) {
+        g.choosePerk(seed % g.pendingPerks.length);
+        continue;
+      }
       for (const want of PERK_PREF) {
         idx = g.pendingPerks.findIndex(c => c.what === "perk" && c.perk.id === want);
         if (idx >= 0) break;
@@ -892,8 +898,15 @@ function play(seed, clsId) {
 //  ⚠ 빌드 자유도가 생긴 뒤로는 직업보다 **선택**이 승률을 가른다. 폭을 조금 넓게 잡는다.
 console.log("\n── 밸런스 (빌드를 쌓으며 내려가는 AI · " + N + "판/직업) ──");
 const rates = [];
+/* ⚠ 직업 평균만 보면 **한 갈래가 죽어 있어도 안 보인다.** 둘을 반반 고르므로
+ *   한쪽이 0% 여도 다른 쪽이 두 배면 평균이 그대로다. 갈래별로 나눠 센다.
+ * ⚠ 따로 한 번 더 돌리지 않는다 — 같은 판을 두 번 돌리면 밸런스 검사 시간이
+ *   그대로 두 배가 된다. 본 루프에서 같이 센다. */
+const specRows = [];
 for (const c of DATA.CLASSES) {
   let wins = 0, unresolved = 0;
+  const specs = DATA.SPECS[c.id] || [];
+  const tally = specs.map(sp => ({ name: sp.name, win: 0, n: 0 }));
   const dd = {}, depths = [], scores = [], lv = [], crit = [];
   for (let i = 0; i < N; i++) {
     const g = play((i * 104729 + 7) >>> 0, c.id);
@@ -902,7 +915,10 @@ for (const c of DATA.CLASSES) {
     if (g.won) wins++;
     else if (g.over) dd[g.depth] = (dd[g.depth] || 0) + 1;
     else unresolved++;
+    const sk = specs.findIndex(sp => sp.id === g.player.spec);
+    if (sk >= 0) { tally[sk].n++; if (g.won) tally[sk].win++; }
   }
+  specRows.push({ cls: c.name, tally: tally });
   const rate = wins / N * 100;
   rates.push(rate);
   const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
@@ -915,6 +931,19 @@ for (const c of DATA.CLASSES) {
     " · 보스 전 사망 " + pre + " · 보스층 " + (dd[DATA.MAX_DEPTH] || 0) +
     (unresolved ? " · ⚠미결 " + unresolved : ""));
 }
+{
+  let worst = 0;
+  for (const r of specRows) {
+    if (!r.tally.length) continue;
+    const line = r.tally.map(t => t.name + " " + (t.n ? (t.win / t.n * 100).toFixed(0) : "?") +
+      "%(" + t.n + "판)").join(" · ");
+    console.log("  " + r.cls.padEnd(8), line);
+    const pcts = r.tally.filter(t => t.n >= 10).map(t => t.win / t.n * 100);
+    if (pcts.length > 1) worst = Math.max(worst, Math.max(...pcts) - Math.min(...pcts));
+  }
+  console.log("특화 격차   :", ok(worst <= 25), worst.toFixed(1) + "%p (25%p 이하여야 한다)");
+}
+
 const gap = Math.max(...rates) - Math.min(...rates);
 console.log("직업 격차   :", ok(gap <= 28), gap.toFixed(1) + "%p (28%p 이하여야 한다)");
 

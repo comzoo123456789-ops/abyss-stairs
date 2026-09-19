@@ -1148,7 +1148,7 @@
       '<canvas class="who-art" width="32" height="32" data-sprite="' + esc(p.sprite) + '"></canvas>' +
       '<div class="who-txt">' +
         '<b>' + esc(c.title) + "</b>" +
-        '<em>' + esc(c.name) + " · Lv." + p.level + "</em>" +
+        '<em>' + esc(c.name) + (p.specName ? " · " + esc(p.specName) : "") + " · Lv." + p.level + "</em>" +
       "</div>" +
       '<span class="who-gold"><i class="ic ic-gold"></i>' + g.gold.toLocaleString() + "<i>금</i></span>" +
       "</div>";
@@ -1399,6 +1399,9 @@
       var kind, title, note, tag;
       if (c.what === "perk") {
         kind = "stat"; title = c.perk.label; note = c.perk.note; tag = "능력치";
+      } else if (c.what === "spec") {
+        kind = "relic"; title = c.spec.name; tag = "특화 · " + c.spec.tag;
+        note = c.spec.note;
       } else if (c.what === "relic") {
         /* ⚠ 유물은 **왜 좋은지**까지 적는다. 규칙을 바꾸는 물건이라 효과만 읽어서는
          *   지금 내 빌드에 맞는지 판단이 안 된다(그러면 아무거나 고르게 된다). */
