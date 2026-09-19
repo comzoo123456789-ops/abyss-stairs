@@ -219,6 +219,60 @@ console.log("깊은 계단   :", ok(deepSealed === 0),
   let identical = a1.tiles.length === a2.tiles.length;
   for (let i = 0; identical && i < a1.tiles.length; i++) if (a1.tiles[i] !== a2.tiles[i]) identical = false;
 
+  /* ── 오늘의 변이 ────────────────────────────────────
+   * ⚠ 이 기능의 약속은 셋이다: **하루 둘(나쁨+좋음)** · **이틀 연속 안 겹침** ·
+   *   **같은 날은 늘 같다**. 둘째가 깨지면 "내일 또" 가 없어지고, 셋째가 깨지면
+   *   새로고침할 때마다 규칙이 바뀌어 "모두 같은 던전" 이 통째로 거짓이 된다. */
+  {
+    const rows = [];
+    const chk = (n, good, note) => rows.push([n, good, note]);
+    const start = Date.UTC(2026, 0, 1);
+    let same = 0, badShape = 0, prev = null;
+    const combos = {}, ids = new Set();
+    for (let i = 0; i < 365; i++) {
+      const k = DAILY.dayKey(start + i * 86400000);
+      const m = DAILY.mutatorsFor(k);
+      if (!m || m.length !== 2 || m[0].tone !== "bad" || m[1].tone !== "good") { badShape++; continue; }
+      m.forEach(x => ids.add(x.id));
+      combos[m[0].id + "+" + m[1].id] = 1;
+      if (prev && (m[0].id === prev[0].id || m[1].id === prev[1].id)) same++;
+      prev = m;
+    }
+    chk("하루 둘", badShape === 0, "365일 전부 나쁨 하나 + 좋음 하나");
+    chk("연속 겹침 0", same === 0, "365일 중 어제와 겹친 날 " + same);
+    chk("조합", Object.keys(combos).length >= 20, Object.keys(combos).length + "가지 / 25");
+    chk("모두 나온다", ids.size === DAILY.MUTATORS.length,
+      DAILY.MUTATORS.length + "종 중 " + ids.size + "종");
+    const a1 = DAILY.mutatorsFor("2026-05-05").map(m => m.id).join();
+    const a2 = DAILY.mutatorsFor("2026-05-05").map(m => m.id).join();
+    chk("같은 날은 같다", a1 === a2, a1);
+    /* ⚠ mods 의 열쇠가 game.js 가 읽는 이름과 다르면 그 변이는 **조용히** 아무
+     *   일도 안 한다. 화면에는 뜨는데 게임은 그대로다 — 제일 잡기 어려운 종류다. */
+    {
+      const keys = new Set();
+      DAILY.MUTATORS.forEach(m => Object.keys(m.mods).forEach(k => keys.add(k)));
+      const src2 = fs.readFileSync(path.join(JS, "game.js"), "utf8");
+      const miss = [...keys].filter(k => src2.indexOf("this.mut(\"" + k + "\"") < 0);
+      chk("game.js 가 읽는다", miss.length === 0,
+        miss.length ? "✘ 아무 데서도 안 읽는 열쇠: " + miss.join(", ") : keys.size + "개 전부 읽힌다");
+    }
+    /* 장부 한 줄에 변이 이름이 들어가는가(자유 탐사에는 안 들어가야 한다) */
+    {
+      const d = DAILY.shareText({ mode: "daily", day: "2026-05-05", cls: "다인", won: false,
+        depth: 5, maxDepth: 10, crit: 0.1, kills: 10, score: 100 });
+      const f = DAILY.shareText({ mode: "free", seed: 1, cls: "다인", won: false,
+        depth: 5, maxDepth: 10, crit: 0.1, kills: 10, score: 100 });
+      const nm = DAILY.mutatorsFor("2026-05-05")[0].name;
+      chk("장부에 적힌다", d.indexOf(nm) >= 0 && f.indexOf(nm) < 0,
+        "일일에는 있고 자유 탐사에는 없다");
+    }
+    const nbad = rows.filter(r => !r[1]).length;
+    console.log("오늘의 변이 :", ok(nbad === 0),
+      DAILY.MUTATORS.length + "종 · 검사 " + rows.length + "항목" +
+      (nbad ? " · ⚠ 실패 " + nbad : " 전부 통과"));
+    rows.filter(r => !r[1]).forEach(r => console.log("              ✘ " + r[0] + " — " + r[2]));
+  }
+
   console.log("일일 씨앗   :", ok(kstEdge && sameDay && dup === 0 && lowDelta === 0 &&
                                 shapes.size >= 18 && identical),
     "한국시간 경계 " + (kstEdge ? "맞음" : "⚠틀림") + " · 하루 안 고정 " + (sameDay ? "맞음" : "⚠틀림") +
@@ -229,11 +283,15 @@ console.log("깊은 계단   :", ok(deepSealed === 0),
   const mk = (depth, won) => DAILY.shareText({ day: "2026-09-18", mode: "daily", cls: "셰라",
     depth, won, score: 5430, kills: 46, crit: 0.31, maxDepth: DATA.MAX_DEPTH, url: "x.dev" });
   const lines = mk(7, false).split(String.fromCharCode(10));
+  /* ⚠ 칸 줄을 **줄 번호로 찾지 않는다.** 오늘의 변이가 들어오면서 줄이 하나
+   *   늘었는데, lines[2] 로 찍어 두었더니 엉뚱한 줄을 세어 "이모지 빠짐" 으로
+   *   빨개졌다(제품이 아니라 검사의 전제가 낡은 것이었다). 내용으로 찾는다. */
+  const barLine = lines.find(l => l.indexOf("🟨") >= 0 || l.indexOf("⬛") >= 0) || "";
   /* 이모지는 서로게이트 쌍이라 length 로 세면 안 된다 — 코드포인트로 센다 */
-  const cells = [...lines[2]].length;
+  const cells = [...barLine].length;
   const won10 = [...mk(10, true)].join("");
-  const shapeOk = lines.length === 5 && cells === DATA.MAX_DEPTH &&
-                  lines[2].indexOf("🟨") >= 0 && lines[2].indexOf("⬛") >= 0 &&
+  const shapeOk = lines.length >= 5 && cells === DATA.MAX_DEPTH &&
+                  barLine.indexOf("🟨") >= 0 && barLine.indexOf("⬛") >= 0 &&
                   won10.indexOf("👑") >= 0 && mk(10, false).indexOf("🟥") >= 0;
   /* 자유 탐사는 날짜를 쓰지 않는다 — "9월 18일의 장부" 라고 적으면 거짓이다 */
   const freeHead = DAILY.shareText({ day: "2026-09-18", mode: "free", seed: 0x096ff20d, cls: "다인",

@@ -46,7 +46,18 @@
   --sans: "Galmuri11", "Pretendard Variable", Pretendard, -apple-system,
           "Segoe UI", "Malgun Gothic", sans-serif;
   --mono: "GalmuriMono11", "Galmuri11", ui-monospace, Consolas, "D2Coding", monospace;
+
+  /* ── 라틴 글자와 숫자는 제안서가 지정한 레트로 서체로 ───────
+   * ⚠ 처음에 "Press Start 2P 와 VT323 은 한글이 없다" 를 이유로 둘 다 안 썼는데,
+   *   제안서 예시 그림을 다시 보니 **한글은 일반 글꼴이고 숫자·라틴만** 그
+   *   서체다("Lv.1" · "44/44 HP" · "28 금"). 의도를 좁게 읽었던 것이다.
+   * ⚠ 그래서 **글꼴 차례로** 푼다. 라틴·숫자는 앞의 레트로 서체가 집고, 한글은
+   *   없으니 뒤의 갈무리로 떨어진다. 한 상자 안에서 두 글꼴이 자연히 갈린다.
+   * ⚠ --title 은 **짧은 라틴 라벨 전용**이다(Q·W·E·R·Lv). 긴 문장에 쓰면
+   *   Press Start 2P 가 너무 넓어 줄이 터진다 — 제안서도 그렇게 적었다.
+   * ⚠ --num 은 숫자가 든 칸에 쓴다. VT323 은 고정폭이라 자릿수가 흔들리지 않는다. */
   --title: "Press Start 2P", "Galmuri11", var(--sans);
+  --num: "VT323", "GalmuriMono11", "Galmuri11", ui-monospace, monospace;
 
   /* ── 픽셀 프레임 (9-슬라이스) ─────────────────────────
    * 제안서 원칙 1. 둥근 모서리·그림자 대신 **각진 2px 테두리 + 코너 장식**으로
@@ -148,7 +159,7 @@ button { font-family: inherit; cursor: pointer; }
   padding: 2px 7px;
   line-height: 1.5;
 }
-.top-meta b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
+.top-meta b { color: var(--ink); font-family: var(--num); font-weight: 400; font-size: 15px; }
 .seedline { font-size: 11px; color: var(--ink-dim); }
 .seedline b { color: var(--gold); }
 
@@ -223,7 +234,9 @@ button { font-family: inherit; cursor: pointer; }
 }
 .hud-num span { display: flex; align-items: baseline; gap: 3px; }
 .hud-num em { font-style: normal; }
-.hud-num b { color: var(--ink); font-weight: 700; font-size: 13px; }
+.hud-num b { color: var(--ink); font-weight: 400; font-size: 18px; font-family: var(--num); line-height: 1; }
+/* Lv · 층 · 금 같은 짧은 라벨은 도트 서체로. ⚠ 긴 문장에는 쓰지 않는다. */
+.hud-num em { font-family: var(--title); font-size: 8px; letter-spacing: 0; }
 .hud-num .g b { color: var(--gold); }
 .hud-num .d b { color: var(--hp); }
 
@@ -384,8 +397,8 @@ button { font-family: inherit; cursor: pointer; }
   position: absolute;
   right: 10px; top: 0; bottom: 0;
   display: flex; align-items: center; gap: 1px;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-family: var(--num);
+  font-size: 16px;
   font-weight: 700;
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,.9);
@@ -522,8 +535,8 @@ button { font-family: inherit; cursor: pointer; }
 .inv-item .key {
   grid-area: key;
   align-self: center;
-  font-family: var(--mono);
-  font-size: 11px;
+  font-family: var(--num);
+  font-size: 15px;
   color: var(--gold);
   text-align: center;
 }
@@ -558,10 +571,22 @@ button { font-family: inherit; cursor: pointer; }
   padding: 6px 8px;
 }
 .log .m { margin: 0 0 2px; color: var(--ink-dim); opacity: .62; }
+/* 오늘의 변이 — 고르기 **전에** 보인다. 좋은 것은 초록, 나쁜 것은 빨강. */
+.mut-list { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
+.mut {
+  display: block; font-size: 10.5px; line-height: 1.45; color: var(--ink-dim);
+  border-left: 3px solid var(--line); padding: 1px 0 1px 7px;
+}
+.mut b { display: inline-block; margin-right: 5px; font-size: 11.5px; }
+.mut.bad { border-left-color: var(--hp); }
+.mut.bad b { color: #e08a82; }
+.mut.good { border-left-color: var(--good); }
+.mut.good b { color: var(--good); }
+
 /* 도전 과제 — 끝난 뒤에만 보인다. 규칙을 안 바꾸므로 조용하게 둔다. */
 .feats { margin-top: 14px; border-top: 2px solid var(--line); padding-top: 10px; text-align: left; }
 .feats-head { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; }
-.feats-head b { color: var(--gold); font-family: var(--mono); font-size: 14px; }
+.feats-head b { color: var(--gold); font-family: var(--num); font-size: 18px; }
 .feats-new { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .feats-new span {
   display: block; font-size: 11px; color: var(--ink-dim);
@@ -741,9 +766,9 @@ body.pad-folded .side { max-height: 24vh; }
 .card h2.lose { color: var(--bad); }
 
 .score {
-  font-family: var(--mono);
-  font-size: 44px;
-  font-weight: 700;
+  font-family: var(--num);
+  font-size: 58px;
+  font-weight: 400;
   color: var(--gold);
   line-height: 1;
   margin-bottom: 18px;
@@ -1029,7 +1054,7 @@ kbd {
   transition: width .2s ease-out;
 }
 .skill .k {
-  font-family: var(--mono); font-size: 10.5px; text-align: center;
+  font-family: var(--title); font-size: 8px; text-align: center;
   border: 1px solid var(--line); border-radius: 0; padding: 1px 0;
   background: rgba(0,0,0,.35);
 }
@@ -1088,7 +1113,7 @@ kbd {
 .perk:hover { border-color: var(--gold); background: #23202b; transform: translateY(-2px); }
 .perk-key {
   position: absolute; top: 7px; right: 8px;
-  font-family: var(--mono); font-size: 10px; color: var(--gold);
+  font-family: var(--title); font-size: 8px; color: var(--gold);
   border: 1px solid var(--line); border-radius: 0; padding: 0 4px;
 }
 .perk-tag { font-size: 9.5px; letter-spacing: .1em; color: var(--ink-dim); }
@@ -1105,7 +1130,7 @@ kbd {
 .shop-head h2 { margin: 0; flex: 0 0 auto; }
 .shop-gold { margin-left: auto; font-size: 12px; color: var(--ink-dim); }
 .shop-gold { display: inline-flex; align-items: center; gap: 4px; }
-.shop-gold b { font-family: var(--mono); font-size: 16px; color: var(--gold); }
+.shop-gold b { font-family: var(--num); font-size: 20px; color: var(--gold); }
 
 /* ⚠ 좌우 두 열 사이에 **세로 구분선**을 준다. 파는 것과 파는 내 물건이
  *   같은 톤으로 붙어 있어 어디까지가 어느 쪽인지 안 읽혔다(제안서 지적). */
@@ -1148,7 +1173,7 @@ kbd {
 }
 .shop-cost {
   grid-area: cost; align-self: center;
-  font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--gold);
+  font-family: var(--num); font-size: 16px; font-weight: 400; color: var(--gold);
   white-space: nowrap;
 }
 /* ⚠ 등급색이 인라인 style 로만 붙어 있어 **테두리에는 못 썼다**(제안서 지적).
@@ -1572,9 +1597,9 @@ kbd {
 .stat-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 9px;
+  gap: 0 7px;
   margin-top: 8px;
-  padding: 6px 8px;
+  padding: 5px 7px;
   background: rgba(0,0,0,.24);
   border-radius: 0;
   font-size: 12px;
@@ -1583,9 +1608,9 @@ kbd {
 .stat-line > * { min-width: 0; }
 .stat-line span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .stat-line .ic { margin-right: 1px; }
-.stat-line em { font-style: normal; color: var(--ink-dim); font-size: 10.5px; letter-spacing: .04em; }
-.stat-line b { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--ink); }
-.stat-line s { text-decoration: none; font-family: var(--mono); font-size: 10px; color: var(--gold); }
+.stat-line em { font-style: normal; color: var(--ink-dim); font-size: 10px; letter-spacing: 0; }
+.stat-line b { font-family: var(--num); font-size: 17px; font-weight: 400; color: var(--ink); line-height: 1; }
+.stat-line s { text-decoration: none; font-family: var(--num); font-size: 13px; color: var(--gold); }
 .stat-line.wide { font-size: 13px; gap: 4px 16px; padding: 9px 11px; }
 .stat-line.wide b { font-size: 15px; }
 

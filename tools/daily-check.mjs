@@ -119,9 +119,11 @@ await ev("window.__endRun(false)");
 await sleep(320);
 const led = await ev("window.__ledger()");
 const lines = String(led.text || "").split("\n");
-add("끝나면 장부", led.shown && lines.length === 5 && /장부/.test(led.label),
+/* ⚠ 줄 수를 박아 두지 말 것. 변이가 붙으면 한 줄 늘어난다 — 막대는 **내용으로** 찾는다. */
+const barLine = lines.find(l => l.indexOf("🟨") >= 0 || l.indexOf("⬛") >= 0) || "";
+add("끝나면 장부", led.shown && lines.length >= 5 && /장부/.test(led.label),
   JSON.stringify(led.label) + " · " + lines.length + "줄");
-add("장부 막대 10칸", [...(lines[2] || "")].length === 10, lines[2] || "(없음)");
+add("장부 막대 10칸", [...barLine].length === 10, barLine || "(없음)");
 await shot("daily-2-end.png");
 
 const second = await ev('window.__start("mage","daily")');

@@ -71,6 +71,92 @@
 
   function seedToday(now) { return seedOf(dayKey(now)); }
 
+  /* ── 오늘의 변이 ──────────────────────────────────────
+   *
+   * 씨앗만 같고 규칙은 늘 똑같아서 "어제와 같은 게임을 새 지형에서" 였다.
+   * 날마다 규칙 둘을 바꿔 **오늘 들어올 이유**를 만든다.
+   *
+   * 조사(Slay the Spire 데일리 클라임)에서 얻은 것 셋:
+   *   ① 하루 몇 개만. 많으면 무엇 때문에 죽었는지 모른다
+   *   ② **이틀 연속 같은 것이 안 나온다** — 그래야 내일 또 할 이유가 생긴다
+   *   ③ "그냥 이상하거나 벌주는 것" 이 아니라 **거래**여야 한다
+   *
+   * 그래서 **나쁨 하나 + 좋음 하나**로 고정한다. 둘 다 나쁜 날이 없으니 늘
+   * 거래가 되고, 조합이 5x5 = 25가지라 날마다 다르다.
+   *
+   * ⚠ 이 함수는 **순수 함수**다(DOM·localStorage 를 안 쓴다). verify 가 브라우저
+   *   없이 365일치를 한 번에 돌려 본다.
+   * ⚠ mods 의 열쇠는 game.js 가 읽는 이름과 **같아야 한다**. 여기서 이름을
+   *   바꾸면 그 변이가 조용히 아무 일도 안 한다.
+   * ⚠ 값을 세게 주지 말 것. 하루짜리 규칙이 자유 탐사보다 세면 그쪽이 본편이 된다. */
+  var MUT_BAD = [
+    { id: "m_dim",    name: "흐린 눈",     note: "시야가 네 칸 줄어든다",            tone: "bad", mods: { sight: -4 } },
+    { id: "m_noshop", name: "닫힌 상점",   note: "상인이 내려오지 않았다",            tone: "bad", mods: { noShop: 1 } },
+    { id: "m_elite",  name: "정예 순찰",   note: "엘리트가 세 배로 나온다",           tone: "bad", mods: { eliteMul: 3 } },
+    { id: "m_onlydeep", name: "외길",      note: "모든 계단이 깊은 계단이다",         tone: "bad", mods: { onlyDeep: 1 } },
+    { id: "m_frail",  name: "얇은 가죽",   note: "최대 체력이 4분의 1 줄어든다",      tone: "bad", mods: { hpMul: 0.75 } }
+  ];
+  var MUT_GOOD = [
+    { id: "m_rich",   name: "넉넉한 바닥", note: "물건이 여섯 할 더 떨어져 있다",      tone: "good", mods: { itemMul: 1.6 } },
+    { id: "m_swift",  name: "빠른 손",     note: "스킬 쿨다운이 두 턴 짧다",          tone: "good", mods: { cdReduce: 2 } },
+    { id: "m_gold",   name: "금맥",        note: "금화가 두 배로 들어온다",           tone: "good", mods: { goldBoost: 1 } },
+    { id: "m_early",  name: "이른 갈래",   note: "3층에서 특화를 고른다",             tone: "good", mods: { specDepth: 3 } },
+    { id: "m_keen",   name: "벼린 날",     note: "치명타 확률이 12% 오른다",          tone: "good", mods: { crit: 0.12 } }
+  ];
+  var MUTATORS = MUT_BAD.concat(MUT_GOOD);
+
+  /* 어제 날짜. ⚠ 문자열을 자르지 말고 날짜로 계산한다 — 달이 바뀌는 날 틀린다. */
+  function prevKey(key) {
+    var p = String(key).split("-");
+    var t = Date.UTC(+p[0], +p[1] - 1, +p[2]) - DAY_MS;
+    var d = new Date(t);
+    var mm = d.getUTCMonth() + 1, dd = d.getUTCDate();
+    return d.getUTCFullYear() + "-" + (mm < 10 ? "0" : "") + mm + "-" + (dd < 10 ? "0" : "") + dd;
+  }
+
+  /* 날짜를 번호로. ⚠ 문자열을 자르지 말고 날짜로 센다 — 달·해가 바뀔 때 틀린다. */
+  var MUT_EPOCH = Date.UTC(2024, 0, 1);
+  function dayNum(key) {
+    var p = String(key).split("-");
+    var n = Math.round((Date.UTC(+p[0], +p[1] - 1, +p[2]) - MUT_EPOCH) / DAY_MS);
+    return n > 0 ? n : 0;
+  }
+
+  /* **이틀 연속 같은 것이 안 나온다** 를 어떻게 지키는가.
+   *
+   * ⚠ 처음엔 "어제와 겹치면 한 칸 민다" 로 했는데, **어제 것도 밀렸을 수 있어서**
+   *   365일 중 25일이 그대로 겹쳤다. 몇 단계를 따라 올라가도 끝이 없다.
+   * ⚠ 그래서 아예 **겹칠 수 없게** 만든다: 어제 자리에서 1~(개수−1) 칸을 걷는다.
+   *   걸음이 0 일 수 없으니 같은 자리에 못 선다. 수학이 지켜 주는 것이라
+   *   경우를 따질 필요가 없다.
+   * ⚠ 날마다 앞에서부터 이어 계산하므로 한 번 센 것은 쌓아 둔다(안 쌓으면
+   *   365일 검사가 같은 걸 수십만 번 다시 센다). */
+  var chainCache = {};
+  function chainAt(salt, len, n) {
+    var ck = salt + "|" + len;
+    var arr = chainCache[ck] || (chainCache[ck] = [seedOf(salt + "|start") % len]);
+    for (var i = arr.length; i <= n; i++) {
+      var step = 1 + (seedOf(salt + "|" + i) % (len - 1));
+      arr[i] = (arr[i - 1] + step) % len;
+    }
+    return arr[n];
+  }
+
+  function mutatorsFor(key) {
+    var n = dayNum(key);
+    return [MUT_BAD[chainAt("bad", MUT_BAD.length, n)],
+            MUT_GOOD[chainAt("good", MUT_GOOD.length, n)]];
+  }
+
+  /* 변이들이 합쳐진 값 하나. game.js 가 이걸 읽는다. */
+  function modsFor(key) {
+    var list = mutatorsFor(key), out = {};
+    for (var i = 0; i < list.length; i++) {
+      for (var k in list[i].mods) out[k] = list[i].mods[k];
+    }
+    return out;
+  }
+
   /* ── 장부 한 줄 ───────────────────────────────────────
    *
    * 10층을 칸 10개로 그린다. 지나온 층은 채우고, 마지막 칸은 군주다.
@@ -94,6 +180,7 @@
    * ⚠ 점수를 맨 위에 두지 않는다. 우리 장부에 남는 것은 **몇 층까지 갔는가** 다 —
    *   세계관과 공유판이 같은 말을 해야 한다. */
   function shareText(r) {
+    var NL = String.fromCharCode(10);
     /* 자유 탐사도 공유할 수 있다. 머리글만 다르다 — "모두 같은 던전" 이 아닌 판을
      * 「N월 N일의 장부」 라고 적으면 거짓이 된다. 씨앗을 함께 적어 같은 던전을
      * 다시 만들 수 있게 둔다. */
@@ -107,6 +194,16 @@
     var tail = "치명 " + Math.round((r.crit || 0) * 100) + "% · 처치 " + (r.kills || 0) +
                "체 · " + (r.score || 0).toLocaleString() + "점";
     var out = head + "\n" + line + "\n" + bar + "\n" + tail;
+    /* 오늘의 변이를 장부에 적는다 — **공유 문구가 날마다 달라지는 자리**다.
+     * 같은 던전을 돈 사람끼리 "오늘 상점이 없었잖아" 가 통한다.
+     * ⚠ 자유 탐사에는 안 적는다. 거기엔 변이가 없다 — 적으면 거짓이 된다. */
+    if (r.mode !== "free") {
+      var ms = mutatorsFor(r.day);
+      if (ms && ms.length) {
+        var names = ms.map(function (m) { return m.name; }).join(" · ");
+        out = head + NL + names + NL + line + NL + bar + NL + tail;
+      }
+    }
     if (r.url) out += "\n" + r.url;
     return out;
   }
@@ -200,6 +297,7 @@
   global.DAILY = {
     dayKey: dayKey, dayLabel: dayLabel, seedOf: seedOf, seedToday: seedToday,
     blocks: blocks, shareText: shareText,
+    MUTATORS: MUTATORS, mutatorsFor: mutatorsFor, modsFor: modsFor, prevKey: prevKey,
     msUntilNextDay: msUntilNextDay, untilText: untilText,
     readLedger: readLedger, entryFor: entryFor, doneToday: doneToday,
     record: record, begin: begin, finish: finish, streak: streak, MAX_KEEP: MAX_KEEP

@@ -17,14 +17,17 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap">
-<link rel="stylesheet" href="css/style.css?v=29">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
+<link rel="stylesheet" href="css/style.css?v=31">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <script>
   /* 캔버스에 글자를 그릴 때 쓰는 서체. CSS 변수는 캔버스가 못 읽으므로 여기서 준다.
      ⚠ CSS 의 --sans 와 **같아야 한다.** 두 벌이 되면 화면 안팎의 글자가 달라진다. */
   window.TOAST_FONT = '"Galmuri11", "Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
+  /* 숫자 전용 — 캔버스의 피해 숫자가 화면 밖 수치와 같은 서체여야 한다.
+     ⚠ CSS 의 --num 과 **같은 값**이어야 한다. 두 벌이 되면 안팎이 달라진다. */
+  window.NUM_FONT = '"VT323", "GalmuriMono11", "Galmuri11", ui-monospace, monospace';
 </script>
 <body>
 
@@ -134,6 +137,7 @@
       <button class="mode-card is-on" data-mode="daily" type="button">
         <b>하루의 장부</b>
         <em id="modeDailyNote">모두 같은 던전 · 하루 한 번</em>
+        <div class="mut-list" id="mutList"></div>
       </button>
       <button class="mode-card" data-mode="free" type="button">
         <b>자유 탐사</b>
@@ -308,15 +312,15 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=29"></script>
-<script src="js/sprites-art.js?v=29"></script>
-<script src="js/sound.js?v=29"></script>
-<script src="js/data.js?v=29"></script>
-<script src="js/daily.js?v=29"></script>
-<script src="js/items.js?v=29"></script>
-<script src="js/dungeon.js?v=29"></script>
-<script src="js/game.js?v=29"></script>
-<script src="js/render.js?v=29"></script>
-<script src="js/main.js?v=29"></script>
+<script src="js/sprites.js?v=31"></script>
+<script src="js/sprites-art.js?v=31"></script>
+<script src="js/sound.js?v=31"></script>
+<script src="js/data.js?v=31"></script>
+<script src="js/daily.js?v=31"></script>
+<script src="js/items.js?v=31"></script>
+<script src="js/dungeon.js?v=31"></script>
+<script src="js/game.js?v=31"></script>
+<script src="js/render.js?v=31"></script>
+<script src="js/main.js?v=31"></script>
 </body>
 </html>

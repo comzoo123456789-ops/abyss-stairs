@@ -358,7 +358,10 @@
       "</dl>" +
       featsHtml(mergeFeats(g.featsEarned()));
     els.end.hidden = false;
-    saveBest(g.score());
+    /* ⚠ 최고점은 **자유 탐사만** 센다. 변이가 붙은 날의 5,000점과 안 붙은 날의
+     *   5,000점은 같은 값이 아니다 — 한 통에 담으면 최고점이 "운 좋은 변이를
+     *   만난 날" 을 가리키게 된다. 일일 던전은 그날 안에서만 견준다. */
+    if (g.mode !== "daily") saveBest(g.score());
     writeLedger(g);
   }
 
@@ -491,6 +494,15 @@
     var s = d.streak();
     els.modeDailyNote.textContent = d.dayLabel(d.dayKey()) + " · 모두 같은 던전" +
       (d.doneToday() ? " · 오늘 몫 끝" : " · 하루 한 번") + (s >= 2 ? " · 연속 " + s + "일" : "");
+    /* 오늘의 변이 — **고르기 전에** 보인다. 들어가서 알면 그건 선택이 아니다. */
+    if (els.mutList) {
+      var muts = d.mutatorsFor(d.dayKey()), html = "";
+      for (var i = 0; i < muts.length; i++) {
+        html += '<span class="mut ' + muts[i].tone + '"><b>' + muts[i].name + "</b>" +
+                muts[i].note + "</span>";
+      }
+      els.mutList.innerHTML = html;
+    }
   }
 
   /* ── 도전 과제 ────────────────────────────────────────
@@ -631,7 +643,16 @@
     els.end.hidden = true;
     els.ledger.hidden = true;
     game = new window.Game(classId);
-    if (use === "daily" && window.DAILY) game.reset(window.DAILY.seedToday(), classId);
+    /* 오늘의 변이 — **하루의 장부에서만** 걸린다. 자유 탐사는 늘 기본값이라야
+     * 어제 잰 것과 오늘 잰 것을 견줄 수 있다.
+     * ⚠ reset() **앞에** 세운다. reset 이 최대 체력을 정하는데 「얇은 가죽」이
+     *   그때 안 걸려 있으면 시작 체력만 안 깎인다. */
+    if (use === "daily" && window.DAILY) {
+      game.setMods(window.DAILY.modsFor(window.DAILY.dayKey()));
+      game.reset(window.DAILY.seedToday(), classId);
+    } else {
+      game.setMods(null);
+    }
     game.mode = use;
     /* ⚠ 오늘 몫은 **여기서** 쓴다(끝날 때가 아니라). 끝날 때 적으면 판이 나쁘게
      *   흘러갈 때 새로고침하고 다시 시작할 수 있어 "하루 한 번" 이 말뿐이 된다. */
@@ -674,6 +695,7 @@
     els.shopSell = document.getElementById("shopSell");
     els.shopGold = document.getElementById("shopGold");
     els.featCount = document.getElementById("featCount");
+    els.mutList = document.getElementById("mutList");
     els.modes = document.getElementById("modes");
     els.modeDailyNote = document.getElementById("modeDailyNote");
     els.dailyDone = document.getElementById("dailyDone");

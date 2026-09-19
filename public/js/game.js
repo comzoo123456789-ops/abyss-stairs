@@ -58,6 +58,10 @@
     this.crits = 0;
     /* 도전 과제를 세는 것들. ⚠ 규칙에는 한 톨도 안 쓰인다 — 기록용이다.
      * ⚠ reset() 에서 함께 비워야 한다. 안 비우면 지난 판의 기록이 따라온다. */
+    /* 오늘의 변이 — 하루의 장부에서만 걸린다(자유 탐사는 늘 기본값이다).
+     * ⚠ 읽는 곳을 mut() **한 곳**으로 모은다. 쓰는 쪽이 각자 this.mods 를
+     *   뒤지면 변이 하나가 조용히 아무 일도 안 하게 된다. */
+    this.mods = this.mods || {};
     this.potions = 0;          /* 마신 물약 수 */
     this.woreCursed = false;   /* 저주받은 장비를 낀 적이 있는가 */
     this.zoneBossKills = [];   /* 넘은 구역 보스 id */
@@ -214,11 +218,20 @@
     /* 유물: 탐욕의 저울 — 금화 두 배의 대가로 최대 체력 20% 감소.
      * ⚠ 마지막에 곱한다. 중간에 곱하면 뒤에 더해지는 값이 깎이지 않아 대가가 흐려진다. */
     if (this.hasRelic("r_scales")) s.hpFlat *= 0.8;
+    /* 오늘의 변이 — 능력치에 얹는 것들(벼린 날 · 빠른 손 · 금맥).
+     * ⚠ 여기서 **한 번만** 더한다. stats() 를 거치는 값은 전부 이걸 본다. */
+    s.crit += this.mut("crit", 0);
+    s.cdReduce += this.mut("cdReduce", 0);
+    s.goldBoost += this.mut("goldBoost", 0);
     if (!s.critMult) s.critMult = 1.8;
     return s;
   };
 
-  Game.prototype.maxhp = function () { return Math.max(1, Math.round(this.stats().hpFlat)); };
+  /* ⚠ 변이 「얇은 가죽」은 **여기 한 곳**에서 곱한다. 체력을 읽는 자리가
+   *   여럿인데 각자 곱하면 반드시 한 곳을 빠뜨린다. */
+  Game.prototype.maxhp = function () {
+    return Math.max(1, Math.round(this.stats().hpFlat * this.mut("hpMul", 1)));
+  };
   /* ⚠ 공포는 **내 공격력도** 깎는다. 몬스터에만 뜻이 있으면 같은 이름이 양쪽에서
    *   다른 것이 되어 설명이 두 벌 필요해진다. */
   Game.prototype.power = function () {
@@ -312,7 +325,7 @@
      *   두 벌이 되고 한쪽만 고쳐진다. busy() 도 그대로 막아 준다.
      * ⚠ 레벨업 선택이 이미 떠 있으면 **줄을 세운다**(pendingQueue). 덮어쓰면
      *   레벨업 선택이 통째로 사라진다. */
-    if (this.depth === DATA.SPEC_DEPTH && !this.player.spec) {
+    if (this.depth === this.mut("specDepth", DATA.SPEC_DEPTH) && !this.player.spec) {
       var specs = DATA.SPECS[this.cls.id];
       if (specs && specs.length) {
         var offer = [];
@@ -348,7 +361,7 @@
       }
     }
 
-    var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1)) +
+    var icount = Math.round(DATA.itemCount(this.depth) * (deep ? 1.5 : 1) * this.mut("itemMul", 1)) +
                  ((deep && this.hasRelic("r_deeppact")) ? 2 : 0);
     for (i = 0; i < icount; i++) {
       spot = freeSpot(null);
@@ -375,7 +388,7 @@
 
     /* 상인 — 2층마다. 금화가 점수판 숫자로만 남으면 탐험할 이유가 준다.
      * ⚠ 유물 「남의 기억」 은 물약을 전부 식별해 주는 대신 상인을 없앤다 — 그게 대가다. */
-    if (DATA.hasShop(this.depth)) {
+    if (DATA.hasShop(this.depth) && !this.mut("noShop", 0)) {
       spot = freeSpot(null);
       if (spot) {
         this.merchant = { x: spot.x, y: spot.y, stock: this.rollShop(this.depth) };
@@ -553,7 +566,7 @@
     /* ⚠ 깊은 층은 **엘리트가 두 배**다. 마릿수만 늘리면 경험치와 금화가 같이
      *   늘어 오히려 이득이 된다(실측: 늘 깊은 계단을 타는 쪽이 더 나았다).
      *   위험은 "수" 가 아니라 "질" 로 줘야 거래가 성립한다. */
-    var ec = DATA.eliteChance(this.depth) * (this.deepFloor ? 2 : 1);
+    var ec = DATA.eliteChance(this.depth) * (this.deepFloor ? 2 : 1) * this.mut("eliteMul", 1);
     if (!noElite && !fixed && this.rng() < ec) {
       elite = DATA.ELITES[Math.floor(this.rng() * DATA.ELITES.length)];
       hp *= elite.hp; atk *= elite.atk; xp = Math.round(xp * elite.xp);
@@ -601,7 +614,7 @@
     /* ⚠ 실명은 **시야 반경**을 줄인다. 화면을 어둡게 덮는 것이 아니라 정말 못 보는
      *   것이라, 지도도 안 채워지고 원거리 몬스터도 못 본다 — 그게 무서운 이유다.
      * ⚠ 2 밑으로는 안 내린다. 0 이면 제 발밑도 안 보여 조작이 불가능해진다. */
-    var sight = Math.max(2, FOV_RADIUS + ailSum(this.player, "sight"));
+    var sight = Math.max(2, FOV_RADIUS + ailSum(this.player, "sight") + this.mut("sight", 0));
     D.computeFov(this.level, this.player.x, this.player.y, sight);
     if (this.cls.trapSense) {
       var lv = this.level;
@@ -879,7 +892,7 @@
     sfx("stairs");
     /* ⚠ **어느 계단으로 내려왔는지**를 들고 간다. 다음 층 배치가 이걸 본다.
      *   descend() 안에서 지우므로 여기서만 세운다. */
-    this.deepNext = (t === D.DEEP);
+    this.deepNext = (t === D.DEEP) || !!this.mut("onlyDeep", 0);
     if (t !== D.DEEP) this.deepOnly = false;   /* 한 번이라도 평범한 계단이면 깨진다 */
     this.descend();
     return this.act(true);
@@ -1136,6 +1149,15 @@
    * ⚠ 방벽은 셈에 안 넣는다. 한 번 쓰면 사라지는 것을 상시 방어로 치면
    *   위험이 실제보다 낮게 보인다.
    * ⚠ 0 으로 나누지 않게 한 대 피해는 최소 1 이다(roll 과 같은 규칙). */
+  /* 오늘의 변이 값. 없으면 기본값을 돌려준다. */
+  Game.prototype.mut = function (key, dflt) {
+    var v = this.mods && this.mods[key];
+    return (v === undefined) ? dflt : v;
+  };
+  /* ⚠ reset() 을 타도 살아남아야 한다 — 판을 시작할 때 한 번 세우고,
+   *   그 판이 끝날 때까지 안 바뀐다. */
+  Game.prototype.setMods = function (mods) { this.mods = mods || {}; };
+
   Game.prototype.threatOf = function (m) {
     var mit = 14 / (14 + Math.max(0, this.guard()));
     var each = Math.max(1, Math.round((m.atk + m.atk / 6) * mit));

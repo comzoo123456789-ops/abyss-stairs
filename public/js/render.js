@@ -466,7 +466,8 @@
    * ⚠ 검은 테두리를 두르지 않으면 밝은 바닥 위에서 사라진다. */
   Renderer.prototype.drawDmgs = function (ctx, ox, oy) {
     if (!this.dmgs.length) return;
-    var font = global.TOAST_FONT || '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
+    var font = global.NUM_FONT || global.TOAST_FONT ||
+               '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif';
     ctx.textAlign = "center";
     ctx.lineJoin = "round";
     for (var i = 0; i < this.dmgs.length; i++) {
@@ -476,7 +477,7 @@
       var ny = n.down ? (n.y * TILE + oy + TILE + 4 + n.t * 13)
                       : (n.y * TILE + oy + 2 - n.t * 21);
       ctx.globalAlpha = 1 - Math.max(0, (n.t - 0.55) / 0.45);
-      ctx.font = (n.big ? "800 18px " : "700 13px ") + font;
+      ctx.font = (n.big ? "400 26px " : "400 19px ") + font;
       ctx.lineWidth = 3.5;
       ctx.strokeStyle = "rgba(0,0,0,.88)";
       ctx.strokeText(String(n.n), nx, ny);
@@ -816,10 +817,14 @@
       var pips = th.hitsOnMe <= 2 ? 3 : (th.hitsOnMe <= 4 ? 2 : (th.hitsOnMe <= 7 ? 1 : 0));
       if (pips) {
         ctx.fillStyle = pips === 3 ? "#e05a5a" : (pips === 2 ? "#e0a03a" : "#c9c088");
+        /* ⚠ **정수 좌표로 그린다.** 소수점 좌표로 채우면 가장자리가 섞여 도트가
+         *   뭉개진다 — 픽셀 그림 위에서는 그 자체가 잘못이고, 색으로 재는 검사도
+         *   못 찾는다(실측: 표식 픽셀이 6 → 0 으로 흔들렸다). */
+        var pw = 4, gap = 5;
+        var px0 = Math.round(sx + TILE / 2 - (pips * gap - 1) / 2);
         for (var pi = 0; pi < pips; pi++) {
-          var px2 = sx + TILE / 2 - (pips * 4 - 1) / 2 + pi * 4;
-          ctx.fillRect(px2, sy - 9, 3, 1);
-          ctx.fillRect(px2, sy - 8, 3, 2);
+          var px2 = px0 + pi * gap;
+          ctx.fillRect(px2, sy - 10, pw, 3);
         }
       }
 
