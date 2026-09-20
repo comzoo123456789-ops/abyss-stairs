@@ -13,8 +13,8 @@
 import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
 import { fileURLToPath } from "url";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const CHROME = process.env.MB_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const SHOTS = (() => { const i = process.argv.indexOf("--shots"); return i > 0 ? process.argv[i + 1] : ""; })();
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",

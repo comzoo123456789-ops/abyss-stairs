@@ -7,9 +7,9 @@ import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
 import { fileURLToPath } from "node:url";
 import { loadRules, ROOT } from "./arena.mjs";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
 /* ⚠ 경로를 여기 박지 않는다 — 다른 기기에서 크롬이 다른 곳에 있다. */
-const CHROME = process.env.MB_CHROME || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 
 const rows = [];
 const add = (name, ok, note) => rows.push({ name, ok: !!ok, note: note === undefined ? "" : String(note) });

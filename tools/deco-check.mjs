@@ -1,8 +1,8 @@
 /* 구역 장식이 그 구역 바닥과 얼마나 대비되는가 — 눈이 아니라 픽셀로. */
 import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const ROOT = "E:/소스/abyss-stairs/public";
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
 const srv = http.createServer((q, r) => {

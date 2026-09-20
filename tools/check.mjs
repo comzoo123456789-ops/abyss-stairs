@@ -14,8 +14,8 @@ import os from "os";
 import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 //  배포되는 것은 public/ 뿐이다(tools 는 웹에 올리지 않는다) — 점검기도 거기를 서빙한다.
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 
@@ -214,7 +214,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   // ── 3-b) --play: 죽을 때까지 실제로 두드려 종료 화면까지 간다 ──
   //    종료 화면은 사람이 가장 늦게 보는 화면이라 가장 안 고쳐진다. 실제로 밟아 본다.
-  let endCheck = null;
+  let endCheck = null, stuckWhy = "";
   if (PLAY) {
     //  ⚠ 무작위 키로는 끝나지 않는다 — 1층은 쥐만 나오는 연습 층이라 다 잡고 나면
     //    안전하고, 62×38 맵에서 계단 한 칸을 우연히 밟을 확률이 거의 없다
@@ -254,7 +254,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
     let st = await ev(`window.__peek()`);
     let map = await ev(`window.__map()`);
-    let depthSeen = st.depth;
+    let depthSeen = st.depth, lastTurn = st.turn, stuckFor = 0;
     for (let i = 0; i < 4000 && !st.over; i++) {
       if (st.onStairs) await tap(">");
       else {
@@ -268,7 +268,18 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
        *   레벨업 선택도 같다(열려 있으면 뒤에서 아무 것도 못 한다). */
       if (st.shopOpen) { await ev("window.__closeShop && window.__closeShop()"); st = await ev(`window.__peek()`); }
       if (st.perkOpen) { await ev("window.__pickPerk && window.__pickPerk(0)"); st = await ev(`window.__peek()`); }
+      /* ⚠ **제단도 닫아야 한다.** 열려 있으면 busy() 가 모든 행동을 막는다.
+       *   상점·레벨업만 닫고 있어서, 제단을 밟은 판은 4000번을 헛돌고
+       *   "안 끝남" 으로 빨개졌다(여섯 번에 한 번꼴). 제품이 아니라 이
+       *   고리가 제단을 모르고 있었던 것이다. */
+      if (st.altarOpen) { await ev("window.__closeAltar && window.__closeAltar()"); st = await ev(`window.__peek()`); }
       if (st.depth !== depthSeen) { map = await ev(`window.__map()`); depthSeen = st.depth; }
+      /* ⚠ 갇혔는지 본다. 턴이 안 오르는 채로 계속 돌면 원인을 말해 줘야 한다 —
+       *   "안 끝남" 만 보면 어디가 막혔는지 알 길이 없다. */
+      if (i > 60 && st.turn === lastTurn) stuckFor++; else { stuckFor = 0; lastTurn = st.turn; }
+      if (stuckFor > 80) { stuckWhy = "턴이 " + st.turn + "에서 안 오른다 · " +
+        "상점" + (st.shopOpen ? "열림" : "닫힘") + " 레벨업" + (st.perkOpen ? "열림" : "닫힘") +
+        " 제단" + (st.altarOpen ? "열림" : "닫힘") + " · " + st.x + "," + st.y; break; }
     }
     endCheck = await ev(`(()=>{
       const e = document.getElementById("end");
@@ -618,6 +629,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
               overflow.count + " 개" + (overflow.docScroll ? " · 문서 가로 스크롤 있음" : ""));
   overflow.sample.forEach(s => console.log("               " + s));
   if (endCheck) {
+    if (stuckWhy) console.log("  갇힌 이유   :", stuckWhy);
     console.log("끝까지 진행  :", ok(endCheck.over && endCheck.shown),
       (endCheck.over ? "게임 종료됨" : "안 끝남") + " · " + (endCheck.shown ? "종료 화면 뜸" : "종료 화면 안 뜸") +
       " · " + endCheck.depth + "층 " + endCheck.turn + "턴");

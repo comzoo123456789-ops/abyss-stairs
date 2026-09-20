@@ -22,8 +22,8 @@ import os from "os";
 import path from "path";
 import http from "http";
 import { fileURLToPath } from "url";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const MIME = {
   ".html": "text/html; charset=utf-8",

@@ -7,8 +7,8 @@
 import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
 import { fileURLToPath } from "url";
+import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const CHROME = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..", "public");
 const OUT = process.env.RL_SHOTS || "";      /* 스크린샷은 요청할 때만 */
