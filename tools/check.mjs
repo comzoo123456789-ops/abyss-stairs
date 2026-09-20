@@ -869,6 +869,73 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
     (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
     " · " + (qk.geo || qk.why || ""));
+  /* ── 조작 패드가 **있어야 할 곳에만** 뜨는가 ───────────
+   *
+   * ⚠ 판정이 `navigator.maxTouchPoints > 0` 하나였다. 그러면 터치 스크린이
+   *   달린 **노트북이 전부 걸린다.** 실측으로 이 윈도우 데스크톱도 그 값이
+   *   10 인데 hover 도 되고 정밀 포인터도 있다 — 마우스와 키보드가 있는데
+   *   화면 아래 187px 를 패드가 먹고 지도 확대가 2배에서 1배로 떨어졌다.
+   * ⚠ 이 검사가 도는 헤드리스 크롬이 **바로 그 기기**다(maxTouchPoints 10).
+   *   `--touch` 없이 돌 때 패드가 뜨면 틀린 것이다.
+   * ⚠ 반대쪽도 본다. 손가락이 주된 기기에서 패드가 안 뜨면 **조작 수단이
+   *   아예 없어진다**(휴대폰에는 키보드가 없다). 그쪽이 더 큰 사고다. */
+  const padWhen = await ev(`(function(){
+    var pad = document.querySelector(".pad");
+    return {
+      touchPoints: navigator.maxTouchPoints,
+      coarse: !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches),
+      hover: !!(window.matchMedia && window.matchMedia("(hover: hover)").matches),
+      shown: getComputedStyle(pad).display !== "none",
+      isTouch: document.body.classList.contains("is-touch")
+    };
+  })()`);
+  /* 손가락이 주된 기기면 반드시 떠야 하고, 마우스가 있는 넓은 화면이면 안 떠야 한다 */
+  const wantPad = padWhen.coarse || !padWhen.hover || VW <= 820;
+  const padWhenOK = padWhen.shown === wantPad;
+  console.log("패드 뜨는 곳 :", ok(padWhenOK),
+    "터치점 " + padWhen.touchPoints + " · coarse " + padWhen.coarse +
+    " · hover " + padWhen.hover + " → 패드 " + (padWhen.shown ? "뜸" : "안 뜸") +
+    (padWhenOK ? "" : " · ⚠" + (wantPad ? "떠야 하는데 안 뜬다" : "안 떠야 하는데 뜬다")));
+
+  /* ── 지나간 기록을 **되돌려 볼 수 있는가** ─────────────
+   *
+   * ⚠ 좁은 화면에서는 기록 패널을 감췄고 토스트는 다섯 개까지만 떴다
+   *   사라진다. 그래서 놓친 줄을 다시 볼 방법이 **아예 없었다.** 토스트가
+   *   덮는 자리를 줄이면서 그 구멍이 더 커졌다.
+   * ⚠ "어딘가에 log 라는 요소가 있다" 로는 부족하다. 감춰져 있으면 없는
+   *   것과 같다. `checkVisibility()` 로 **보이는 것**만 세고, 줄이 실제로
+   *   담겨 있는지도 본다.
+   * ⚠ 두 군데 다 뜨면 그것도 잘못이다 — 어느 쪽을 봐야 할지 모른다. */
+  const logWhere = await (async () => {
+    function probe() {
+      return `(function(){
+        function vis(sel) {
+          var e = document.querySelector(sel);
+          if (!e || !e.checkVisibility || !e.checkVisibility()) return 0;
+          return e.querySelectorAll(".m").length;
+        }
+        return { side: vis(".logpanel .log"), gear: vis("#gearLog") };
+      })()`;
+    }
+    const closed = await ev(probe());
+    await ev("window.__gear && window.__gear(true)");
+    await sleep(320);
+    const open = await ev(probe());
+    await ev("window.__gear && window.__gear(false)");
+    await sleep(200);
+    return { closed: closed, open: open };
+  })();
+  /* 닫혀 있을 때 사이드바에 있거나, 장비 창을 열면 거기 있거나 — 하나는 있어야 한다 */
+  const sideHas = logWhere.closed.side > 0;
+  const gearHas = logWhere.open.gear > 0;
+  const bothAtOnce = logWhere.open.side > 0 && logWhere.open.gear > 0;
+  const logOK = (sideHas || gearHas) && !bothAtOnce;
+  console.log("기록 되돌리기:", ok(logOK),
+    (sideHas ? "사이드바 " + logWhere.closed.side + "줄" : "사이드바 없음") + " · " +
+    (gearHas ? "장비 창 " + logWhere.open.gear + "줄" : "장비 창 없음") +
+    (bothAtOnce ? " · ⚠둘이 같이 뜬다" : "") +
+    (sideHas || gearHas ? "" : " · ⚠어디서도 못 본다"));
+
   /* ── 토스트가 지도를 얼마나 덮는가 ────────────────────
    *
    * ⚠ "몇 줄인가" 로는 못 잡는다. 같은 줄 수라도 화면이 작으면 훨씬 많이
@@ -1206,7 +1273,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
-               qkOK && specOK && zoomOK && dcOK && toastOK &&
+               qkOK && specOK && zoomOK && dcOK && toastOK && logOK && padWhenOK &&
                build.gold !== "(없음)" &&
                potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&

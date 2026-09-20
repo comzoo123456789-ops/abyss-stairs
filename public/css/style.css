@@ -726,6 +726,21 @@ body.is-touch .pad { display: flex; }
  *   방향 버튼을 연달아 누르면 브라우저가 더블탭으로 보고 화면을 확대해 버려
  *   이동이 통째로 불편해졌다. viewport 의 user-scalable=no 는 iOS 가 무시하므로
  *   이 속성이 없으면 안 막힌다. 선택 강조·길게 눌러 나오는 메뉴도 같이 끈다. */
+/* 도움말의 패드 토글 줄 */
+.help-pad {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .03);
+  font-size: 12.5px; color: var(--ink-dim); line-height: 1.6;
+}
+.help-pad b { color: var(--ink); }
+.help-pad .mini { margin-left: 8px; }
+/* ⚠ **주된 입력이 손가락인 기기에서는 감춘다.** 거기서는 CSS 가 패드를
+ *   늘 띄우므로(조작 수단을 잃으면 안 된다) 이 단추가 아무 일도 안 한다.
+ *   눌러도 안 바뀌는 단추를 두면 고장으로 읽힌다. */
+@media (pointer: coarse) { .help-pad { display: none; } }
+
 .dpad button {
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -1875,6 +1890,17 @@ kbd {
 .gs-ds { grid-area: ds; font-size: 11px; color: var(--ink-dim); line-height: 1.4; }
 .gear-slot.none { opacity: .5; grid-template-columns: 38px 1fr; grid-template-areas: "kind nm"; }
 .gear-card .inv { max-height: 42vh; }
+
+/* 장비 창의 기록.
+ * ⚠ 넓은 화면에는 사이드바에 기록이 **이미 있다.** 두 군데 띄우면 어느
+ *   쪽을 봐야 할지 모른다. 사이드바 기록이 감춰지는 폭에서만 띄운다
+ *   (그 기준은 `.logpanel` 과 **같아야** 한다 — 어긋나면 둘 다 없는 폭이
+ *   생기거나 둘 다 뜨는 폭이 생긴다). */
+.gear-log { display: none; }
+@media (max-width: 900px) {
+  .gear-log { display: block; }
+  .gear-log .log { max-height: 34vh; min-height: 0; }
+}
 
 @media (max-width: 900px) {
   /* ⚠ 휴대폰에서는 장비·가방을 사이드바에서 **뺀다** — 장비 창으로 옮겼다.

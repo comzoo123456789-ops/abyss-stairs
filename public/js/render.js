@@ -1620,6 +1620,18 @@
     html += '<div class="gear-sec"><h3>가방 <small>눌러서 쓰기 · 길게 눌러 버리기</small></h3>' +
       '<div class="inv" id="gearInv"></div></div>';
 
+    /* 기록 — **좁은 화면에서 지나간 줄을 되돌려 볼 유일한 자리**다.
+     *
+     * ⚠ 휴대폰에서는 기록 패널을 감췄고(자리가 없다) 토스트는 다섯 개까지만
+     *   3.6초 떴다 사라진다. 그래서 놓친 줄을 다시 볼 방법이 아예 없었다 —
+     *   토스트가 덮는 자리를 줄이면서 그 구멍이 더 커졌다.
+     * ⚠ 넓은 화면에는 사이드바에 기록이 이미 있다. 여기서는 감춘다(css) —
+     *   같은 것을 두 군데 띄우지 않는다.
+     * ⚠ 맨 아래(최신)로 내려 둔다. 열었을 때 옛날 줄부터 보이면 다시
+     *   굴려 내려야 한다. */
+    html += '<div class="gear-sec gear-log"><h3>기록 <small>최근 한 일</small></h3>' +
+      '<div class="log" id="gearLog"></div></div>';
+
     el.innerHTML = html;
     var arts = el.querySelectorAll(".gs-art");
     for (var a = 0; a < arts.length; a++) {
@@ -1628,6 +1640,7 @@
       x.drawImage(S.bake(arts[a].getAttribute("data-sprite")), 0, 0);
     }
     this.drawInventory(el.querySelector("#gearInv"));
+    this.drawLog(el.querySelector("#gearLog"));
   };
 
   /* 가방 — 등급 색 + 옵션 줄. 아이템을 고르는 것이 빌드이므로 옵션이 보여야 한다. */

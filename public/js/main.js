@@ -992,13 +992,59 @@
       if (e.target === els.help) els.help.hidden = true;
     });
 
-    /* 터치 기기면 방향 패드를 띄운다.
-     * ⚠ CSS 의 `@media (pointer: coarse)` 에만 기대면 그 판정이 어긋나는 기기에서
-     *   패드가 안 뜨는데, 휴대폰에는 키보드가 없어 **조작 수단이 아예 없어진다**.
-     *   JS 로도 한 번 더 보고, 그래도 안 맞으면 사람이 직접 켤 수 있게 둔다. */
-    var isTouch = (navigator.maxTouchPoints > 0) || ("ontouchstart" in window) ||
-                  (window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+    /* 조작 패드를 띄울 것인가.
+     *
+     * ⚠ **"터치가 되는가" 가 아니라 "터치가 주된 입력인가" 를 본다.**
+     *   전에는 `navigator.maxTouchPoints > 0` 하나로 갈랐는데, 그러면 터치
+     *   스크린이 달린 **노트북이 전부 걸린다.** 실측으로 이 윈도우 데스크톱도
+     *   maxTouchPoints 가 10 인데 hover 도 되고 정밀 포인터도 있다 — 마우스와
+     *   키보드가 있는데 화면 아래 187px 를 패드가 먹고, 그 바람에 지도 확대가
+     *   2배에서 1배로 떨어졌다.
+     * ⚠ 그렇다고 `pointer: coarse` 하나만 믿으면 안 된다. 그 판정이 어긋나는
+     *   기기에서 패드가 안 뜨는데 **휴대폰에는 키보드가 없다** — 조작 수단이
+     *   아예 없어진다. 그래서 갈래를 여럿 두고, 마지막에 사람이 고칠 수 있게
+     *   도움말에 켜고 끄는 자리를 둔다.
+     * ⚠ 저장된 값이 "끔" 이어도 **갇히지 않는다.** 캔버스를 눌러 걸어갈 수 있고
+     *   (탭 이동), 도움말(`?`)에서 되돌릴 수 있다. 옛 `rl_pad` 사고는 되돌릴
+     *   자리가 아예 없어서 났다. */
+    function mq(q) { return !!(window.matchMedia && window.matchMedia(q).matches); }
+    function detectTouch() {
+      var canTouch = (navigator.maxTouchPoints > 0) || ("ontouchstart" in window);
+      if (mq("(pointer: coarse)")) return true;    /* 주된 포인터가 손가락 */
+      if (mq("(hover: none)")) return true;        /* 올려놓기가 안 된다 */
+      if (canTouch && !mq("(any-pointer: fine)")) return true;  /* 정밀 포인터가 아예 없다 */
+      /* 둘 다 되는 기기(터치 노트북)는 **좁을 때만** 패드를 띄운다 */
+      if (canTouch && window.innerWidth <= 820) return true;
+      return false;
+    }
+    var padPref = null;
+    try { padPref = localStorage.getItem("rl_pad3"); } catch (err) {}
+    var isTouch = (padPref === "on") ? true : (padPref === "off") ? false : detectTouch();
     if (isTouch) document.body.classList.add("is-touch");
+
+    /* 도움말에서 켜고 끈다. ⚠ 고른 값은 기억한다 — 켤 때마다 다시 켜야 하면
+     *   안 쓴다. `?` 로 언제든 되돌릴 수 있다. */
+    function setPad(on) {
+      document.body.classList.toggle("is-touch", on);
+      try { localStorage.setItem("rl_pad3", on ? "on" : "off"); } catch (err) {}
+      var b = document.getElementById("padToggle");
+      if (b) b.textContent = on ? "끄기" : "켜기";
+      view.resize();
+      refresh();
+    }
+    {
+      var pt = document.getElementById("padToggle");
+      if (pt) {
+        pt.textContent = isTouch ? "끄기" : "켜기";
+        pt.addEventListener("click", function () {
+          setPad(!document.body.classList.contains("is-touch"));
+        });
+      }
+    }
+    window.__padOn = function (v) {
+      if (v !== undefined) setPad(!!v);
+      return document.body.classList.contains("is-touch");
+    };
 
     /* ⚠ 옛 토글(rl_pad)은 지운다 — 버튼이 없어졌으므로 "꺼짐" 이 남으면 되돌릴
      *   방법이 없었다(휴대폰에는 키보드가 없다). */
