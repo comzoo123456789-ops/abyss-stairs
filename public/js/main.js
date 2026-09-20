@@ -350,6 +350,11 @@
     if (k === "m" || k === "M") {
       e.preventDefault(); toggleSound(); return;
     }
+    /* 지도 확대. ⚠ 정수배만 오간다 — 픽셀 아트라 소수배는 뭉갠다.
+     *   `0` 은 화면 크기를 보고 고르는 쪽으로 되돌린다. */
+    if (k === "-" || k === "_") { e.preventDefault(); setZoom(view.stepZoom(-1)); return; }
+    if (k === "+" || k === "=") { e.preventDefault(); setZoom(view.stepZoom(1)); return; }
+    if (k === "0") { e.preventDefault(); saveZoom(null); setZoom(view.autoZoomAgain()); return; }
     if (k === "i" || k === "I") {
       e.preventDefault();
       if (gearOpen()) closeGear(); else openGear();
@@ -572,6 +577,29 @@
       if (score > best) { localStorage.setItem("rl_best", String(score)); best = score; }
       els.best.textContent = best.toLocaleString();
     } catch (err) { /* 시크릿 모드 등 — 점수 저장이 안 되는 것뿐이라 무시한다 */ }
+  }
+
+  /* 고른 확대를 기억한다.
+   * ⚠ localStorage 는 **막힐 수 있다**(시크릿 모드·저장 차단). 읽기도 쓰기도
+   *   전부 감싼다 — 이 저장소의 다른 저장 함수들과 같은 규칙이다. */
+  function loadZoom() {
+    try {
+      var v = parseInt(localStorage.getItem("rl_zoom") || "0", 10);
+      var R2 = window.ZOOM_RANGE || { min: 1, max: 3 };
+      return (v >= R2.min && v <= R2.max) ? v : null;
+    } catch (err) { return null; }
+  }
+  function saveZoom(v) {
+    try {
+      if (v) localStorage.setItem("rl_zoom", String(v));
+      else localStorage.removeItem("rl_zoom");
+    } catch (err) {}
+  }
+  /* 확대를 바꾼 뒤 한 번에 처리할 것들. 흩어 놓으면 한쪽만 고쳐진다. */
+  function setZoom(z) {
+    saveZoom(z);
+    game.say("지도 확대 " + z + "배", "");
+    refresh();
   }
 
   function loadBest() {
@@ -989,6 +1017,10 @@
      *   없앴으므로 배선도 지운다. 퀵슬롯 칸 자체가 눌리므로 터치에서도
      *   그대로 쓴다 — 스킬을 그리는 곳도 누르는 곳도 한 군데다. */
 
+    /* ⚠ 저장된 확대를 **resize 보다 먼저** 되살린다. 뒤에 하면 첫 프레임이
+     *   자동값으로 한 번 그려졌다가 튄다. */
+    var savedZoom = loadZoom();
+    if (savedZoom) view.zoomSet = savedZoom;
     loadBest();
     view.resize();
     refresh();
@@ -1252,7 +1284,17 @@
     };
     /* 화면 좌표 ↔ 칸 좌표 변환을 검사가 **스스로 뒤집어** 확인할 수 있게 카메라를
      * 내놓는다(devicePixelRatio 를 잘못 쓰면 여기서 어긋난다). */
-    window.__cam = function () { return { x: view.cam.x, y: view.cam.y, tile: window.TILE_PX || 32 }; };
+    /* ⚠ 점검기가 세계 좌표를 화면 px 로 뒤집는 데 쓴다. **확대배가 빠지면**
+     *   2배에서 엉뚱한 자리를 재면서 조용히 통과한다. */
+    window.__cam = function () {
+      return { x: view.cam.x, y: view.cam.y, tile: window.TILE_PX || 32,
+               zoom: view.zoom || 1 };
+    };
+    window.__zoom = function (z) {
+      if (z === 0) { saveZoom(null); return view.autoZoomAgain(); }
+      if (z) { view.zoomSet = z; saveZoom(z); view.resize(); refresh(); }
+      return view.zoom || 1;
+    };
   }
 
   if (document.readyState === "loading") {

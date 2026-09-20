@@ -475,11 +475,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
        *   눈으로는 "엉뚱한 데로 걸어간다" 로만 나타난다. */
       const center = await ev(
         "(function(){" +
-        "  var cam = window.__cam(), T = cam.tile;" +
+        "  var cam = window.__cam(), T = cam.tile, Z = cam.zoom || 1;" +
         "  var box = document.getElementById('view').getBoundingClientRect();" +
         "  var p = window.__peek();" +
-        "  var px = box.left + (p.x * T + T / 2) - cam.x;" +
-        "  var py = box.top  + (p.y * T + T / 2) - cam.y;" +
+        /* ⚠ 확대배를 곱한다. 빼먹으면 2배에서 누르는 자리가 절반으로 들어가
+         *   엉뚱한 칸이 찍히는데, 검사는 "안 걸어갔다" 로만 말한다. */
+        "  var px = box.left + ((p.x * T + T / 2) - cam.x) * Z;" +
+        "  var py = box.top  + ((p.y * T + T / 2) - cam.y) * Z;" +
         "  var got = window.__tapAtPoint(px, py);" +
         "  return { ok: !!got && got.x === p.x && got.y === p.y," +
         "           want: p.x + ',' + p.y, got: got ? got.x + ',' + got.y : 'null' };" +
@@ -794,6 +796,72 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
     (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
     " · " + (qk.geo || qk.why || ""));
+  /* ── 지도 확대 ────────────────────────────────────────
+   *
+   * 칸이 32px 로 굳어 있어 1920 화면에서 층의 63% 가 한꺼번에 보였다.
+   * 이제 그리기 직전에 변환 한 번으로 확대한다.
+   *
+   * ⚠ **"확대배가 2 다" 는 통과가 아니다.** 변환만 걸고 좌표 되돌리기를
+   *   안 고치면 화면은 커 보이는데 누른 칸이 절반으로 들어간다. 눈으로는
+   *   "엉뚱한 데로 걸어간다" 로만 나타난다. 배율마다 **네 귀퉁이를 눌러**
+   *   그 칸이 나오는지 본다.
+   * ⚠ **보이는 칸 수를 공식으로 계산하면 안 된다.** 처음에 그렇게 썼다가
+   *   대조군(변환을 아예 안 거는 판)이 **그냥 통과했다** — 공식은 그려진 것을
+   *   안 본다. 캔버스에 **실제로 걸린 변환 행렬**을 읽는다. 그 값이 뒤따르는
+   *   모든 그리기가 쓰는 값이다. 대조군에서 1 로 떨어져 빨개진다.
+   * ⚠ 사람 둘레 칠해진 픽셀도 같이 찍지만 **판정에는 안 넣는다.** 판마다
+   *   바닥 무늬가 달라 1배 대비 2배가 1.23배였다 — 안전한 문턱을 지을
+   *   실측 바닥이 없다. 재 보지 않은 문턱을 박으면 언젠가 깜빡인다.
+   */
+  const zoomRows = [];
+  for (const z of [1, 2, 3]) {
+    const got = await ev(`(function(){
+      var got = window.__zoom(` + z + `);
+      var cv = document.getElementById("view"), cb = cv.getBoundingClientRect();
+      var cam = window.__cam();
+      var ctx = cv.getContext("2d");
+      var dpr = cv.width / cb.width;
+      /* 그리기가 **실제로 쓰는** 확대배. 변환을 안 걸면 여기서 1 이 나온다 */
+      var drawn = Math.round(ctx.getTransform().a / dpr * 100) / 100;
+      /* 사람 둘레 고정된 화면 상자를 읽는다. 상자 크기는 배율과 무관하게
+       * 고정이라, 2배가 되면 안에 들어오는 칠이 는다. */
+      var p = window.__peek();
+      var sx = Math.round(((p.x * cam.tile + cam.tile / 2) - cam.x) * cam.zoom * dpr);
+      var sy = Math.round(((p.y * cam.tile + cam.tile / 2) - cam.y) * cam.zoom * dpr);
+      var half = Math.round(26 * dpr);
+      var bx = Math.max(0, Math.min(cv.width - 1, sx - half));
+      var by = Math.max(0, Math.min(cv.height - 1, sy - half));
+      var bw = Math.max(1, Math.min(half * 2, cv.width - bx));
+      var bh = Math.max(1, Math.min(half * 2, cv.height - by));
+      var d = ctx.getImageData(bx, by, bw, bh).data, lit = 0;
+      for (var i = 0; i < d.length; i += 4)
+        if (d[i] + d[i + 1] + d[i + 2] > 210) lit++;
+      var bad = [];
+      [[0.12,0.15],[0.5,0.5],[0.88,0.85],[0.72,0.2]].forEach(function(f){
+        var px = cb.left + cb.width * f[0], py = cb.top + cb.height * f[1];
+        var hit = window.__tapAtPoint(px, py);
+        var want = { x: Math.floor(((px - cb.left) / cam.zoom + cam.x) / cam.tile),
+                     y: Math.floor(((py - cb.top) / cam.zoom + cam.y) / cam.tile) };
+        if (!hit || hit.x !== want.x || hit.y !== want.y)
+          bad.push(f.join(",") + " 원함 " + want.x + "," + want.y +
+                   " 받음 " + (hit ? hit.x + "," + hit.y : "없음"));
+      });
+      return { zoom: got, drawn: drawn, lit: lit,
+               cols: Math.floor(cb.width / (cam.tile * got)),
+               rows: Math.floor(cb.height / (cam.tile * got)), bad: bad };
+    })()`);
+    zoomRows.push({ want: z, ...got });
+  }
+  /* 화면을 보고 고르는 쪽으로 되돌린다 — 뒤 검사들이 자동값에서 돌아야 한다 */
+  const autoZ = await ev("window.__zoom(0)");
+  const zoomOK = zoomRows.every(r => r.zoom === r.want && r.bad.length === 0 &&
+                                     Math.abs(r.drawn - r.want) < 0.02);
+  console.log("지도 확대    :", ok(zoomOK),
+    zoomRows.map(r => r.zoom + "배 " + r.cols + "x" + r.rows +
+      " 변환" + r.drawn + (r.lit ? " 칠" + r.lit : "") +
+      (Math.abs(r.drawn - r.want) >= 0.02 ? " ⚠변환이 안 걸렸다" : "") +
+      (r.bad.length ? " ⚠" + r.bad[0] : "")).join(" · ") + " · 자동 " + autoZ + "배");
+
   /* ── 고른 특화가 **화면에 보이는가** ────────────────────
    *
    * 특화 이름은 사이드바 "누구인가" 줄에만 있었다. 그 줄이 상단 상태줄과
@@ -981,7 +1049,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
-               qkOK && specOK &&
+               qkOK && specOK && zoomOK &&
                build.gold !== "(없음)" &&
                potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&

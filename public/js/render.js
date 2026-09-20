@@ -15,6 +15,32 @@
    *   24px 로 뒀던 시절엔 맵이 화면에 거의 다 들어와 카메라가 따라다니지 못했다. */
   var TILE = 32;
 
+  /* ══ 지도 확대 ═══════════════════════════════════════════
+   *
+   * 칸은 32px 로 굳어 있었다. 1920 화면에서 62x38 층 가운데 50x30 이
+   * 한꺼번에 보였다 — **층의 63%**. 사람은 캔버스 세로의 3.3% 였다.
+   * 작아 보이는 원인은 그림 크기가 아니라 **너무 많이 보이는 것**이다.
+   *
+   * ⚠ **정수배만 쓴다.** 이 저장소의 그림은 전부 코드로 구운 픽셀 아트다.
+   *   1.5배로 늘리면 픽셀이 뭉갠다. Cogmind 도 지도 확대를 붙이면서 같은
+   *   결론에 닿았다 — 크기로는 1배와 2배 사이가 이상적이지만 정수배라야
+   *   픽셀 정확도와 격자 정렬이 산다.
+   * ⚠ 58군데의 `TILE` 셈을 건드리지 않는다. 그리기 **직전에 변환 한 번**으로
+   *   확대한다. 좌표를 하나하나 곱하면 반드시 어딘가 빠뜨린다.
+   *   대신 `viewW/viewH` 는 **세계 좌표**가 된다(화면 px / 확대배).
+   */
+  var ZOOM_MIN = 1, ZOOM_MAX = 3;
+  /* 확대해도 이만큼은 보여야 한다. 1920 에서 2배면 25x15 로 이 문턱을
+   * 넘고, 3배면 16x10 이라 못 넘는다. 1280 에서는 2배가 15x9 라 1배로 남는다. */
+  var MIN_COLS = 22, MIN_ROWS = 13;
+
+  function autoZoom(w, h) {
+    for (var z = ZOOM_MAX; z > ZOOM_MIN; z--) {
+      if (w / (TILE * z) >= MIN_COLS && h / (TILE * z) >= MIN_ROWS) return z;
+    }
+    return ZOOM_MIN;
+  }
+
   /* 바닥·벽은 한 장만 깔면 같은 무늬가 격자로 반복돼 눈에 걸린다.
    * 좌표로 변종을 골라 쓴다 — 난수로 고르면 매 프레임 무늬가 바뀐다. */
   function variantAt(x, y, n) {
@@ -332,13 +358,33 @@
     this.canvas.style.height = h + "px";
     this.canvas.width = Math.floor(w * dpr);
     this.canvas.height = Math.floor(h * dpr);
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    /* 사람이 고른 값이 있으면 그것을, 없으면 화면을 보고 고른다 */
+    var z = this.zoomSet ? this.zoomSet : autoZoom(w, h);
+    this.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
+    /* ⚠ 확대와 dpr 을 **같은 변환에** 곱한다. 두 번 걸면 네 배가 된다. */
+    this.ctx.setTransform(dpr * this.zoom, 0, 0, dpr * this.zoom, 0, 0);
+    /* ⚠ 픽셀 아트라 반드시 꺼야 한다. 켜 두면 2배에서 통째로 흐려진다. */
     this.ctx.imageSmoothingEnabled = false;
-    this.viewW = w;
-    this.viewH = h;
-    this.colsShown = Math.ceil(w / TILE) + 1;
-    this.rowsShown = Math.ceil(h / TILE) + 1;
+    /* ⚠ 여기부터 viewW/viewH 는 **세계 좌표**다. 카메라 한계도 칠하는 넓이도
+     *   전부 이 값을 쓰므로 확대해도 그대로 맞는다. */
+    this.viewW = w / this.zoom;
+    this.viewH = h / this.zoom;
+    this.colsShown = Math.ceil(this.viewW / TILE) + 1;
+    this.rowsShown = Math.ceil(this.viewH / TILE) + 1;
     this._vig = null;
+  };
+
+  /* 확대를 한 단 올리거나 내린다. `null` 을 주면 화면을 보고 고르는 쪽으로
+   * 돌아간다. 고른 값은 부르는 쪽이 저장한다(render 는 저장소를 안 쓴다). */
+  Renderer.prototype.stepZoom = function (d) {
+    var now = this.zoom || 1;
+    var next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, now + d));
+    this.zoomSet = next;
+    this.resize();
+    return next;
+  };
+  Renderer.prototype.autoZoomAgain = function () {
+    this.zoomSet = null; this.resize(); return this.zoom;
   };
 
   /* 카메라는 **보이는** 플레이어 자리를 따라간다 — 논리 좌표를 따라가면
@@ -363,8 +409,12 @@
   Renderer.prototype.tileAtPoint = function (clientX, clientY) {
     if (!this.camReady) return null;
     var box = this.canvas.getBoundingClientRect();
-    var px = clientX - box.left + this.cam.x;
-    var py = clientY - box.top + this.cam.y;
+    /* ⚠ 화면 px 를 **확대배로 나눠야** 세계 좌표가 된다. 안 나누면 2배에서
+     *   누른 칸이 두 배로 멀리 잡힌다(화면 오른쪽 아래를 눌러도 가운데 근처가
+     *   찍힌다). */
+    var z = this.zoom || 1;
+    var px = (clientX - box.left) / z + this.cam.x;
+    var py = (clientY - box.top) / z + this.cam.y;
     var tx = Math.floor(px / TILE), ty = Math.floor(py / TILE);
     if (!this.game.level.inside(tx, ty)) return null;
     return { x: tx, y: ty };
@@ -1574,4 +1624,5 @@
   /* 입력 반복 간격을 여기에 맞춘다 — 어긋나면 걸음이 끊기거나 겹친다 */
   global.STEP_MS = STEP_MS;
   global.TILE_PX = TILE;     /* 점검기가 좌표 변환을 뒤집어 확인하는 데 쓴다 */
+  global.ZOOM_RANGE = { min: ZOOM_MIN, max: ZOOM_MAX };
 })(window);

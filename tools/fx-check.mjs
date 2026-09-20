@@ -68,12 +68,14 @@ await sleep(400);
 /* 한 칸을 픽셀로 읽는다. 카메라와 devicePixelRatio 를 거쳐 화면 좌표를 만든다.
  * ⚠ dpr 을 빼먹으면 엉뚱한 자리를 읽고 "아무것도 안 그려졌다" 로 오진한다. */
 await ev(`window.__pix = function (tx, ty, pad) {
-  var cam = window.__cam(), T = cam.tile;
+  var cam = window.__cam(), T = cam.tile, Z = cam.zoom || 1;
   var cv = document.getElementById("view");
   var dpr = cv.width / cv.clientWidth;
-  var x = Math.round(((tx * T) - cam.x - pad) * dpr);
-  var y = Math.round(((ty * T) - cam.y - pad) * dpr);
-  var w = Math.round((T + pad * 2) * dpr), h = w;
+  /* ⚠ 세계 좌표를 화면 px 로 바꾸는 식은 (세계 - 카메라) * 확대 * dpr 이다.
+   *   확대를 빼먹으면 2배에서 엉뚱한 자리를 읽고 "안 그려졌다" 로 오진한다. */
+  var x = Math.round((((tx * T) - cam.x) * Z - pad * Z) * dpr);
+  var y = Math.round((((ty * T) - cam.y) * Z - pad * Z) * dpr);
+  var w = Math.round((T + pad * 2) * Z * dpr), h = w;
   x = Math.max(0, Math.min(cv.width - 1, x)); y = Math.max(0, Math.min(cv.height - 1, y));
   w = Math.max(1, Math.min(w, cv.width - x)); h = Math.max(1, Math.min(h, cv.height - y));
   var d = cv.getContext("2d").getImageData(x, y, w, h).data;
@@ -89,11 +91,11 @@ await ev(`window.__pix = function (tx, ty, pad) {
 /* 칸이 아니라 **세계 픽셀 좌표**로 읽는다. 몬스터 체력 띠 같은 것을 피해
  * 원하는 띠만 잘라 보려면 이쪽이 필요하다. */
 window.__pixBox = function (wx, wy, bw, bh) {
-  var cam = window.__cam();
+  var cam = window.__cam(), Z = cam.zoom || 1;
   var cv = document.getElementById("view");
   var dpr = cv.width / cv.clientWidth;
-  var x = Math.round((wx - cam.x) * dpr), y = Math.round((wy - cam.y) * dpr);
-  var w = Math.round(bw * dpr), h = Math.round(bh * dpr);
+  var x = Math.round((wx - cam.x) * Z * dpr), y = Math.round((wy - cam.y) * Z * dpr);
+  var w = Math.round(bw * Z * dpr), h = Math.round(bh * Z * dpr);
   x = Math.max(0, Math.min(cv.width - 1, x)); y = Math.max(0, Math.min(cv.height - 1, y));
   w = Math.max(1, Math.min(w, cv.width - x)); h = Math.max(1, Math.min(h, cv.height - y));
   var d = cv.getContext("2d").getImageData(x, y, w, h).data;
@@ -110,11 +112,11 @@ window.__pixBox = function (wx, wy, bw, bh) {
  * ⚠ 글자가 흐려지는 구간에서는 배경과 섞여 색이 안 맞는다 — 알파가 1 인
  *   동안(떠오른 지 0.43초 안)에 재야 한다. */
 window.__pixMatch = function (wx, wy, bw, bh, cols, tol) {
-  var cam = window.__cam();
+  var cam = window.__cam(), Z = cam.zoom || 1;
   var cv = document.getElementById("view");
   var dpr = cv.width / cv.clientWidth;
-  var x = Math.round((wx - cam.x) * dpr), y = Math.round((wy - cam.y) * dpr);
-  var w = Math.round(bw * dpr), h = Math.round(bh * dpr);
+  var x = Math.round((wx - cam.x) * Z * dpr), y = Math.round((wy - cam.y) * Z * dpr);
+  var w = Math.round(bw * Z * dpr), h = Math.round(bh * Z * dpr);
   x = Math.max(0, Math.min(cv.width - 1, x)); y = Math.max(0, Math.min(cv.height - 1, y));
   w = Math.max(1, Math.min(w, cv.width - x)); h = Math.max(1, Math.min(h, cv.height - y));
   var d = cv.getContext("2d").getImageData(x, y, w, h).data, hit = 0;
