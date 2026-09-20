@@ -18,7 +18,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap">
-<link rel="stylesheet" href="css/style.css?v=36">
+<link rel="stylesheet" href="css/style.css?v=37">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <script>
@@ -97,12 +97,15 @@
     </aside>
   </main>
 
-  <!-- 터치 조작. 이동은 4방향이다 — 대각선 버튼은 없다(키보드도 화살표만).
-       ⚠ 휴대폰 배치는 **왼쪽에 십자, 오른쪽 위에 행동 한 줄, 그 아래 QWER** 이다
-       (사용자 지시). 엄지가 닿는 자리에 십자를 고정해 두는 것이 핵심이라
-       줄바꿈에 맡기지 않고 격자로 자리를 못박는다(css 의 .pad 참조). -->
-  <!-- ⚠ QWER 줄이 여기 있었다. 캔버스 아래 `#quick` 으로 옮겼다(한 곳에서만). -->
-  <nav class="pad" aria-label="이동">
+  <!-- 터치 조작.
+       ⚠ 이동은 **4방향**이다 — 대각선 버튼은 없다(키보드도 화살표만).
+       ⚠ 배치는 **양손 엄지**다. 왼쪽에 십자, 오른쪽에 게임패드처럼 둥근 묶음
+         (스킬 넷 + 가운데 행동 하나). 자리를 줄바꿈에 맡기지 않고 격자로
+         못박는다 — 한 칸만 밀려도 엄지가 딴 걸 누른다.
+       ⚠ 캔버스 아래 퀵슬롯(#quick)은 **휴대폰에서 감춘다.** 지도 위에 얹혀
+         있어서 좁은 화면에서는 지도를 가렸다. 휴대폰에서는 이 묶음이
+         스킬을 맡는다 — 그리는 함수는 하나(drawSkills)를 같이 쓴다. -->
+  <nav class="pad" aria-label="조작">
     <div class="dpad">
       <!-- 접기 손잡이는 **십자의 비어 있는 왼쪽 위 칸**에 넣는다.
            ⚠ 패드 바깥에 작게 붙였다가 21px 가 되어 손가락으로 못 눌렀다(검사에서
@@ -116,11 +119,15 @@
       <button data-dir="1,0" class="p-right" aria-label="오른쪽">→</button>
       <button data-dir="0,1" class="p-down" aria-label="아래">↓</button>
     </div>
-    <div class="acts">
-      <button id="btnPick">줍기</button>
-      <button id="btnShoot">쏘기</button>
-      <button id="btnDown">내려가기</button>
-    </div>
+    <!-- 오른손 묶음 — 스킬 넷이 마름모, 가운데가 **통합 행동** 하나.
+         ⚠ 줍기·쏘기·내려가기를 따로 세 개 두었더니 셋 다 위쪽에 눕는 바람에
+           엄지에서 멀었고, 셋 중 둘은 대개 할 수 없는 것이었다. 지금 할 수
+           있는 것 하나만 가운데에 띄운다.
+         ⚠ 고르는 순서는 Space 와 **같다**: 발 밑 물건 → 계단 → (활이 있고
+           사거리 안에 적이 있으면) 쏘기. 순서를 뒤집지 말 것 — 계단 위에
+           물건이 있으면 먼저 줍는다.
+         ⚠ 안이 비어 있다. render.js 의 drawSkills 가 채운다. -->
+    <div id="ring" class="ring" aria-label="스킬과 행동"></div>
   </nav>
 
 </div>
@@ -336,15 +343,15 @@
   </div>
 </div>
 
-<script src="js/sprites.js?v=36"></script>
-<script src="js/sprites-art.js?v=36"></script>
-<script src="js/sound.js?v=36"></script>
-<script src="js/data.js?v=36"></script>
-<script src="js/daily.js?v=36"></script>
-<script src="js/items.js?v=36"></script>
-<script src="js/dungeon.js?v=36"></script>
-<script src="js/game.js?v=36"></script>
-<script src="js/render.js?v=36"></script>
-<script src="js/main.js?v=36"></script>
+<script src="js/sprites.js?v=37"></script>
+<script src="js/sprites-art.js?v=37"></script>
+<script src="js/sound.js?v=37"></script>
+<script src="js/data.js?v=37"></script>
+<script src="js/daily.js?v=37"></script>
+<script src="js/items.js?v=37"></script>
+<script src="js/dungeon.js?v=37"></script>
+<script src="js/game.js?v=37"></script>
+<script src="js/render.js?v=37"></script>
+<script src="js/main.js?v=37"></script>
 </body>
 </html>

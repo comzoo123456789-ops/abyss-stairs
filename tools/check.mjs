@@ -703,37 +703,85 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       const btns=[...document.querySelectorAll(".pad button")];
       const cs=getComputedStyle(p);
       const small=btns.filter(b=>{const r=b.getBoundingClientRect();return r.width<40||r.height<40;});
-      /* 배치 — 사용자가 자리까지 지정했다(십자 맨 왼쪽 · 행동 한 줄 · 그 아래 QWER).
-       * "버튼이 있다" 로는 이걸 못 잡는다. 사각형을 재서 줄과 좌우를 확인한다. */
+      /* 배치 — **양손 엄지**다. 왼쪽 끝에 십자, 오른쪽 끝에 둥근 묶음.
+       * "버튼이 있다" 로는 이걸 못 잡는다. 사각형을 재서 자리를 본다.
+       * ⚠ .acts (줍기·쏘기·내려가기 셋)를 여기서 재고 있었다. 가운데
+       *   통합 행동 하나로 합쳤으므로 그 선택자는 이제 없다. */
       const box = e => e.getBoundingClientRect();
       const dp = box(document.querySelector(".dpad"));
-      const ac = box(document.querySelector(".acts"));
-      const rowOf = list => {
-        const ys = list.map(e => Math.round(box(e).top));
-        return new Set(ys).size;                    /* 한 줄이면 1 */
-      };
-      /* ⚠ QWER 줄(.skillpad)이 여기 있었다. 스킬은 캔버스 위 퀵슬롯으로
-       *   옮겼으므로 패드에서는 더 안 센다. 퀵슬롯 자리는 아래에서 따로 잰다
-       *   — 뷰포트 안에 있는지, 넘치지 않는지는 여기와 조건이 다르다. */
+      const rg = document.querySelector(".ring") ? box(document.querySelector(".ring")) : null;
+      const pb = box(p);
+      const act = document.querySelector("#btnAct");
       return { display:cs.display, count:btns.length, tooSmall:small.length, touchClass:document.body.classList.contains("is-touch"),
                minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(box(b).width,box(b).height)))):0,
                narrow: innerWidth <= 620,
-               dpadLeftmost: dp.left <= ac.left + 1,
-               actsRows: rowOf([...document.querySelectorAll(".acts button")]),
-               dpadSpansActs: dp.top <= ac.top + 2 && dp.bottom >= ac.bottom - 2,
+               hasRing: !!rg,
+               /* 십자는 왼쪽 끝, 묶음은 오른쪽 끝에 붙어 있는가 */
+               leftEdge: rg ? Math.round(dp.left - pb.left) : -1,
+               rightEdge: rg ? Math.round(pb.right - rg.right) : -1,
+               apart: rg ? Math.round(rg.left - dp.right) : -1,
+               /* 둘이 같은 높이에 있는가 — 한쪽이 위로 뜨면 엄지가 달라진다 */
+               level: rg ? Math.abs(Math.round(dp.top - rg.top)) : -1,
+               /* 가운데 행동이 지금 무엇을 하겠다고 말하는가 */
+               actLabel: act ? (act.textContent || "").replace(/\s+/g, " ").trim() : "",
+               actKind: act ? act.getAttribute("data-act") : "",
                geo: "십자 x"+Math.round(dp.left)+"~"+Math.round(dp.right)+
-                    " · 행동 y"+Math.round(ac.top) };
+                    (rg ? " · 묶음 x"+Math.round(rg.left)+"~"+Math.round(rg.right) : "") };
     })()`);
-    /* 좁은 화면에서만 격자 배치를 요구한다 — 넓은 터치 화면은 한 줄이 정상이다 */
-    const padPlaced = !pad.narrow ||
-      (pad.dpadLeftmost && pad.actsRows === 1 && pad.dpadSpansActs);
-    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=5 && pad.tooSmall===0 && padPlaced),
+    /* ⚠ 엄지가 닿으려면 **화면 끝에** 붙어야 한다. 가운데로 모으면 넓은
+     *   화면에서 둘이 한 덩어리가 된다. 24px 는 패딩 여유다. */
+    const padPlaced = pad.hasRing && pad.leftEdge >= 0 && pad.leftEdge <= 24 &&
+                      pad.rightEdge >= 0 && pad.rightEdge <= 24 &&
+                      pad.apart > 20 && pad.level <= 4;
+    /* ⚠ 문턱을 9 로 뒀다가 빨개졌다. 빈 스킬 칸은 button 이 아니라 div 라
+     *   (눌러도 아무 일 없는 것을 button 으로 두면 안 된다) 스킬을 하나만
+     *   배운 판에서는 십자 6 + 스킬 1 + 가운데 1 = **8개**다. */
+    const padOK = pad.display !== "none" && pad.count >= 8 && pad.tooSmall === 0 && padPlaced;
+    console.log("터치 패드    :", ok(padOK),
       "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
-    padPass = pad.display !== "none" && pad.count >= 5 && pad.tooSmall === 0 && padPlaced;
-    console.log("  패드 배치  :", ok(padPlaced), pad.narrow
-      ? pad.geo + " · 행동 " + pad.actsRows + "줄" +
-        (pad.dpadLeftmost ? " · 십자 맨 왼쪽" : " · ⚠십자가 왼쪽이 아니다")
-      : "넓은 화면 — 한 줄 배치(정상) · " + pad.geo);
+    padPass = padOK;
+    console.log("  패드 배치  :", ok(padPlaced),
+      pad.geo + " · 왼끝에서 " + pad.leftEdge + "px · 오른끝에서 " + pad.rightEdge +
+      "px · 사이 " + pad.apart + "px · 높이차 " + pad.level + "px" +
+      (pad.hasRing ? "" : " · ⚠오른손 묶음이 없다"));
+    /* 가운데 버튼이 **상태를 따라가는가.**
+     *
+     * ⚠ "버튼이 있다" 는 통과가 아니다. 글자가 「줍기」에 붙박여 있어도
+     *   그건 통과한다. 세 상태를 실제로 만들어 보고 글자와 data-act 가
+     *   따라오는지 본다.
+     * ⚠ 순서가 핵심이다. **계단 위에 물건이 있으면 먼저 줍는다**(README 의
+     *   Space 규칙). 계단 위에 서서 물건을 떨궈 놓고, 「줍기」가 나와야 한다 —
+     *   「내려가기」가 나오면 그 물건을 영영 못 줍는 길이 열린 것이다.
+     * ⚠ 쏘기는 활이 있어야 나온다. __arena 로 활을 쥐어 주고 적을 붙인다. */
+    const act3 = await (async () => {
+      const read = () => ev(`(function(){
+        var b = document.querySelector("#btnAct");
+        if (!b) return { kind: "", label: "" };
+        return { kind: b.getAttribute("data-act") || "",
+                 label: (b.textContent || "").replace(/\s+/g, " ").trim() };
+      })()`);
+      const out = {};
+      /* ① 활도 물건도 계단도 없는 맨바닥 */
+      await ev("window.__clearMonsters && window.__clearMonsters()");
+      out.plain = await read();
+      /* ② 활 + 붙은 적 → 쏘기 */
+      await ev(`window.__arena({ mon: "rat", weapon: "bow", hp: 50 })`);
+      await sleep(220);
+      out.bow = await read();
+      /* ③ 계단 위 → 내려가기 */
+      await ev(`(function(){ var p = window.__peek(); window.__place && window.__place(p.stairs.x, p.stairs.y); })()`);
+      await sleep(220);
+      out.stairs = await read();
+      return out;
+    })();
+    const actOK = act3.plain.kind === "pick" &&
+                  act3.bow.kind === "shoot" &&
+                  act3.stairs.kind === "down";
+    console.log("  통합 행동  :", ok(!!pad.actKind && actOK),
+      "맨바닥 「" + act3.plain.label + "」 · 활+적 「" + act3.bow.label +
+      "」 · 계단 「" + act3.stairs.label + "」" +
+      (actOK ? "" : " · ⚠상태를 안 따라간다"));
+    if (!pad.actKind || !actOK) padPass = false;
   }
 
   /* ── 퀵슬롯이 **제자리에 있는가** ──────────────────────
@@ -784,14 +832,39 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
            " · 바닥에서 " + Math.round(vp.bottom - qb.bottom) + "px"
     };
   })()`);
-  const qkOK = qk.n === 4 && qk.rows === 1 && qk.owned === qk.filled && qk.filled >= 1 &&
-               qk.swallow === 0 && qk.inside &&
-               qk.centered && qk.keys === "QWER" && qk.named === 4 &&
-               (!TOUCH || qk.minSide >= 40);
-  console.log("퀵슬롯 자리  :", ok(qkOK),
-    qk.n + "칸(찬 것 " + qk.filled + ") · " + qk.rows + "줄 · 좌표를 받는 찬 칸 " +
+  /* 스킬을 누를 수 있는 자리가 **정확히 하나**인가.
+   *
+   * ⚠ 휴대폰에서는 캔버스 아래 퀵슬롯을 감추고 오른손 묶음이 맡는다. 예전
+   *   전제("퀵슬롯이 늘 보인다")로 두면 휴대폰에서 늘 빨갛다. 그렇다고
+   *   지우면 **둘 다 사라진 판**을 아무도 못 잡는다 — 그때 스킬은 키보드로만
+   *   쓸 수 있는데 휴대폰에는 키보드가 없다.
+   *   "어느 쪽이든 하나는 눌린다, 둘이 같이 뜨지는 않는다" 로 바꾼다. */
+  const ringSeen = await ev(`(function(){
+    var r = document.querySelector(".ring");
+    if (!r || !r.checkVisibility || !r.checkVisibility()) return 0;
+    /* ⚠ **보이는 것만 센다.** 넓은 화면에서는 묶음의 스킬 칸이 display:none
+     *   인데 DOM 에는 그대로 있다. querySelectorAll 로 세면 "둘이 같이 떴다" 가
+     *   된다 — 실제로 그렇게 빨개졌다. */
+    var n = 0;
+    r.querySelectorAll("[data-skill]").forEach(function (b) {
+      if (b.checkVisibility && b.checkVisibility()) n++;
+    });
+    return n;
+  })()`);
+  const quickShown = qk.n > 0 && qk.inside && qk.filled >= 1;
+  const bothShown = quickShown && ringSeen > 0;
+  const oneShown = (quickShown || ringSeen > 0) && !bothShown;
+  const qkOK = oneShown && (!quickShown ||
+               (qk.rows === 1 && qk.owned === qk.filled && qk.swallow === 0 &&
+                qk.centered && qk.keys === "QWER" && qk.named === 4 &&
+                (!TOUCH || qk.minSide >= 40)));
+  console.log("스킬 누를 곳 :", ok(qkOK),
+    (ringSeen > 0 ? "오른손 묶음 " + ringSeen + "칸" : "묶음 없음") + " · " +
+    (quickShown ? "퀵슬롯 " + qk.n + "칸(찬 것 " + qk.filled + ")" : "퀵슬롯 감춤") +
+    (bothShown ? " · ⚠둘이 같이 떴다" : "") +
+    (oneShown ? "" : " · ⚠스킬을 누를 곳이 없다") + " · " +
     qk.owned + "/" + qk.filled +
-    (qk.swallow ? " · ⚠빈 칸 " + qk.swallow + "개가 지도 클릭을 삼킨다" : " · 빈 칸은 지도로 통과") +
+    (qk.swallow ? " · ⚠빈 칸 " + qk.swallow + "개가 지도 클릭을 삼킨다" : "") +
     " · 가장 작은 변 " +
     qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
     (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
@@ -884,7 +957,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       var bad = [];
       [[0.12,0.15],[0.5,0.5],[0.88,0.85],[0.72,0.2]].forEach(function(f){
         var px = cb.left + cb.width * f[0], py = cb.top + cb.height * f[1];
-        var hit = window.__tapAtPoint(px, py);
+        /* ⚠ 여기서 __tapAtPoint 를 쓰면 **걸어가기가 시작된다.** 그러면
+         *   다음 점을 잴 때 카메라가 이미 움직여 있어 엉뚱하게 빨개진다.
+         *   누르지 않고 바꾸기만 하는 창구를 쓴다. */
+        var hit = window.__tileAt(px, py);
         var want = { x: Math.floor(((px - cb.left) / cam.zoom + cam.x) / cam.tile),
                      y: Math.floor(((py - cb.top) / cam.zoom + cam.y) / cam.tile) };
         if (!hit || hit.x !== want.x || hit.y !== want.y)

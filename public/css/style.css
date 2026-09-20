@@ -684,28 +684,32 @@ button { font-family: inherit; cursor: pointer; }
 /* ⚠ flex 가 아니라 **grid** 다. 휴대폰에서 십자를 왼쪽에 고정하고 오른쪽을
  *   두 줄(행동 / 스킬)로 쓰려면 줄바꿈(flex-wrap)으로는 자리가 안 정해진다 —
  *   폭에 따라 스킬 줄이 십자 아래로 떨어지거나 행동이 갈라졌다. */
+/* 양손 엄지 배치 — 왼쪽 십자, 오른쪽 둥근 묶음. 가운데는 비워 둔다.
+ * ⚠ `space-between` 으로 **양끝에 붙인다.** 가운데로 모으면 화면이 넓어질수록
+ *   둘이 붙어 한 덩어리가 되고, 엄지는 화면 끝에 있다. */
 .pad {
   display: none;
-  grid-auto-flow: column;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: center;
-  gap: 18px;
-  padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
   background: var(--panel);
   border-top: 1px solid var(--line);
 }
 /* ⚠ 켜는 조건이 여럿이라 display 값을 한 줄로 모아 둔다 — 한 곳만 grid 로
  *   고치면 다른 조건으로 뜬 화면이 옛 배치(flex)로 나온다. */
-body.is-touch .pad { display: grid; }
+body.is-touch .pad { display: flex; }
 
 /* 십자 4방향. 대각선 버튼을 지운 만큼 남은 버튼을 키웠다 —
  * 9칸일 때 46×42 였는데 손가락으로 누르면 옆 칸이 잘 눌렸다. */
+/* ⚠ 칸을 키우고 사이를 **벌린다.** 56x50 에 간격 5px 였는데 옆 칸이 잘
+ *   눌렸다. 손가락 접촉면은 8~10mm 라 간격이 크기만큼 중요하다. */
 .dpad {
   display: grid;
-  grid-template-columns: repeat(3, 56px);
-  grid-template-rows: repeat(3, 50px);
-  gap: 5px;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 52px);
+  gap: 7px;
 }
 .dpad > * { min-width: 0; }
 .dpad .p-up    { grid-area: 1 / 2; }
@@ -717,7 +721,7 @@ body.is-touch .pad { display: grid; }
  *   방향 버튼을 연달아 누르면 브라우저가 더블탭으로 보고 화면을 확대해 버려
  *   이동이 통째로 불편해졌다. viewport 의 user-scalable=no 는 iOS 가 무시하므로
  *   이 속성이 없으면 안 막힌다. 선택 강조·길게 눌러 나오는 메뉴도 같이 끈다. */
-.dpad button, .acts button {
+.dpad button {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 0;
@@ -731,9 +735,76 @@ body.is-touch .pad { display: grid; }
 }
 /* 캔버스와 패드 전체도 같은 처리 — 지도를 두 번 두드려도 확대되면 안 된다 */
 .pad, .viewport, #view { touch-action: manipulation; }
-.dpad button:active, .acts button:active { background: var(--gold); color: #1a1509; }
-.acts { display: flex; flex-direction: column; gap: 6px; }
-.acts button { padding: 12px 16px; font-size: 13px; white-space: nowrap; }
+.dpad button:active { background: var(--gold); color: #1a1509; }
+/* ══ 오른손 묶음 — 스킬 넷(마름모) + 가운데 통합 행동 ══════
+ *
+ * ⚠ 십자와 **같은 격자**를 쓴다. 두 엄지가 대칭으로 움직여야 익는다.
+ * ⚠ 스킬 칸은 둥글게, 가운데 행동은 더 크고 각지게. 손가락이 모양으로도
+ *   가를 수 있어야 한다 — 보지 않고 누르는 자리다. */
+.ring {
+  display: grid;
+  grid-template-columns: repeat(3, 54px);
+  grid-template-rows: repeat(3, 52px);
+  gap: 7px;
+}
+.ring > * { min-width: 0; }
+.rs-0 { grid-area: 1 / 2; }      /* Q 위 */
+.rs-1 { grid-area: 2 / 1; }      /* W 왼 */
+.rs-2 { grid-area: 2 / 3; }      /* E 오른 */
+.rs-3 { grid-area: 3 / 2; }      /* R 아래 */
+.rs-act { grid-area: 2 / 2; }
+
+.rs {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; padding: 2px;
+  border: 2px solid var(--line); border-radius: 50%;
+  background: var(--panel-2); color: var(--ink);
+  font-family: inherit;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+.rs > * { position: relative; z-index: 1; }
+/* 남은 턴만큼 **위에서 덮는다** — 덮인 넓이가 곧 남은 턴이다(퀵슬롯과 같은 뜻) */
+.rs u {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 0;
+  background: rgba(10, 9, 13, .74);
+  border-bottom: 1px solid rgba(120, 160, 220, .5);
+}
+.rs .k {
+  font-family: var(--title); font-size: 11px; line-height: 1;
+  color: var(--gold);
+}
+.rs .n {
+  font-size: 9px; line-height: 1.1; text-align: center; max-width: 46px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rs .cd { font-family: var(--num); font-size: 15px; line-height: 1; color: #9fd0ff; }
+.rs.ready { border-color: #5b7fa8; }
+.rs:disabled { color: var(--ink-dim); }
+.rs.empty { border-style: dashed; opacity: .42; }
+.rs.empty .k { color: var(--ink-dim); }
+.rs:active { background: var(--gold); color: #1a1509; }
+.rs:active .k, .rs:active .n { color: #1a1509; }
+
+/* 가운데 — 지금 할 수 있는 것 하나. 각지고 금색이라 스킬과 안 헷갈린다 */
+.rs-act {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px;
+  border: 2px solid var(--gold); border-radius: 0;
+  background: #2c2517; color: var(--gold);
+  font-family: inherit;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+}
+/* ⚠ 「내려가기」가 제일 길다. 칸이 50px 라 12px 로는 넘친다 — 넘치면
+ *   줄바꿈해 두 줄로 앉힌다. 자르지 않는다(무엇인지 못 읽으면 소용없다). */
+.rs-act .lb {
+  font-size: 12px; line-height: 1.15; font-weight: 700;
+  text-align: center; word-break: keep-all;
+}
+.rs-act:active { background: var(--gold); color: #1a1509; }
 
 /* 패드 접기 손잡이 — 십자의 비어 있는 왼쪽 위 칸(1/1)을 쓴다.
  * ⚠ 패드 바깥에 작게 붙였다가 21px 가 되어 손가락으로 못 눌렀다(실측에서 잡혔다).
@@ -760,6 +831,11 @@ body.pad-folded .pad {
   padding: 4px 10px calc(4px + env(safe-area-inset-bottom));
 }
 body.pad-folded .pad > *:not(.dpad) { display: none; }
+/* ⚠ 접으면 오른손 묶음도 같이 사라진다. 그때는 스킬을 누를 데가 없으므로
+ *   캔버스 아래 퀵슬롯을 **되살린다** — 하나는 늘 있어야 한다. */
+@media (max-width: 900px) {
+  body.pad-folded.is-touch .quick { display: flex; }
+}
 body.pad-folded .dpad {
   grid-area: auto;
   grid-template-columns: 1fr;
@@ -1025,7 +1101,7 @@ kbd {
 
 /* 터치 기기에서 방향 패드를 띄운다(위 .pad 항목의 세 조건 중 하나). */
 @media (pointer: coarse) {
-  .pad { display: grid; }
+  .pad { display: flex; }
   .side { max-height: 30vh; }
 }
 /* ⚠ 이 규칙은 **넓은 터치 화면에만** 건다. 전에는 조건 없이 걸어 두어
@@ -1349,6 +1425,11 @@ kbd {
  *   띄우고 3.6초 뒤 사라진다(render.js 의 drawToasts) — 그쪽이 시선 이동도 없다. */
 @media (max-width: 900px) {
   .logpanel { display: none; }
+  /* ⚠ `.side-scroll` 에 시작 크기 230px 를 줬더니(넓은 화면에서 가방과 기록을
+   *   반씩 나누려고) **좁은 화면에서도 그게 걸려** 내용이 40px 뿐인데 230px 를
+   *   차지했다. 실측 390x844 에서 빈 칸이 220px — 캔버스가 373px 밖에 안 됐다.
+   *   좁은 화면에서는 내용만큼만 쓴다. */
+  .side-scroll { flex: 0 0 auto; }
   .side { max-height: 27vh; }
   /* ⚠ 여기에 `.inv { max-height }` 가 있었는데 **죽은 줄**이었다. 같은 폭에서
    *   가방 패널을 통째로 감추고 있다(아래 `.side-scroll > .bagpanel`). */
@@ -1373,36 +1454,52 @@ kbd {
  *   │      │  Q   W   E   R     │   ← 스킬 한 줄
  *   └──────┴────────────────────┘
  *
- * ⚠ 전에는 flex-wrap 에 맡겼다. 그러면 폭에 따라 십자가 가운데로 밀리고
- *   행동 버튼이 세로로 섰다 — 엄지가 닿는 자리가 화면마다 달라진다
- *   (사용자 지시: "움직이는 화살표는 맨 왼쪽 · 줍기 쏘기 내려가기 1줄 · 그 아래 qwer").
  * ⚠ 손가락은 40px 미만을 정확히 못 누른다. 폭을 줄이더라도 높이는 지킨다
- *   (실측: padding 만 줄였더니 34px 가 되어 7개가 기준 미달이었다). */
+ *   (실측: padding 만 줄였더니 34px 가 되어 7개가 기준 미달이었다).
+ * ⚠ 이 쿼리는 옛 배치(격자 두 줄 + `.acts` 세 단추)를 그대로 갖고 있었다.
+ *   `.pad` 를 flex 로 바꿨는데 여기서 `grid-auto-flow` 를 다시 걸어 두 벌이
+ *   겹쳤고, 십자는 54px 로 키웠는데 여기서 44px 로 되돌리고 있었다.
+ *   옛 블록을 **지우고** 다시 쓴다. */
 @media (max-width: 620px) {
   .pad {
-    grid-auto-flow: row;
-    grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: auto auto;
-    justify-content: start;
-    align-items: center;
-    gap: 6px 10px;
+    gap: 8px;
     padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
   }
-  .dpad {
-    grid-area: 1 / 1 / 3 / 2;          /* 왼쪽 한 칸을 두 줄에 걸쳐 차지한다 */
-    grid-template-columns: repeat(3, 44px);
-    grid-template-rows: repeat(3, 42px);
-    gap: 4px;
+  /* 390px 화면 기준: 50*3 + 6*2 = 162px 짜리 묶음 둘 + 여백 20 + 사이 = 여유 있다.
+   * 44px 로 줄이지 않는다 — 그게 "옆 칸이 눌린다" 의 원인이었다. */
+  .dpad, .ring {
+    grid-template-columns: repeat(3, 50px);
+    grid-template-rows: repeat(3, 48px);
+    gap: 6px;
   }
-  .acts {
-    grid-area: 1 / 2 / 2 / 3;
-    flex-direction: row;
-    width: 100%;
+}
+/* 아주 좁은 화면(360 이하)에서만 한 단계 더 줄인다 */
+@media (max-width: 364px) {
+  .dpad, .ring {
+    grid-template-columns: repeat(3, 46px);
+    grid-template-rows: repeat(3, 44px);
     gap: 5px;
   }
-  .acts button { flex: 1 1 0; padding: 0 6px; min-height: 42px; font-size: 12px; }
-  /* ⚠ `.skillpad` 가 여기 `2 / 2 / 3 / 3` 을 잡고 있었다. 요소를 없앴으므로
-   *   규칙도 지운다. 안 지우면 다음 사람이 없는 요소를 찾아 헤맨다. */
+}
+
+/* 스킬을 누르는 곳은 **한 군데**다. 어느 쪽인지는 **폭**이 정한다.
+ *
+ * ⚠ 처음에 `body.is-touch` 로 갈랐다가 틀렸다. 이 저장소에 이미 적혀 있는
+ *   교훈이다 — "터치라는 이유만으로 감추면 안 된다. 감추는 이유는 '터치' 가
+ *   아니라 '좁음' 이다." 실측으로 윈도우 데스크톱도 `maxTouchPoints` 가 10 이라
+ *   터치로 잡힌다. 그래서 1920 화면에서 퀵슬롯이 사라졌다.
+ *
+ *   넓은 화면 — 스킬은 캔버스 아래 퀵슬롯(이름·남은 턴이 다 보인다).
+ *              오른손 묶음은 **가운데 행동만** 남는다.
+ *   좁은 화면 — 퀵슬롯을 감추고 묶음이 스킬을 맡는다. */
+@media (min-width: 901px) {
+  .ring .rs { display: none; }
+  /* 가운데 하나만 남으므로 3x3 격자를 접는다 */
+  .ring { grid-template-columns: auto; grid-template-rows: auto; }
+  .ring .rs-act { grid-area: auto; min-width: 62px; min-height: 52px; }
+}
+@media (max-width: 900px) {
+  body.is-touch .quick { display: none; }
 }
 
 /* 퀵슬롯 — **폭이 좁아지면 칸을 줄인다.**
@@ -1538,7 +1635,7 @@ kbd {
   background: linear-gradient(180deg, rgba(201,162,39,.16), rgba(0,0,0,.2));
   color: var(--gold);
 }
-.dpad button, .acts button {
+.dpad button, .rs-act {
   background: linear-gradient(180deg, #2a2318, #1b160f);
   box-shadow: inset 0 1px 0 rgba(222,214,194,.08), 0 2px 0 rgba(0,0,0,.55);
   text-shadow: 0 1px 0 rgba(0,0,0,.6);

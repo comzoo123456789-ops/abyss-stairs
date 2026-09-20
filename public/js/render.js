@@ -1459,30 +1459,96 @@
    */
   var QUICK_KEYS = ["Q", "W", "E", "R"];
 
+  /* 오른손 묶음 — 스킬 넷(마름모) + 가운데 통합 행동.
+   *
+   * ⚠ 스킬 칸의 **뜻은 퀵슬롯과 같다**(단축키·이름·남은 턴·덮임). 두 곳이
+   *   다르게 굴면 휴대폰과 데스크톱에서 다른 게임이 된다. 값을 읽는 곳을
+   *   `skillCell` 하나로 모아 둘이 같이 쓴다.
+   * ⚠ 둥근 칸이라 글자 자리가 좁다. 이름은 한 줄로 자르고, 쿨다운 중에는
+   *   이름 대신 **남은 턴 숫자**를 크게 띄운다 — 그때 알고 싶은 것은 이름이
+   *   아니라 언제 되는가다. */
+  Renderer.prototype.drawRing = function (el) {
+    if (!el) return;
+    var g = this.game, p = g.player, DATA = global.DATA;
+    var html = "";
+    for (var i = 0; i < DATA.SKILL_SLOTS; i++) {
+      var c = skillCell(g, p, i);
+      if (!c) {
+        html += '<div class="rs empty rs-' + i + '"><b class="k">' + QUICK_KEYS[i] + "</b></div>";
+        continue;
+      }
+      html += '<button class="rs rs-' + i + (c.ready ? " ready" : "") + '" data-skill="' + i + '"' +
+        (c.ready ? "" : " disabled") +
+        ' title="' + esc(c.name) + " · " + esc(c.desc) + '">' +
+        '<u style="height:' + c.left + '%"></u>' +
+        '<b class="k">' + QUICK_KEYS[i] + "</b>" +
+        (c.ready ? '<span class="n">' + esc(c.name) + "</span>"
+                 : '<span class="cd">' + c.turns + "</span>") +
+        "</button>";
+    }
+    /* 가운데 — 지금 할 수 있는 것 하나 */
+    var a = actionNow(g, p);
+    /* ⚠ 이모지를 쓰지 않는다. 기기마다 다른 그림이 나오고, 이 게임은 전부
+     *   코드로 구운 픽셀 아트라 혼자 매끈한 컬러 그림이 끼면 튄다.
+     *   글자 하나로 충분하다 — 어차피 보지 않고 누르는 자리다. */
+    html += '<button class="rs-act" id="btnAct" data-act="' + a.id + '" title="' + esc(a.hint) + '">' +
+            '<span class="lb">' + esc(a.label) + "</span></button>";
+    el.innerHTML = html;
+  };
+
+  /* 스킬 한 칸의 값. **퀵슬롯과 오른손 묶음이 같이 쓴다** — 두 벌로 만들면
+   * 한쪽만 고쳐져 조용히 어긋난다. */
+  function skillCell(g, p, i) {
+    var s = p.skills[i];
+    if (!s) return null;
+    var def = global.DATA.byId(global.DATA.SKILLS, s.id);
+    var cd = g.skillCd(s);
+    var ready = s.cd <= 0;
+    return {
+      name: def.name, desc: def.desc, rank: s.rank, ready: ready, turns: s.cd,
+      /* 남은 만큼 위에서 덮는다 */
+      left: ready ? 0 : Math.round(s.cd / Math.max(1, cd) * 100)
+    };
+  }
+
+  /* 가운데 버튼이 지금 무엇인가.
+   *
+   * ⚠ 고르는 순서는 Space 와 **같다**: 발 밑 물건 → 계단 → 쏘기.
+   *   순서를 뒤집지 말 것 — 계단 위에 물건이 있으면 먼저 줍는다. 내려가기가
+   *   먼저면 그 물건을 영영 못 줍는다(README 의 규칙).
+   * ⚠ 아무것도 없을 때도 **죽은 버튼으로 두지 않는다.** 줍기로 두면 눌렀을 때
+   *   "주울 것이 없다" 가 기록에 남는다 — 눌러도 아무 일이 없는 것보다 낫다.
+   *   Space 의 마지막 갈래와도 같다. */
+  function actionNow(g, p) {
+    if (g.itemAt(p.x, p.y)) return { id: "pick", label: "줍기", hint: "발 밑의 것을 줍는다" };
+    if (g.isStairs(p.x, p.y)) return { id: "down", label: "내려가기", hint: "다음 층으로 내려간다" };
+    var w = p.weapon;
+    if (w && w.ranged && g.nearestVisible(w.ranged))
+      return { id: "shoot", label: "쏘기", hint: "사거리 안의 적을 쏜다 (" + w.ranged + "칸)" };
+    return { id: "pick", label: "줍기", hint: "발 밑에 주울 것이 없다" };
+  }
+
   Renderer.prototype.drawQuick = function (el) {
     if (!el) return;
     var g = this.game, p = g.player, DATA = global.DATA;
     var html = "";
     for (var i = 0; i < DATA.SKILL_SLOTS; i++) {
-      var s = p.skills[i];
-      if (!s) {
+      /* ⚠ 값은 `skillCell` 한 곳에서 읽는다 — 오른손 묶음(drawRing)과 **같은
+       *   곳**이다. 두 벌로 만들면 한쪽만 고쳐져 휴대폰과 데스크톱이 달라진다. */
+      var c = skillCell(g, p, i);
+      if (!c) {
         html += '<div class="qs empty"><b class="k">' + QUICK_KEYS[i] + "</b>" +
                 '<span class="n">빈 자리</span></div>';
         continue;
       }
-      var def = DATA.byId(DATA.SKILLS, s.id);
-      var cd = g.skillCd(s);
-      var ready = s.cd <= 0;
-      /* 남은 만큼 위에서 덮는다 — 덮인 넓이가 곧 남은 턴이다 */
-      var left = ready ? 0 : Math.round(s.cd / Math.max(1, cd) * 100);
-      html += '<button class="qs' + (ready ? " ready" : "") + '" data-skill="' + i + '"' +
-        (ready ? "" : " disabled") +
-        ' title="' + esc(def.name) + " — " + esc(def.desc) + '">' +
-        '<u style="height:' + left + '%"></u>' +
+      html += '<button class="qs' + (c.ready ? " ready" : "") + '" data-skill="' + i + '"' +
+        (c.ready ? "" : " disabled") +
+        ' title="' + esc(c.name) + " · " + esc(c.desc) + '">' +
+        '<u style="height:' + c.left + '%"></u>' +
         '<b class="k">' + QUICK_KEYS[i] + "</b>" +
-        '<span class="rk">' + s.rank + "단</span>" +
-        '<span class="n">' + esc(def.name) + "</span>" +
-        '<span class="cd">' + (ready ? "준비" : s.cd + "턴") + "</span>" +
+        '<span class="rk">' + c.rank + "단</span>" +
+        '<span class="n">' + esc(c.name) + "</span>" +
+        '<span class="cd">' + (c.ready ? "준비" : c.turns + "턴") + "</span>" +
         "</button>";
     }
     el.innerHTML = html;

@@ -204,6 +204,29 @@
     if (!rafId) { lastT = 0; rafId = requestAnimationFrame(loop); }
   }
 
+  /* 패드 버튼은 touchstart 에서 바로 처리한다.
+   *
+   * ⚠ click 만 쓰면 두 가지가 나쁘다:
+   *   ① 브라우저가 더블탭 여부를 보려고 ~300ms 기다려 연타가 뚝뚝 끊긴다.
+   *   ② 연달아 누르면 더블탭으로 판정해 **화면이 확대된다**(이동이 통째로 불편해진다).
+   *   touchstart 에서 preventDefault 하면 둘 다 사라진다. 대신 그 뒤에 따라오는
+   *   합성 click 을 막아야 한 번 누른 것이 두 번 먹지 않는다.
+   * ⚠ **모듈 바깥 자리에 둔다.** 처음엔 켜는 함수 안에 있었는데, 매 턴 다시
+   *   그리는 오른손 묶음을 `refresh` 에서 다시 매려니 보이지 않았다. */
+  function bindPress(el, fn) {
+    if (!el) return;
+    var touched = false;
+    el.addEventListener("touchstart", function (e) {
+      e.preventDefault();          /* 확대·지연·합성 click 을 한 번에 막는다 */
+      touched = true;
+      fn();
+    }, { passive: false });
+    el.addEventListener("click", function () {
+      if (touched) { touched = false; return; }   /* 터치로 이미 처리했다 */
+      fn();
+    });
+  }
+
   /* 화면 전체 갱신 — 캔버스는 고리에 맡기고 DOM(상태창·가방·기록)만 여기서 다시 쓴다.
    * DOM 을 매 프레임 다시 쓰면 60fps 로 innerHTML 을 갈아 치우는 셈이라 느려진다. */
   function refresh() {
@@ -221,6 +244,27 @@
      * ⚠ 매번 다시 그려지므로 **그릴 때마다 배선한다.** innerHTML 로 갈아
      *   끼우면 안에 붙은 배선이 통째로 죽는다. */
     view.drawQuick(els.quick);
+    /* 오른손 묶음(휴대폰). ⚠ 스킬과 가운데 행동을 **같이 다시 그린다** —
+     *   가운데 버튼의 글자가 매 턴 바뀌기 때문이다. 다시 그리면 안에 붙은
+     *   배선이 죽으므로 그릴 때마다 다시 맨다(퀵슬롯과 같은 규칙). */
+    view.drawRing(els.ring);
+    var act = els.ring && els.ring.querySelector("#btnAct");
+    if (act) {
+      bindPress(act, function () {
+        var g2 = game, pl = g2.player;
+        var what = act.getAttribute("data-act");
+        /* ⚠ 화면에 적힌 것과 **같은 것**을 한다. 여기서 순서를 다시 정하면
+         *   버튼에는 "쏘기" 라고 써 놓고 줍는 일이 생긴다. */
+        if (what === "down") g2.descendIfStairs();
+        else if (what === "shoot") g2.shoot();
+        else g2.pickUp();
+        afterAction();
+      });
+    }
+    if (els.ring) els.ring.querySelectorAll("[data-skill]").forEach(function (b) {
+      var sl = parseInt(b.getAttribute("data-skill"), 10);
+      bindPress(b, function () { game.useSkill(sl); afterAction(); });
+    });
     els.quick.querySelectorAll("[data-skill]").forEach(function (b) {
       b.addEventListener("click", function () {
         game.useSkill(parseInt(b.getAttribute("data-skill"), 10));
@@ -745,7 +789,8 @@
     els.stats = document.getElementById("stats");
     els.inv = document.getElementById("inv");
     els.log = document.getElementById("log");
-    els.quick = document.getElementById("quick");   /* 스킬 퀵슬롯 — 캔버스 아래 */
+    els.quick = document.getElementById("quick");
+    els.ring = document.getElementById("ring");   /* 스킬 퀵슬롯 — 캔버스 아래 */
     els.end = document.getElementById("end");
     els.endTitle = document.getElementById("endTitle");
     els.endBody = document.getElementById("endBody");
@@ -982,27 +1027,6 @@
       if (localStorage.getItem("rl_pad2") === "1") setPadFold(true, false);
     } catch (err) {}
 
-    /* 패드 버튼은 touchstart 에서 바로 처리한다.
-     *
-     * ⚠ click 만 쓰면 두 가지가 나쁘다:
-     *   ① 브라우저가 더블탭 여부를 보려고 ~300ms 기다려 연타가 뚝뚝 끊긴다.
-     *   ② 연달아 누르면 더블탭으로 판정해 **화면이 확대된다**(이동이 통째로 불편해진다).
-     *   touchstart 에서 preventDefault 하면 둘 다 사라진다. 대신 그 뒤에 따라오는
-     *   합성 click 을 막아야 한 번 누른 것이 두 번 먹지 않는다. */
-    function bindPress(el, fn) {
-      if (!el) return;
-      var touched = false;
-      el.addEventListener("touchstart", function (e) {
-        e.preventDefault();          /* 확대·지연·합성 click 을 한 번에 막는다 */
-        touched = true;
-        fn();
-      }, { passive: false });
-      el.addEventListener("click", function () {
-        if (touched) { touched = false; return; }   /* 터치로 이미 처리했다 */
-        fn();
-      });
-    }
-
     /* 터치 패드도 꾹 누르면 걷는 속도로 계속 간다(키보드와 같은 규칙) */
     document.querySelectorAll("[data-dir]").forEach(function (b) {
       var p = b.getAttribute("data-dir").split(",");
@@ -1025,10 +1049,10 @@
       b.addEventListener("mouseup", end);
       b.addEventListener("mouseleave", end);
     });
-    bindPress(document.getElementById("btnPick"), function () { game.pickUp(); afterAction(); });
-    bindPress(document.getElementById("btnDown"), function () { game.descendIfStairs(); afterAction(); });
+    /* ⚠ 줍기·쏘기·내려가기 단추 셋이 여기 있었다. 오른손 묶음 가운데의
+     *   **통합 행동 하나**로 합쳤다(위 배선). 셋 다 위쪽에 눕는 바람에
+     *   엄지에서 멀었고, 셋 중 둘은 대개 할 수 없는 것이었다. */
     bindPress(document.getElementById("btnWait"), function () { game.wait(); afterAction(); });
-    bindPress(document.getElementById("btnShoot"), function () { game.shoot(); afterAction(); });
     /* ⚠ `[data-skillbtn]` 배선이 여기 있었다. 그 단추(터치 패드의 QWER 줄)를
      *   없앴으므로 배선도 지운다. 퀵슬롯 칸 자체가 눌리므로 터치에서도
      *   그대로 쓴다 — 스킬을 그리는 곳도 누르는 곳도 한 군데다. */
@@ -1111,6 +1135,11 @@
     /* 점검기가 칸을 눌러 보는 창구 — 화면 좌표가 아니라 **칸 좌표**를 받는다
      * (좌표 변환은 tileAtPoint 가 따로 검사된다). */
     window.__tap = function (x, y) { tapTile(x, y); };
+    /* 화면 좌표를 **칸으로 바꾸기만** 한다. 누르지 않는다.
+     * ⚠ 좌표 변환을 재려고 `__tapAtPoint` 를 쓰면 안 된다 — 그건 실제로
+     *   눌러서 **걸어가기를 시작시킨다.** 그러면 다음 점을 잴 때 카메라가
+     *   이미 움직여 있어 검사가 제 발등을 찍는다(실제로 그랬다). */
+    window.__tileAt = function (px, py) { return view.tileAtPoint(px, py); };
     window.__tapAtPoint = function (px, py) {
       var t = view.tileAtPoint(px, py);
       if (t) tapTile(t.x, t.y);
@@ -1212,6 +1241,17 @@
        var pth = game.pathTo(x, y);
        return pth ? pth.length : -1;
      };
+    /* 사람을 그 칸에 **세운다**(걸어가지 않는다).
+     * ⚠ 점검기가 "계단 위에 섰을 때 가운데 버튼이 무엇이 되는가" 를 재려면
+     *   거기까지 걸어가야 하는데, 걷는 동안 몬스터가 붙고 턴이 흘러 조건이
+     *   흐려진다. 조건만 만들고 재는 창구다. 규칙은 이걸 쓰지 않는다. */
+    window.__place = function (x, y) {
+      if (!game.level.inside(x, y) || game.level.blocked(x, y)) return false;
+      game.player.x = x; game.player.y = y;
+      game.updateFov();
+      refresh();
+      return true;
+    };
     window.__travel = function () {
       return travel ? { goal: travel.goal, left: travel.path.length - travel.i } : null;
     };
