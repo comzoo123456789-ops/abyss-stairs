@@ -869,6 +869,42 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
     (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
     " · " + (qk.geo || qk.why || ""));
+  /* ── 토스트가 지도를 얼마나 덮는가 ────────────────────
+   *
+   * ⚠ "몇 줄인가" 로는 못 잡는다. 같은 줄 수라도 화면이 작으면 훨씬 많이
+   *   덮는다. **캔버스 세로의 몇 %** 를 재야 한다.
+   * ⚠ 상한이 화면 높이에 걸려 있어서 390x509 휴대폰에서 22줄까지 열려
+   *   있었다(실측으로 여섯 줄 = 세로의 24%). 걸어 다니는 자리다.
+   * ⚠ 그렇다고 너무 줄이면 안 된다 — 휴대폰에서는 토스트가 **유일한
+   *   기록**이다(기록 패널을 감췄다). 세 줄 아래로는 안 내려가야 한다. */
+  /* ⚠ **가득 채운 뒤에 잰다.** 처음엔 그냥 쟀다가 마침 토스트가 둘뿐인
+   *   순간을 보고 "세 줄 이상" 을 요구해 빨개졌다. 재려는 것은 지금 몇 줄이
+   *   떠 있는가가 아니라 **상한이 얼마인가**다.
+   * ⚠ 연달아 같은 글은 접히므로 서로 다른 글을 밀어 넣는다. */
+  /* ⚠ **긴 글로 채운다.** 토스트는 이미 다섯 개로 묶여 있어서(drainLog)
+   *   짧은 글을 열 개 밀어 넣어 봐야 늘 다섯 줄이다 — 대조군이 그래서
+   *   그냥 통과했다. 화면을 덮는 것은 개수가 아니라 **접혀서 늘어난 줄 수**다.
+   *   좁은 화면에서 서너 줄로 접히는 길이를 쓴다. */
+  for (let i = 0; i < 6; i++) {
+    await ev("window.__say('" + i + "번째 줄이다. 관리소 장부에 층수 칸만 비워 두고 " +
+             "계단을 내려간다. 10층 아래에 심연의 군주가 있다고 적혀 있었다.', '')");
+  }
+  await sleep(200);
+  const toast = await ev(`(function(){
+    var r = document.getElementById("view").getBoundingClientRect();
+    var boxes = window.__toastBoxes ? window.__toastBoxes() : [];
+    if (!boxes.length) return { lines: 0, coverPct: 0, ok: true };
+    var top = r.height;
+    boxes.forEach(function(b){ if (b.top < top) top = b.top; });
+    return { lines: boxes.length,
+             coverPct: Math.round((r.height - top) / r.height * 100),
+             ok: true };
+  })()`);
+  /* 문턱은 고치기 전후로 잡았다. 전 24% · 후 20%. 25% 를 넘으면 빨갛다 */
+  const toastOK = toast.lines === 0 || (toast.coverPct <= 25 && toast.lines >= 3);
+  console.log("토스트 자리  :", ok(toastOK),
+    toast.lines + "줄 · 캔버스 세로의 " + toast.coverPct + "% 를 덮는다 (25% 이하 · 3줄 이상)");
+
   /* ── 문과 상자가 **갈리는가** ──────────────────────────
    *
    * 지도를 2배로 키우자 갈색 덩어리가 한 화면에 여섯 보였는데 셋만 문이었다.
@@ -1170,7 +1206,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
-               qkOK && specOK && zoomOK && dcOK &&
+               qkOK && specOK && zoomOK && dcOK && toastOK &&
                build.gold !== "(없음)" &&
                potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&

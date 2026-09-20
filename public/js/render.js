@@ -1160,8 +1160,17 @@
       blocks.push({ m: m, lines: lines });
       total += lines.length;
     }
-    /* 화면보다 높으면 오래된 것부터 버린다 — 게임을 덮으면 안 된다 */
-    var room = Math.max(1, Math.floor((this.screenH - 60) / lh));
+    /* 오래된 것부터 버린다 — 게임을 덮으면 안 된다.
+     *
+     * ⚠ 상한이 **화면 높이**였다(509px 짜리 휴대폰에서 22줄까지 열려 있었다).
+     *   실측으로 여섯 줄이 캔버스 세로의 24% 를 덮고 있었다 — 걸어 다니는
+     *   자리다. 높이의 **비율**로 묶는다.
+     * ⚠ 휴대폰에서는 토스트가 **유일한 기록**이다(기록 패널을 감췄다).
+     *   그래서 너무 적게 두면 정보가 통째로 사라진다. 20% 는 390x509 에서
+     *   다섯 줄이고, 연달아 같은 글은 이제 한 줄로 접히므로 실제로 담기는
+     *   내용은 그보다 많다. */
+    var cap = Math.floor(this.screenH * 0.20 / lh);
+    var room = Math.max(3, Math.min(cap, 10));
     while (total > room && blocks.length > 1) { total -= blocks[0].lines.length; blocks.shift(); }
 
     var y = this.screenH - 12 - (total - 1) * lh;
@@ -1685,9 +1694,11 @@
     var html = "";
     for (var i = start; i < log.length; i++) {
       var tag = LOG_TAG[log[i].tone];
+      /* 접힌 줄에는 횟수를 붙인다 — 지운 것이 아니라 센 것이다 */
+      var many = (log[i].n > 1) ? '<i class="x">x' + log[i].n + "</i>" : "";
       html += '<p class="m ' + log[i].tone + '">' +
               (tag ? '<span class="tag">' + tag + "</span>" : "") +
-              esc(log[i].text) + "</p>";
+              esc(log[i].text) + many + "</p>";
     }
     el.innerHTML = html;
     el.scrollTop = el.scrollHeight;

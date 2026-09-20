@@ -129,8 +129,24 @@
     this.say("스킬 「" + DATA.byId(DATA.SKILLS, cls.skill).name + "」 는 Q 키.", "level");
   };
 
+  /* 기록 한 줄.
+   *
+   * ⚠ **연달아 같은 글은 접는다.** 빈 바닥에서 줍기를 여덟 번 누르면
+   *   "주울 것이 없다." 가 여덟 줄 쌓여 기록이 도배됐다(실측). 접고
+   *   횟수를 붙이면 정보는 그대로 남으면서 여덟 줄이 한 줄이 된다.
+   * ⚠ **정보를 버리지 않는다.** 지우는 게 아니라 세는 것이다 — 몇 번
+   *   그랬는지는 알아야 한다. 화면이 「x8」 을 붙여 보여 준다.
+   * ⚠ 바로 앞 줄만 본다. 사이에 다른 글이 끼면 새 줄이다 — 그래야
+   *   "때렸다 / 맞았다 / 때렸다" 가 뭉치지 않는다. */
   Game.prototype.say = function (text, tone) {
-    this.log.push({ text: text, tone: tone || "", turn: this.turn });
+    var t = tone || "";
+    var last = this.log[this.log.length - 1];
+    if (last && last.text === text && last.tone === t) {
+      last.n = (last.n || 1) + 1;
+      last.turn = this.turn;
+      return;
+    }
+    this.log.push({ text: text, tone: t, turn: this.turn, n: 1 });
     if (this.log.length > 240) this.log.shift();
   };
 
