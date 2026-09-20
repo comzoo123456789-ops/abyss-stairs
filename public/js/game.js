@@ -760,6 +760,11 @@
 
   Game.prototype.act = function (spent) {
     if (!spent || this.over) return false;
+    /* ⚠ 걸음(move) 말고도 사람이 옮겨지는 길이 있다 — 돌진은 `p.x = nx` 로
+     *   직접 옮긴다. 그 길마다 줍기를 붙이면 반드시 하나를 빠뜨린다.
+     *   턴이 도는 **한 곳**에서 한 번 더 본다. 이미 주웠으면 아무 일도 없다.
+     * ⚠ 턴이 오르기 **전에** 한다. 뒤에 두면 주운 것이 다음 턴 일로 보인다. */
+    this.autoTake();
     this.turn += 1;
     var i, s;
     /* 유물: 깨진 모래시계 — 쿨다운이 턴마다 2씩 줄어든다 */
@@ -883,6 +888,9 @@
     this.springTrap(nx, ny);
     if (this.over) return true;
 
+    /* ⚠ 안내보다 **먼저** 줍는다. 뒤에 두면 "금화가 발 밑에 있다" 를 말하고
+     *   바로 "금화를 주웠다" 가 따라와 두 줄이 된다. */
+    this.autoTake();
     var it = this.itemAt(nx, ny);
     if (it) this.say(josa(this.itemName(it), "이", "가") + " 발 밑에 있다. (Space 로 줍기)", "item");
     /* ⚠ 어느 계단인지 **밟기 전에** 알려야 선택이 된다. 내려간 뒤에 알면
@@ -982,35 +990,69 @@
     return this.act(true);
   };
 
-  Game.prototype.pickUp = function () {
-    if (this.over || this.busy()) return false;
-    var it = this.itemAt(this.player.x, this.player.y);
-    if (!it) { this.say("주울 것이 없다.", "warn"); sfx("deny"); return false; }
-
-    this.items.splice(this.items.indexOf(it), 1);
+  /* 손에 넣는 알맹이 하나. **턴을 쓰지 않는다** — 턴은 부르는 쪽이 정한다.
+   * ⚠ 손으로 줍는 길(pickUp)과 저절로 줍는 길(autoTake)이 여기 하나로 모인다.
+   *   두 벌로 만들면 한쪽만 고쳐져 "손으로 주우면 착용되는데 저절로 주우면
+   *   안 되는" 식으로 조용히 어긋난다.
+   * 돌려주는 값: "gold" · "bag" · "full"(자리 없음) · null(없음) */
+  Game.prototype.takeItem = function (it) {
+    if (!it) return null;
+    var at = this.items.indexOf(it);
+    if (at < 0) return null;
 
     if (it.kind === "gold") {
+      this.items.splice(at, 1);
       this.gold += it.amount;
       this.say(josa("금화 " + it.amount, "을", "를") + " 주웠다.", "good");
       sfx("gold");
-      return this.act(true);
+      return "gold";
     }
+    if (this.player.inventory.length >= DATA.BAG_MAX) return "full";
 
-    if (this.player.inventory.length >= DATA.BAG_MAX) {
-      this.items.push(it);
-      this.say("가방이 가득 찼다. (우클릭으로 버리면 교환된다)", "warn");
-      sfx("deny");
-      return false;
-    }
-
+    this.items.splice(at, 1);
     this.player.inventory.push(it);
-    this.say(josa(this.itemName(it), "을", "를") + " 주웠다.", it.slot ? (it.rarity === "common" ? "item" : "level") : "item");
+    this.say(josa(this.itemName(it), "을", "를") + " 주웠다.",
+             it.slot ? (it.rarity === "common" ? "item" : "level") : "item");
     sfx("pickup");
 
     /* 장비는 **더 좋을 때만** 자동 착용한다. 옵션까지 비교해야 하므로 점수로 잰다 */
     if (it.slot) {
       var cur = this.player[it.slot];
       if (!it.cursed && (!cur || this.gearScore(it) > this.gearScore(cur))) this.equip(it);
+    }
+    return "bag";
+  };
+
+  /* 밟으면 저절로 손에 들어오는 것 — **금화 · 물약 · 두루마리**.
+   *
+   * ⚠ **턴을 쓰지 않는다.** 걷다가 금화를 밟을 때마다 한 턴을 더 쓰면
+   *   몬스터에게 공짜 한 대를 주는 셈이다. 걸음 안에서 함께 처리한다.
+   * ⚠ **장비는 안 줍는다.** 가방은 18칸이고 저주받은 것도 있다. 무엇을
+   *   들고 갈지는 사람이 정하는 것이지 바닥이 정하는 게 아니다.
+   * ⚠ 가방이 찼으면 **조용히 둔다.** 밟을 때마다 "가방이 가득 찼다" 를
+   *   외치면 지나갈 수가 없다. 발 밑 안내는 그대로 뜬다.
+   * ⚠ 저절로 줍는 길이 생겼으므로 바닥에 남는 것은 장비뿐이다. Space 와
+   *   가운데 단추의 「줍기」는 그대로 쓴다 — 순서는 안 바뀐다. */
+  Game.prototype.autoTake = function () {
+    if (this.over) return false;
+    var it = this.itemAt(this.player.x, this.player.y);
+    if (!it) return false;
+    /* ⚠ 종류로도 걸러지지만(장비의 kind 는 slot 이름이다) **여기서도 막는다.**
+     *   종류 목록에 나중에 뭘 더할 때 장비가 딸려 들어오면 안 된다. */
+    if (it.slot) return false;
+    if (it.kind !== "gold" && it.kind !== "potion" && it.kind !== "scroll") return false;
+    return this.takeItem(it) !== "full";
+  };
+
+  Game.prototype.pickUp = function () {
+    if (this.over || this.busy()) return false;
+    var it = this.itemAt(this.player.x, this.player.y);
+    if (!it) { this.say("주울 것이 없다.", "warn"); sfx("deny"); return false; }
+    var got = this.takeItem(it);
+    if (got === "full") {
+      this.say("가방이 가득 찼다. (우클릭으로 버리면 교환된다)", "warn");
+      sfx("deny");
+      return false;
     }
     return this.act(true);
   };

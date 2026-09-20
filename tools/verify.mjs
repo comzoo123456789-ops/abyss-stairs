@@ -709,6 +709,68 @@ console.log("문구        :", ok(strayMd === 0), strayMd ? "마크다운 기호
     " · 스킬 " + skillsBefore + "→" + g.player.skills.length);
 }
 
+// 11-b) 밟으면 저절로 줍는가 — 금화 · 물약 · 두루마리만, 턴은 안 쓰고
+{
+  /* ⚠ **턴을 안 쓴다는 것이 핵심**이다. 걷다가 금화를 밟을 때마다 한 턴을
+   *   더 쓰면 몬스터에게 공짜 한 대를 주는 셈이라, 편해지려고 넣은 것이
+   *   오히려 손해가 된다. "주웠다" 만 보면 그걸 못 잡는다.
+   * ⚠ **장비는 안 줍는다.** 가방은 18칸이고 저주받은 것도 있다.
+   * ⚠ 가방이 찼을 때 **조용한지**도 본다. 밟을 때마다 "가방이 가득 찼다" 를
+   *   외치면 그 위를 지나갈 수가 없다. */
+  function beside(g) {
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const d of dirs) {
+      const x = g.player.x + d[0], y = g.player.y + d[1];
+      if (g.level.inside(x, y) && !g.level.blocked(x, y) && !g.monsterAt(x, y)) {
+        return { x: x, y: y, dx: d[0], dy: d[1] };
+      }
+    }
+    return null;
+  }
+  function drop(g, kind) {
+    const spot = beside(g);
+    if (!spot) return null;
+    let it;
+    if (kind === "gold") it = { kind: "gold", amount: 17, x: spot.x, y: spot.y, name: "금화" };
+    else if (kind === "gear") { it = ITEMS.makeGear("weapon", 3, () => 0.5); it.x = spot.x; it.y = spot.y; }
+    else it = Object.assign({}, DATA.CONSUMABLES.find(c => c.kind === kind), { x: spot.x, y: spot.y });
+    g.items = [it];
+    return spot;
+  }
+  const want = { gold: true, potion: true, scroll: true, gear: false };
+  const rows = [];
+  let bad = 0, spentExtra = 0;
+  for (const kind of ["gold", "potion", "scroll", "gear"]) {
+    const g = new Game("warrior");
+    g.reset(77, "warrior");
+    g.monsters = [];
+    const spot = drop(g, kind);
+    const t0 = g.turn;
+    g.move(spot.dx, spot.dy);
+    const took = g.items.length === 0;
+    if (took !== want[kind]) bad++;
+    if (g.turn - t0 > 1) { spentExtra++; bad++; }
+    rows.push(kind + " " + (took ? "주움" : "안 주움") + "(" + (g.turn - t0) + "턴)");
+  }
+  /* 가방이 꽉 찼을 때 — 물건이 남고 "가득 찼다" 를 안 외쳐야 한다 */
+  const gf = new Game("warrior");
+  gf.reset(77, "warrior");
+  gf.monsters = [];
+  while (gf.player.inventory.length < DATA.BAG_MAX) {
+    gf.player.inventory.push(Object.assign({}, DATA.CONSUMABLES[0]));
+  }
+  const sp = drop(gf, "potion");
+  const n0 = gf.log.length;
+  gf.move(sp.dx, sp.dy);
+  const noisy = gf.log.slice(n0).some(l => l.text.indexOf("가득") >= 0);
+  const kept = gf.items.length === 1;
+  if (!kept || noisy) bad++;
+  console.log("저절로 줍기 :", ok(bad === 0),
+    rows.join(" · ") + " · 가방 꽉 참: " + (kept ? "그대로 둠" : "✘사라짐") +
+    (noisy ? " ✘시끄럽다" : " · 조용함") +
+    (spentExtra ? " · ✘턴을 더 썼다" : ""));
+}
+
 // 12) 엘리트 — 나오고, 실제로 더 강한가
 {
   const g = new Game("warrior");
