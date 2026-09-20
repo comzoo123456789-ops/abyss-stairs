@@ -1372,7 +1372,9 @@
     } else {
       this.say(head + m.name + "에게 " + (crit ? "치명타 " : "") + dmg + " 피해. (남은 " + m.hp + ")" + tail,
                crit ? "crit" : "hit");
-      sfx(crit ? "ability" : "hit");
+      /* ⚠ 치명타가 `ability`(스킬 소리)를 내고 있었다. 주문을 외운 것처럼
+       *   들려서 무엇이 일어났는지 귀로는 못 갈랐다. 치명타에는 제 소리가 있다. */
+      sfx(crit ? "crit" : "hit");
     }
   };
 
@@ -1679,7 +1681,9 @@
     this.altar.used = true;
     this.altarUses++;
     this.altarPanel = null;
-    sfx("levelup");
+    /* ⚠ `"levelup"` 이라고 적혀 있었는데 표에는 `level` 뿐이라 **아무 소리도
+     *   안 났다.** 제단은 판을 바꾸는 자리인데 조용했다. */
+    sfx("level");
     return true;
   };
 

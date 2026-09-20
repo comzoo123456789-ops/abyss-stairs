@@ -1106,6 +1106,18 @@ for (const [label, args] of SCREENS) {
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 소리 — 실제 파형으로 잰다(귀로 "괜찮네" 는 근거가 아니다)
+{
+  const rs = spawnSync(process.execPath, [path.join(ROOT, "tools", "sound-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rs.stdout.match(/✘/g) || []).length;
+  if (rs.status !== 0) fails++;
+  const last = rs.stdout.split(String.fromCharCode(10)).filter(Boolean).pop() || "";
+  console.log("소리".padEnd(20), ok(rs.status === 0), last.trim() + why(rs));
+  if (bad) rs.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 타격감 — 연출이 실제로 캔버스에 그려지는가(무기별 궤적 · 숫자 · 섬광 · 색 · 히트스톱)
 {
   const rf = spawnSync(process.execPath, [path.join(ROOT, "tools", "fx-check.mjs")],
