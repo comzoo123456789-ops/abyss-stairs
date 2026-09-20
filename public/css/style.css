@@ -213,11 +213,13 @@ button { font-family: inherit; cursor: pointer; }
 }
 .hud-name { display: flex; flex-direction: column; line-height: 1.2; }
 .hud-name b { font-size: 17px; font-weight: 700; color: var(--ink); }
+/* ⚠ 직업명은 **한글 문장**이다(「쫓겨난 필경생」). 고정폭(--mono)에 넣어 두어
+ *   혼자 다른 서체로 보였다. 한글 문장은 전부 Galmuri11 이다. */
 .hud-name em {
   font-style: normal;
   font-size: 12px;
   color: var(--ink-dim);
-  font-family: var(--mono);
+  font-family: inherit;
   white-space: nowrap;
 }
 
@@ -480,9 +482,11 @@ button { font-family: inherit; cursor: pointer; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .eq-row b.dim { color: var(--ink-dim); font-weight: 400; font-size: 12px; }
+/* ⚠ 장비 수치(+2)가 GalmuriMono11, 능력치 값은 VT323 이었다. **같은 숫자인데
+ *   서체가 둘**이라 사이드바가 두 벌로 보였다. 숫자는 `--num` 하나로 간다. */
 .eq-row s {
   grid-area: num; text-decoration: none;
-  font-family: var(--mono); font-size: 15px; color: var(--gold);
+  font-family: var(--num); font-size: 19px; color: var(--gold); line-height: 1;
 }
 .eq-row.none { border-style: dashed; opacity: .75; }
 .eq-row.none .eq-slot { border-style: dashed; opacity: .55; }
@@ -1104,10 +1108,13 @@ kbd {
   border-bottom: 1px solid rgba(120, 160, 220, .45);
 }
 /* 단축키는 왼쪽 위 배지 */
+/* ⚠ Q W E R 은 **짧은 라틴 라벨**이다. HUD 의 Lv·층·금 이름표와 같은 일을
+ *   하는데 서체가 달랐다(여기는 GalmuriMono11, 저기는 Press Start 2P).
+ *   `--title` 하나로 맞춘다. 이 서체는 좁으므로 칸을 조금 넓힌다. */
 .qs .k {
   position: absolute; top: 0; left: 0; z-index: 2;
-  width: 19px; height: 17px; line-height: 17px; text-align: center;
-  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  width: 21px; height: 18px; line-height: 18px; text-align: center;
+  font-family: var(--title); font-size: 10px; font-weight: 400;
   background: var(--gold); color: #1a1508;
 }
 .qs .rk {

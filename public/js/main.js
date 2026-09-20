@@ -175,16 +175,32 @@
     kick();
   }
 
+  /* 유휴 일렁임의 박자. 횃불만 흔들리면 되는 동안은 이 간격으로만 다시 그린다.
+   * ⚠ 초당 60번이 아니라 **12번**이다. 턴제 게임이 가만히 있는 동안 CPU 를
+   *   계속 먹으면 안 된다. 일렁임은 느려도 살아 있는 것으로 읽힌다. */
+  var IDLE_MS = 84;
+  var idleTimer = 0;
+  var drawCount = 0;
+
   function loop(now) {
     rafId = 0;
     var dt = lastT ? (now - lastT) : 16;
     lastT = now;
+    drawCount++;
     var busy = view.draw(dt);
-    if (busy) rafId = requestAnimationFrame(loop);
-    else lastT = 0;
+    if (busy) { rafId = requestAnimationFrame(loop); return; }
+    lastT = 0;
+    /* 움직일 것은 없고 **횃불만 일렁이면 되는** 상태. 쉬엄쉬엄 부른다. */
+    if (view.idleAnim && !idleTimer) {
+      idleTimer = setTimeout(function () {
+        idleTimer = 0;
+        if (!rafId) { lastT = 0; rafId = requestAnimationFrame(loop); }
+      }, IDLE_MS);
+    }
   }
 
   function kick() {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = 0; }
     if (!rafId) { lastT = 0; rafId = requestAnimationFrame(loop); }
   }
 
@@ -1263,10 +1279,17 @@
     /* 점검기가 "칸 사이에 있는 순간" 을 잡을 창구.
      * ⚠ 논리 좌표만 보면 애니메이션이 도는지 알 수 없다(그건 즉시 바뀐다).
      *   보이는 좌표가 정수가 아닌 순간이 있어야 실제로 보간되는 것이다. */
+    /* 그린 횟수. ⚠ 검사가 "유휴에 몇 번 그리나" 를 **세서** 판정한다 —
+     *   플래그를 보면 60fps 로 도는 것과 12fps 로 도는 것을 못 가른다. */
+    window.__drawCount = function () { return drawCount; };
+    window.__clock = function () { return view.clock || 0; };
     window.__vis = function () {
       var v = view.visOf(game.player);
       return { vx: v.vx, vy: v.vy, t: v.t, stride: v.stride,
-               moving: v.t < 1, raf: !!rafId };
+               moving: v.t < 1, raf: !!rafId,
+               /* 유휴 일렁임 중인가. 검사가 "멈췄나" 가 아니라 "몇 번
+                * 그리나" 를 재야 하므로 갈라서 알려 준다. */
+               idleAnim: !!view.idleAnim, idleWait: !!idleTimer };
     };
 
     /* 점검기가 길을 찾을 수 있게 통행 가능 여부만 넘긴다(지형 종류는 안 넘긴다).

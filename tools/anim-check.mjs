@@ -38,7 +38,19 @@ const send = (me, p, s) => new Promise((res, rej) => { const i = ++id; w.set(i, 
 const { targetId } = await send("Target.createTarget", { url: "about:blank" });
 const { sessionId } = await send("Target.attachToTarget", { targetId, flatten: true });
 const S = (m, p) => send(m, p, sessionId);
-const ev = async (x) => (await S("Runtime.evaluate", { expression: x, returnByValue: true })).result.value;
+/* ⚠ **예외를 삼키지 않는다.** 전에는 result.value 만 읽어서, 화면 쪽이
+ *   터지면 undefined 가 돌아왔다. 그러면 몇 줄 뒤에서 'undefined 의 turn 을
+ *   읽을 수 없다' 로 터지는데, 진짜 원인은 그 자리가 아니다. 한 번 그러느라
+ *   엉뚱한 곳을 팠다. 터진 자리에서 터진 이유를 말하게 한다. */
+const ev = async (x) => {
+  const r = await S("Runtime.evaluate", { expression: x, returnByValue: true });
+  if (r.exceptionDetails) {
+    const d = r.exceptionDetails;
+    throw new Error("화면에서 터졌다 :: " + x + " :: " +
+      ((d.exception && d.exception.description) || d.text));
+  }
+  return r.result.value;
+};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 await S("Page.enable"); await S("Runtime.enable");
@@ -91,12 +103,45 @@ for (let i = 0; i < 8; i++) {
 const t1 = await ev("window.__peek()");
 console.log("③ 연타 즉시 반응:", ok(t1.turn - t0.turn >= 6), "8번 눌러 턴 " + t0.turn + " → " + t1.turn);
 
-/* ④ 가만히 있으면 고리가 멈추는가
- *    ⚠ 최근 메시지 토스트가 3.6초 동안 서서히 사라진다 — 그 동안은 프레임이 도는 것이
- *      **정상**이다. 600ms 만 기다리고 "고리가 계속 돈다" 고 판정하면 오진이다. */
+/* ④ 가만히 있을 때 **얼마나 그리는가**
+ *
+ * ⚠ 전에는 "고리가 아예 멈추는가" 였다. 횃불 일렁임이 들어오면서 그 전제가
+ *   낡았다 — 일렁이려면 다시 그려야 한다. 그렇다고 검사를 지우면 안 된다.
+ *   이 검사가 막던 진짜 사고는 "턴제인데 유휴에 60fps 로 돈다" 이고 그건
+ *   여전히 막아야 한다. 그래서 **멈추는가 대신 초당 몇 번 그리는가**를 센다.
+ * ⚠ 최근 메시지 토스트가 3.6초 동안 사라진다 — 그 동안은 60fps 가 정상이다.
+ *   그게 끝난 뒤부터 센다.
+ * ⚠ 횃불이 안 보이는 자리라면 아예 멈춰 있어야 한다. 두 갈래를 갈라 판정한다. */
 await sleep(4200);
 const idle = await ev("window.__vis()");
-console.log("④ 유휴 시 정지  :", ok(!idle.raf && !idle.moving), idle.raf ? "고리가 계속 돈다" : "멈춤");
+/* 2초 동안 실제 그린 횟수를 센다 — 플래그가 아니라 프레임을 센다 */
+const drawn = await ev(`(function(){
+  return new Promise(function (done) {
+    var n = 0, t0 = performance.now();
+    var id = 0;
+    function tick() { n++; id = requestAnimationFrame(tick); }
+    id = requestAnimationFrame(tick);
+    setTimeout(function () {
+      cancelAnimationFrame(id);
+      done({ raf: n, ms: performance.now() - t0 });
+    }, 2000);
+  });
+})()`);
+/* rAF 로는 '화면이 몇 번 갱신됐나' 만 나온다. 게임이 몇 번 그렸는지는
+ * 렌더러의 시계로 읽는다 — 시계는 그릴 때만 는다. */
+const c0 = await ev("window.__clock ? window.__clock() : 0");
+await sleep(2000);
+const c1 = await ev("window.__clock ? window.__clock() : 0");
+const frames = await ev("window.__drawCount ? window.__drawCount() : -1");
+await sleep(1000);
+const frames2 = await ev("window.__drawCount ? window.__drawCount() : -1");
+const fps = frames2 >= 0 ? (frames2 - frames) : -1;
+/* 횃불이 보이면 느린 박자(초당 20회 이하), 안 보이면 아예 0 이어야 한다 */
+const want = idle.idleAnim ? 20 : 1;
+console.log("④ 유휴 시 그리기:", ok(fps >= 0 && fps <= want),
+  (idle.idleAnim ? "횃불 일렁임 중 · " : "일렁일 것 없음 · ") +
+  "1초에 " + fps + "번 그림 (" + want + "번 이하여야 한다)" +
+  (fps > want ? " · ⚠유휴인데 계속 돈다" : ""));
 
 /* ⑤ 층을 내려갈 때 보간하지 않는가 — 지도 반대편으로 미끄러져 가면 안 된다.
  *    ⚠ "코드가 그렇게 돼 있다" 로 넘기지 말고 실제로 계단까지 걸어가 밟아 본다. */

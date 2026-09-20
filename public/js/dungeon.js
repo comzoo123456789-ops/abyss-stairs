@@ -109,6 +109,102 @@
     return false;
   }
 
+  /* 걸어서 닿는 칸 수. 방 모양을 고친 뒤 **끊기지 않았는지** 보는 데 쓴다. */
+  function reachCount(lv) {
+    var seen = new Uint8Array(lv.w * lv.h);
+    var start = -1;
+    for (var i = 0; i < lv.tiles.length; i++) {
+      if (lv.tiles[i] !== WALL) { start = i; break; }
+    }
+    if (start < 0) return 0;
+    var q = [start], n = 0;
+    seen[start] = 1;
+    while (q.length) {
+      var id = q.pop(); n++;
+      var x = id % lv.w, y = (id / lv.w) | 0;
+      for (var d = 0; d < 4; d++) {
+        var nx = x + [0, 0, -1, 1][d], ny = y + [-1, 1, 0, 0][d];
+        if (nx < 0 || ny < 0 || nx >= lv.w || ny >= lv.h) continue;
+        var nid = lv.idx(nx, ny);
+        if (seen[nid] || lv.tiles[nid] === WALL) continue;
+        seen[nid] = 1; q.push(nid);
+      }
+    }
+    return n;
+  }
+
+  /* 방 모양 변형 — 층당 한두 방.
+   *
+   * 네모 방만 나오면 층이 전부 같아 보인다. 두 가지를 섞는다.
+   *   기둥 — 방 안쪽에 2x2 벽. 방을 돌아가게 만든다
+   *   L자  — 한 모퉁이를 네모로 잘라 낸다
+   *
+   * ⚠ **복도가 방 중심(cx, cy)에 꽂힌다.** 거기를 막으면 길이 끊긴다.
+   *   중심과 그 둘레는 건드리지 않는다.
+   * ⚠ 그래도 안심할 수 없다. 방 둘 이상이 겹쳐 파였거나 복도가 방을 스쳐
+   *   지나가는 배치가 있다. 고치기 **전에 닿는 칸 수를 세고**, 고친 뒤 줄면
+   *   통째로 되돌린다. 눈대중으로 "괜찮겠지" 하면 층마다 몇 개씩 갇힌 방이
+   *   생기는데, 사람은 그걸 "계단을 못 찾겠다" 로만 겪는다.
+   * ⚠ 문 옆은 건드리지 않는다. 드나드는 목이다. */
+  function shapeRooms(lv, rng) {
+    if (lv.rooms.length < 3) return;
+    var before = reachCount(lv);
+    var order = [];
+    for (var i = 1; i < lv.rooms.length; i++) order.push(i);
+    for (var sh = order.length - 1; sh > 0; sh--) {
+      var k = Math.floor(rng() * (sh + 1));
+      var t = order[sh]; order[sh] = order[k]; order[k] = t;
+    }
+    var want = 1 + (rng() < 0.5 ? 1 : 0);
+    var done = 0;
+
+    for (var oi = 0; oi < order.length && done < want; oi++) {
+      var r = lv.rooms[order[oi]];
+      if (r.w < 6 || r.h < 6) continue;              /* 작은 방은 그냥 둔다 */
+      var cells = [];
+
+      if (rng() < 0.5) {
+        /* 기둥 — 중심을 피해 안쪽 2x2 */
+        var px = r.x + 1 + Math.floor(rng() * (r.w - 3));
+        var py = r.y + 1 + Math.floor(rng() * (r.h - 3));
+        if (Math.abs(px - r.cx) <= 1 && Math.abs(py - r.cy) <= 1) continue;
+        cells = [[px, py], [px + 1, py], [px, py + 1], [px + 1, py + 1]];
+      } else {
+        /* L자 — 한 모퉁이를 잘라 낸다. 방의 3분의 1을 넘지 않는다 */
+        var cw = 2 + Math.floor(rng() * Math.max(1, ((r.w / 3) | 0)));
+        var ch = 2 + Math.floor(rng() * Math.max(1, ((r.h / 3) | 0)));
+        var ox2 = (rng() < 0.5) ? r.x : r.x + r.w - cw;
+        var oy2 = (rng() < 0.5) ? r.y : r.y + r.h - ch;
+        for (var yy = oy2; yy < oy2 + ch; yy++)
+          for (var xx = ox2; xx < ox2 + cw; xx++) cells.push([xx, yy]);
+      }
+
+      /* 막아도 되는 칸인가 — 중심 둘레와 문 옆은 뺀다 */
+      var okCells = true;
+      for (var c = 0; c < cells.length && okCells; c++) {
+        var x = cells[c][0], y = cells[c][1];
+        if (lv.at(x, y) !== FLOOR) { okCells = false; break; }
+        if (Math.abs(x - r.cx) <= 1 && Math.abs(y - r.cy) <= 1) { okCells = false; break; }
+        for (var dy = -1; dy <= 1 && okCells; dy++)
+          for (var dx = -1; dx <= 1; dx++)
+            if (lv.at(x + dx, y + dy) === DOOR) { okCells = false; break; }
+      }
+      if (!okCells) continue;
+
+      for (var c2 = 0; c2 < cells.length; c2++)
+        lv.tiles[lv.idx(cells[c2][0], cells[c2][1])] = WALL;
+
+      /* 끊겼으면 통째로 되돌린다 */
+      if (reachCount(lv) !== before - cells.length) {
+        for (var c3 = 0; c3 < cells.length; c3++)
+          lv.tiles[lv.idx(cells[c3][0], cells[c3][1])] = FLOOR;
+        continue;
+      }
+      before -= cells.length;
+      done++;
+    }
+  }
+
   function placeDoors(lv, rng) {
     var cand = [];
     for (var y = 1; y < lv.h - 1; y++) {
@@ -169,6 +265,9 @@
       lv.rooms.push(room);
     }
 
+    /* ⚠ 문보다 **먼저** 모양을 고친다. 문을 먼저 달면 문 옆을 피하느라
+     *   고칠 수 있는 방이 확 준다. */
+    shapeRooms(lv, rng);
     placeDoors(lv, rng);
 
     /* 보물방 — 시작 방이 아닌 가장 작은 방. **입구에만** 문을 단다.

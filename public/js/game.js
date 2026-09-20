@@ -433,7 +433,11 @@
     /* 구역 장식 — 그 층이 어디인지 바닥이 말해 준다.
      * ⚠ 계단·문·함정 칸은 피한다. 장식이 그 위에 깔리면 계단을 못 알아보거나
      *   드러난 함정을 덮어 버린다(덮으면 밟는다 — 규칙은 그대로인데 화면만 거짓말한다).
-     * ⚠ 너무 많이 뿌리면 바닥이 시끄러워 몬스터·아이템이 안 보인다. 바닥 칸의 4% 다. */
+     * ⚠ 너무 많이 뿌리면 바닥이 시끄러워 몬스터·아이템이 안 보인다.
+     * ⚠ **바닥 칸의 4% 였다 — 층당 28개.** 그 절반인 상자 14개가 아무 바닥
+     *   칸에나 놓여 방 한가운데와 통로 어귀를 어색하게 막고 있었다(규칙은 안
+     *   막는데 눈에는 막힌 것으로 보인다). 지도를 2배로 키우자 그게 도드라졌다.
+     *   층당 3~4개로 줄이고 **방 모퉁이에만** 놓는다. */
     var zone = DATA.zoneAt(this.depth);
     if (zone.props && zone.props.length) {
       lv.props.fill(0);
@@ -442,20 +446,53 @@
       if (noTorch < 1) noTorch = zone.props.length;
       var floors = 0;
       for (i = 0; i < lv.tiles.length; i++) if (lv.tiles[i] === D.FLOOR) floors++;
-      var want = Math.round(floors * 0.04);
-      for (i = 0; i < want; i++) {
-        spot = D.randomFloor(lv, this.rng, null, null);
-        if (!spot) continue;
+      /* 방 모퉁이 후보를 모은다.
+       * ⚠ **모퉁이의 뜻은 "두 벽이 만나는 안쪽 칸"** 이다. 방 사각형의 꼭짓점
+       *   좌표를 그냥 쓰면 안 된다 — 그 자리가 복도 입구일 수도 있고 다른 방과
+       *   맞닿아 있을 수도 있다. 이웃을 보고 가른다.
+       * ⚠ 문 옆은 뺀다. 드나드는 목을 막고 선 것처럼 보인다. */
+      var corners = [];
+      for (var ri = 0; ri < lv.rooms.length; ri++) {
+        var rm = lv.rooms[ri];
+        var spots = [[rm.x, rm.y], [rm.x + rm.w - 1, rm.y],
+                     [rm.x, rm.y + rm.h - 1], [rm.x + rm.w - 1, rm.y + rm.h - 1]];
+        for (var ci = 0; ci < spots.length; ci++) {
+          var cx = spots[ci][0], cy = spots[ci][1];
+          if (lv.at(cx, cy) !== D.FLOOR) continue;
+          /* 가로 이웃 하나와 세로 이웃 하나가 벽이어야 모퉁이다 */
+          var hw = lv.blocked(cx - 1, cy) || lv.blocked(cx + 1, cy);
+          var vw = lv.blocked(cx, cy - 1) || lv.blocked(cx, cy + 1);
+          if (!hw || !vw) continue;
+          var nearDoor = false;
+          for (var dy2 = -1; dy2 <= 1 && !nearDoor; dy2++)
+            for (var dx2 = -1; dx2 <= 1; dx2++)
+              if (lv.at(cx + dx2, cy + dy2) === D.DOOR) { nearDoor = true; break; }
+          if (nearDoor) continue;
+          corners.push({ x: cx, y: cy });
+        }
+      }
+      /* 섞는다 — 안 섞으면 늘 첫 방 왼쪽 위부터 채워 한쪽으로 몰린다 */
+      for (var sh = corners.length - 1; sh > 0; sh--) {
+        var kk = Math.floor(this.rng() * (sh + 1));
+        var tt = corners[sh]; corners[sh] = corners[kk]; corners[kk] = tt;
+      }
+      /* 층당 3~4개. 바닥 넓이에 비례시키지 않는다 — 비례시키면 큰 층에서
+       * 다시 열몇 개가 된다(전에 4% 로 뒀다가 14개가 나왔다). */
+      var want = 3 + Math.floor(this.rng() * 2);
+      var put = 0;
+      for (i = 0; i < corners.length && put < want; i++) {
+        spot = corners[i];
         var pid = lv.idx(spot.x, spot.y);
         if (lv.tiles[pid] !== D.FLOOR) continue;
         if (lv.traps[pid]) continue;
         if (spot.x === lv.downAt.x && spot.y === lv.downAt.y) continue;
         if (spot.x === lv.upAt.x && spot.y === lv.upAt.y) continue;
+        if (this.player && Math.abs(this.player.x - spot.x) + Math.abs(this.player.y - spot.y) < 3) continue;
         /* ⚠ 횃불은 이 굴림에서 **뺀다.** 위 칸이 벽인 자리에만 놓을 수 있어
          *   여기서 같이 굴리면 대부분 버려진다(실측 층당 1.4개 — 눈에 안 띈다).
          *   아래에서 따로 놓는다. */
-        var pick = 1 + Math.floor(this.rng() * noTorch);
-        lv.props[pid] = pick;
+        lv.props[pid] = 1 + Math.floor(this.rng() * noTorch);
+        put++;
       }
 
       /* 벽 횃불 — 따로 놓는다.

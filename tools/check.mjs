@@ -796,6 +796,51 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
     (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
     " · " + (qk.geo || qk.why || ""));
+  /* ── 문과 상자가 **갈리는가** ──────────────────────────
+   *
+   * 지도를 2배로 키우자 갈색 덩어리가 한 화면에 여섯 보였는데 셋만 문이었다.
+   * 문 나무가 #7b5330/#96663c, 상자가 #7a5730/#966c3c — **눈으로 가를 수 없는
+   * 차이**였다. 그래서 "문이 갑자기 많아졌다" 로 느껴졌다(문 수는 층당 4.7개로
+   * 그대로였다).
+   *
+   * ⚠ **평균색으로 재면 안 된다.** 문은 밝은 석재 문틀이 평균을 지배해서,
+   *   안쪽 나무가 상자와 똑같아도 평균 색 거리는 37 이 나왔다(그럭저럭
+   *   달라 보이는 값이다). 정작 헷갈리는 **안쪽**을 떠서 견준다.
+   * ⚠ 문턱은 대조군으로 잡았다. 고치기 전 안쪽 색 거리 17 · 밝기 차 6,
+   *   고친 뒤 48 · 28. 그 사이에 둔다.
+   * ⚠ 색만 보지 않는다. 색맹인 사람에게는 실루엣이 전부다 — 문은 칸을
+   *   가득 채우고(32px 폭) 상자는 가운데 작게 앉는다(22px). 넓이 비도 본다. */
+  const dc = await ev(`(function(){
+    var S = window.SPRITES;
+    function mean(name, x0, y0, w, h){
+      var c = S.bake(name); if (!c) return null;
+      var d = c.getContext("2d").getImageData(x0, y0, w, h).data;
+      var n = 0, r = 0, g = 0, b = 0;
+      for (var i = 0; i < d.length; i += 4) {
+        if (d[i + 3] < 40) continue;
+        r += d[i]; g += d[i + 1]; b += d[i + 2]; n++;
+      }
+      return n ? { r: r / n, g: g / n, b: b / n, n: n } : null;
+    }
+    var dCore = mean("door", 11, 12, 10, 10);
+    var cCore = mean("p_crate", 11, 12, 10, 10);
+    var dAll = mean("door", 0, 0, 32, 32);
+    var cAll = mean("p_crate", 0, 0, 32, 32);
+    if (!dCore || !cCore || !dAll || !cAll) return { ok: false, why: "그림을 못 구웠다" };
+    function lum(c){ return 0.2126*c.r + 0.7152*c.g + 0.0722*c.b; }
+    return {
+      dist: Math.round(Math.sqrt(Math.pow(dCore.r-cCore.r,2) +
+                                 Math.pow(dCore.g-cCore.g,2) +
+                                 Math.pow(dCore.b-cCore.b,2))),
+      bri: Math.round(Math.abs(lum(dCore) - lum(cCore))),
+      areaRatio: Math.round(dAll.n / cAll.n * 100) / 100
+    };
+  })()`);
+  const dcOK = dc.dist >= 35 && dc.bri >= 18 && dc.areaRatio >= 2;
+  console.log("문·상자 구별 :", ok(dcOK),
+    "안쪽 색 거리 " + dc.dist + " (35 이상) · 밝기 차 " + dc.bri + " (18 이상) · " +
+    "칠 넓이 " + dc.areaRatio + "배 (2배 이상)" + (dc.why ? " · " + dc.why : ""));
+
   /* ── 지도 확대 ────────────────────────────────────────
    *
    * 칸이 32px 로 굳어 있어 1920 화면에서 층의 63% 가 한꺼번에 보였다.
@@ -1049,7 +1094,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
-               qkOK && specOK && zoomOK &&
+               qkOK && specOK && zoomOK && dcOK &&
                build.gold !== "(없음)" &&
                potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&

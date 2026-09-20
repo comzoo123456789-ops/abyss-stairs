@@ -223,7 +223,13 @@
    * 같은 무늬가 격자로 반복돼 눈에 걸린다 — 변종을 여러 장 구워 두고
    * 좌표로 골라 쓴다(js/render.js 의 variant). */
 
-  var FLOOR_VARIANTS = 4, WALL_VARIANTS = 3;
+  /* ⚠ **바닥 변종이 4개뿐이었다.** 한 화면 375칸에 같은 그림 넉 장이 94번씩
+   *   깔렸고, 금과 조약돌이 **항상 같은 픽셀 자리**에 있었다. 그래서 질감이
+   *   아니라 **격자 무늬**로 읽혔다 — "바닥이 밋밋하다" 의 진짜 원인이다.
+   *   색은 이미 줄눈·판석면·윗빛·아랫그늘·돌결 2종·금·조약돌 3종이 다 있었다.
+   *   16장이면 한 화면에 같은 그림이 23번으로 줄고, 자국 자리도 장마다 다르다.
+   * ⚠ 16장을 구워도 32x32 라 256KB 남짓이다. 굽기는 처음 한 번뿐이다. */
+  var FLOOR_VARIANTS = 16, WALL_VARIANTS = 6;
 
   /* 씨앗 있는 난수 — 변종이 매번 달라지면 새로고침마다 바닥이 바뀐다 */
   function rnd(seed) {
@@ -245,7 +251,11 @@
     [[0, 0, 18, 15], [18, 0, 14, 15], [0, 15, 13, 17], [13, 15, 19, 17]],
     [[0, 0, 13, 21], [13, 0, 19, 11], [13, 11, 19, 10], [0, 21, 32, 11]],
     [[0, 0, 32, 12], [0, 12, 11, 20], [11, 12, 21, 20]],
-    [[0, 0, 15, 9], [15, 0, 17, 23], [0, 9, 15, 23], [15, 23, 17, 9]]
+    [[0, 0, 15, 9], [15, 0, 17, 23], [0, 9, 15, 23], [15, 23, 17, 9]],
+    [[0, 0, 11, 18], [11, 0, 21, 8], [11, 8, 21, 10], [0, 18, 20, 14], [20, 18, 12, 14]],
+    [[0, 0, 22, 10], [22, 0, 10, 22], [0, 10, 12, 22], [12, 10, 10, 12], [12, 22, 20, 10]],
+    [[0, 0, 16, 32], [16, 0, 16, 13], [16, 13, 16, 19]],
+    [[0, 0, 32, 20], [0, 20, 17, 12], [17, 20, 15, 12]]
   ];
 
   /* 기본 팔레트 — 구역이 없을 때(그리고 data.js 가 없는 검사 환경에서) 쓰는 값.
@@ -264,7 +274,10 @@
   function floorTile(v, pal) {
     var P = pal || FLOOR_BASE;
     var b = new Board(SIZE);
-    var r = rnd(1000 + v * 7717);
+    /* ⚠ 씨앗에 변종 번호를 섞어 **장마다 다른 난수 줄기**를 탄다. 예전에는
+     *   금과 조약돌을 고정 좌표에 박아 둬서, 같은 자국이 화면 곳곳에 똑같이
+     *   되풀이됐다. 자리를 굴리는 것이 장 수를 늘리는 것보다 중요하다. */
+    var r = rnd(1000 + v * 7717 + v * v * 131);
     var MORTAR = P.mortar, FACE = P.face, LIT = P.lit, DIM = P.dim;
     b.rect(0, 0, SIZE, SIZE, MORTAR);
 
@@ -282,31 +295,54 @@
       if (b.get(px, py) !== FACE) continue;
       b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
     }
-    /* 금 — 변종마다 다른 자리에 한 줄 */
-    if (v % 2 === 0) {
-      var cx = 5 + Math.floor(r() * 22), cy = 4 + Math.floor(r() * 20);
-      b.line(cx, cy, cx + 4 - Math.floor(r() * 8), cy + 5, P.crack);
+    /* 금 — 있는 장이 절반, 자리와 길이와 방향을 전부 굴린다 */
+    if (r() < 0.5) {
+      var cracks = 1 + (r() < 0.25 ? 1 : 0);
+      for (var ci = 0; ci < cracks; ci++) {
+        var cx = 4 + Math.floor(r() * 24), cy = 3 + Math.floor(r() * 24);
+        var dx = Math.floor(r() * 11) - 5, dy = 3 + Math.floor(r() * 6);
+        b.line(cx, cy, cx + dx, cy + dy, P.crack);
+        if (r() < 0.4) b.line(cx + dx, cy + dy, cx + dx + Math.floor(r() * 7) - 3,
+                              cy + dy + 2 + Math.floor(r() * 4), P.crack);
+      }
     }
-    /* 아주 드물게 자갈 — 눈이 붙잡을 것이 하나쯤 있어야 바닥이 살아 있다 */
-    if (v === 3) {
-      b.set(22, 7, P.peb1); b.set(23, 7, P.peb2); b.set(23, 8, P.peb3);
-      b.set(9, 25, P.peb1); b.set(10, 25, P.peb2);
+    /* 조약돌 — 다섯 장에 하나꼴. 무리 지어 놓아야 돌로 읽힌다 */
+    if (r() < 0.22) {
+      var groups = 1 + (r() < 0.35 ? 1 : 0);
+      for (var gi = 0; gi < groups; gi++) {
+        var gx = 3 + Math.floor(r() * 26), gy = 3 + Math.floor(r() * 26);
+        b.set(gx, gy, P.peb1);
+        b.set(gx + 1, gy, P.peb2);
+        if (r() < 0.7) b.set(gx + 1, gy + 1, P.peb3);
+        if (r() < 0.4) b.set(gx - 1, gy + 1, P.peb1);
+      }
+    }
+    /* 깨진 판석 — 열 장에 하나꼴로 줄눈 색 조각이 한 귀퉁이를 먹는다 */
+    if (r() < 0.12) {
+      var bx = 2 + Math.floor(r() * 24), by = 2 + Math.floor(r() * 24);
+      b.poly([[bx, by], [bx + 4 + Math.floor(r() * 4), by + 1],
+              [bx + 3, by + 4 + Math.floor(r() * 3)]], P.crack);
     }
     return b;
   }
 
+  /* 벽 **윗면**. 사람이 위에서 내려다보는 면이라 벽돌이 눕는다.
+   * ⚠ 벽돌 단의 높이와 어긋남을 변종마다 굴린다. 전에는 셋 다 같은 줄에
+   *   같은 어긋남이라, 벽이 이어지면 가로줄이 화면을 가로질렀다. */
   function wallTile(v, pal) {
     var P = pal || WALL_BASE;
     var b = new Board(SIZE);
-    var r = rnd(2000 + v * 3313);
+    var r = rnd(2000 + v * 3313 + v * v * 97);
     b.rect(0, 0, SIZE, SIZE, P.mortar);        /* 줄눈(모르타르) */
-    /* 벽돌 3단 — 단마다 반 칸 어긋나게 */
-    var rows = [[0, 11], [11, 11], [22, 10]];
-    for (var ri = 0; ri < rows.length; ri++) {
-      var y = rows[ri][0], h = rows[ri][1];
-      var off = (ri % 2) ? -8 : 0;
-      for (var x = off; x < SIZE; x += 16) {
-        var bw = Math.min(16, SIZE - Math.max(0, x)) - 2;
+    /* 벽돌 3~4단 — 단마다 어긋남을 굴린다 */
+    var bands = r() < 0.4 ? 4 : 3;
+    var hEach = Math.floor(SIZE / bands);
+    for (var ri = 0; ri < bands; ri++) {
+      var y = ri * hEach, h = (ri === bands - 1) ? (SIZE - y) : hEach;
+      var off = -Math.floor(r() * 16);
+      var step = 14 + Math.floor(r() * 5);
+      for (var x = off; x < SIZE; x += step) {
+        var bw = Math.min(step, SIZE - Math.max(0, x)) - 2;
         var bx = Math.max(0, x) + 1;
         if (bw <= 1) continue;
         b.rect(bx, y + 1, bw, h - 2, P.face);
@@ -319,13 +355,65 @@
       var px = Math.floor(r() * SIZE), py = Math.floor(r() * SIZE);
       if (b.get(px, py) === P.face) b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
     }
-    /* 이끼 — 아래쪽에만 살짝 */
-    if (v === 1) {
+    /* 이끼 — 세 장에 하나꼴, 아래쪽에만 살짝 */
+    if (r() < 0.34) {
       for (var m = 0; m < 26; m++) {
         var mx = Math.floor(r() * SIZE), my = 24 + Math.floor(r() * 8);
         if (b.get(mx, my)) b.set(mx, my, P.moss);
       }
     }
+    return b;
+  }
+
+  /* 벽 **앞면**. 사람을 마주보는 면이다.
+   *
+   * 탑다운에서 벽을 평평한 한 장으로 두면 바닥과 구별이 안 된다. 정석은
+   * 윗면과 앞면을 나눠 그리는 것이다(조사한 32px 탑다운 타일셋들이 전부
+   * 그 구조다). 아래가 바닥인 벽 칸에만 이 면을 쓴다 — 실측으로 벽의 11%,
+   * 층당 161칸이다.
+   *
+   * ⚠ `thin` 은 **위아래가 다 바닥인 한 칸 두께 벽**이다(층당 15칸). 그 칸에
+   *   윗면과 앞면을 같이 넣으면 벽이 절반 높이로 보인다. 이때는 앞면만
+   *   칸 전체에 세운다. 이걸 안 정하고 시작하면 층마다 열댓 칸이 깨진다.
+   * ⚠ 앞면은 벽돌을 **세로로** 쌓는다. 윗면과 같은 눕힌 벽돌이면 두 면이
+   *   한 면으로 뭉쳐 높이가 안 읽힌다.
+   * ⚠ 맨 아래 두 줄은 가장 어둡게. 바닥과 닿는 자리가 밝으면 벽이 떠 보인다. */
+  function wallFaceTile(v, pal, thin) {
+    var P = pal || WALL_BASE;
+    var b = new Board(SIZE);
+    var r = rnd(4000 + v * 6151 + (thin ? 733 : 0));
+    /* 윗면이 보이는 높이. thin 이면 0 — 칸 전체가 앞면이다 */
+    var cap = thin ? 0 : 10;
+    if (cap > 0) {
+      /* 윗면 단면 — 어두운 돌. 여기가 '벽 꼭대기' 다 */
+      b.rect(0, 0, SIZE, cap, P.mortar);
+      for (var tx = 0; tx < SIZE; tx += 11) {
+        var tw = Math.min(11, SIZE - tx) - 2;
+        if (tw <= 1) continue;
+        b.rect(tx + 1, 1, tw, cap - 3, P.dim);
+        b.rect(tx + 1, 1, tw, 1, P.face);
+      }
+      b.rect(0, cap - 2, SIZE, 2, P.lit);      /* 꼭대기 모서리에 빛 */
+    }
+    /* 앞면 — 세로로 세운 벽돌 */
+    b.rect(0, cap, SIZE, SIZE - cap, P.mortar);
+    var colW = 10 + Math.floor(r() * 3);
+    for (var x = -Math.floor(r() * colW); x < SIZE; x += colW) {
+      var bx = Math.max(0, x) + 1;
+      var bw = Math.min(colW, SIZE - Math.max(0, x)) - 2;
+      if (bw <= 1) continue;
+      var top = cap + 1 + Math.floor(r() * 3);
+      b.rect(bx, top, bw, SIZE - top - 2, P.face);
+      b.rect(bx, top, 1, SIZE - top - 2, P.lit);        /* 왼쪽 모서리에 빛 */
+      b.rect(bx + bw - 1, top, 1, SIZE - top - 2, P.dim);
+    }
+    /* 돌결 */
+    for (var i = 0; i < 70; i++) {
+      var px = Math.floor(r() * SIZE), py = cap + Math.floor(r() * (SIZE - cap));
+      if (b.get(px, py) === P.face) b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
+    }
+    /* 바닥과 닿는 두 줄은 가장 어둡게 — 벽이 바닥에 **박혀** 있어야 한다 */
+    b.rect(0, SIZE - 2, SIZE, 2, P.mortar);
     return b;
   }
 
@@ -355,6 +443,8 @@
     var b;
     if (kind === "floor") b = floorTile(variant % FLOOR_VARIANTS, zone && zone.floor);
     else if (kind === "wall") b = wallTile(variant % WALL_VARIANTS, zone && zone.wall);
+    else if (kind === "wallface") b = wallFaceTile(variant % WALL_VARIANTS, zone && zone.wall, false);
+    else if (kind === "wallthin") b = wallFaceTile(variant % WALL_VARIANTS, zone && zone.wall, true);
     else b = floorTile(0, zone && zone.floor);
     terrainCache[key] = bakeBoard(b);
     return terrainCache[key];
@@ -365,30 +455,51 @@
    * ⚠ 예전에는 문짝만 있어 벽에 널판을 댄 것처럼 보였다(제안서 지적:
    *   "지나갈 수 있는 곳" 임이 안 읽힌다). 기둥 둘과 인방을 두르면 그 자리가
    *   **뚫린 곳**이라는 것이 문짝보다 먼저 읽힌다. */
+  /* ⚠ **문 나무와 상자 나무가 같은 색이었다.** 문 #7b5330/#96663c 와
+   *   상자 #7a5730/#966c3c — 눈으로 가를 수 없는 차이다. 지도를 2배로 키우자
+   *   갈색 덩어리 여섯 개가 한 화면에 보이는데 셋만 문이었고, 그래서 "문이
+   *   갑자기 많아졌다" 로 느껴졌다(실제 문 수는 층당 4.7개로 그대로였다).
+   *
+   *   색과 생김새를 **둘 다** 가른다.
+   *     문   — 밝은 석재 아치가 먼저 보이고, 문짝은 **어둡고 차가운** 나무
+   *     상자 — 석재가 없고 **밝고 노란** 나무에 X 버팀대
+   *   멀리서 보면 문은 "밝은 테두리 + 어두운 속", 상자는 "밝은 덩어리" 다.
+   *   실루엣이 반대라 색을 못 봐도 갈린다.
+   * ⚠ 아치 어깨를 깎아 둔다. 네모 인방이면 '벽에 댄 널판' 으로 읽힌다. */
   art("door", {
-    o: OUT, w: "#7b5330", W: "#96663c", d: "#5c3d22", i: "#6f6a78", I: "#8a8492", k: "#c9a227",
-    s: "#6f6878", S: "#8d8599", n: "#443f4e"
+    o: OUT, w: "#4e3520", W: "#63442a", d: "#33210f", i: "#5b5666", I: "#837d90",
+    k: "#c9a227", s: "#7b7486", S: "#9a93aa", n: "#3b3646", V: "#17131d"
   }, [
-    ["rect", 0, 0, 32, 5, "s"],                 /* 인방 */
-    ["rect", 0, 0, 32, 1, "S"],
-    ["rect", 0, 4, 32, 1, "n"],
-    ["rect", 0, 0, 4, 32, "s"],                 /* 왼 기둥 */
-    ["rect", 0, 0, 1, 32, "S"],
-    ["rect", 3, 0, 1, 32, "n"],
-    ["rect", 28, 0, 4, 32, "s"],                /* 오른 기둥 */
-    ["rect", 28, 0, 1, 32, "n"],
-    ["rect", 31, 0, 1, 32, "n"],
-    ["rect", 4, 5, 24, 27, "d"],                /* 문짝 */
-    ["rect", 5, 6, 22, 26, "w"],
-    ["rect", 5, 6, 7, 26, "W"],
-    ["rect", 12, 6, 1, 26, "d"],
-    ["rect", 19, 6, 1, 26, "d"],
-    ["rect", 4, 11, 24, 3, "i"],                /* 철띠 */
-    ["rect", 4, 11, 24, 1, "I"],
-    ["rect", 4, 24, 24, 3, "i"],
-    ["rect", 4, 24, 24, 1, "I"],
-    ["ell", 23, 18, 3, 3, "k"],                 /* 손잡이 */
-    ["ell", 23, 18, 1, 1, "d"],
+    /* 석재 문틀 — 기둥을 5px 로 두껍게. 얇으면 문짝만 보인다 */
+    ["rect", 0, 0, 32, 7, "s"],                 /* 인방 */
+    ["rect", 0, 0, 32, 2, "S"],
+    ["rect", 0, 6, 32, 1, "n"],
+    ["rect", 0, 0, 5, 32, "s"],                 /* 왼 기둥 */
+    ["rect", 0, 0, 2, 32, "S"],
+    ["rect", 4, 0, 1, 32, "n"],
+    ["rect", 27, 0, 5, 32, "s"],                /* 오른 기둥 */
+    ["rect", 27, 0, 1, 32, "n"],
+    ["rect", 30, 0, 2, 32, "S"],
+    /* 아치 어깨 — 모서리를 채워 둥글린다 */
+    ["px", [[5, 7], [6, 7], [5, 8], [25, 7], [26, 7], [26, 8]], "s"],
+    ["px", [[5, 7], [26, 7]], "S"],
+    /* 문짝 뒤 어둠 — '뚫린 곳' 이라는 것이 여기서 읽힌다 */
+    ["rect", 5, 7, 22, 25, "V"],
+    /* 문짝 — 어둡고 차가운 나무. 세로 널 셋 */
+    ["rect", 6, 9, 20, 23, "d"],
+    ["rect", 7, 10, 18, 21, "w"],
+    ["rect", 7, 10, 18, 1, "W"],
+    ["rect", 13, 10, 1, 21, "d"],               /* 널 사이 홈 */
+    ["rect", 19, 10, 1, 21, "d"],
+    /* 철띠 둘 + 못 */
+    ["rect", 6, 13, 20, 3, "i"],
+    ["rect", 6, 13, 20, 1, "I"],
+    ["rect", 6, 25, 20, 3, "i"],
+    ["rect", 6, 25, 20, 1, "I"],
+    ["px", [[8, 14], [16, 14], [24, 14], [8, 26], [16, 26], [24, 26]], "I"],
+    /* 고리 손잡이 */
+    ["ell", 22, 20, 3, 3, "k"],
+    ["ell", 22, 20, 1, 2, "V"],
     ["outline", "o"]
   ]);
 

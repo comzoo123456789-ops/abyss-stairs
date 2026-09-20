@@ -29,6 +29,9 @@
    *   확대한다. 좌표를 하나하나 곱하면 반드시 어딘가 빠뜨린다.
    *   대신 `viewW/viewH` 는 **세계 좌표**가 된다(화면 px / 확대배).
    */
+  /* 벽 밑 그림자의 두께(세계 px). 한 칸(32)의 3분의 1 남짓이다 */
+  var AO_H = 10;
+
   var ZOOM_MIN = 1, ZOOM_MAX = 3;
   /* 확대해도 이만큼은 보여야 한다. 1920 에서 2배면 25x15 로 이 문턱을
    * 넘고, 3배면 16x10 이라 못 넘는다. 1280 에서는 2배가 15x9 라 1배로 남는다. */
@@ -43,9 +46,19 @@
 
   /* 바닥·벽은 한 장만 깔면 같은 무늬가 격자로 반복돼 눈에 걸린다.
    * 좌표로 변종을 골라 쓴다 — 난수로 고르면 매 프레임 무늬가 바뀐다. */
+  /* 이 칸에 몇 번 그림을 깔 것인가.
+   *
+   * ⚠ **하위 비트를 섞어야 한다.** 전에는 `(x*73856093) ^ (y*19349663)` 를
+   *   그대로 나머지 연산했는데, 두 상수의 하위 4비트가 13 과 15 라 변종이
+   *   `(13x) xor (15y) mod 16` 이 됐다 — 16칸 주기의 규칙적인 무늬다.
+   *   곱셈은 **상위 비트로** 뒤섞이므로 섞기(avalanche) 한 판을 거친다.
+   * ⚠ 자리로만 정한다(난수 아님). 새로고침할 때마다 바닥이 바뀌면 안 된다. */
   function variantAt(x, y, n) {
-    var h = (x * 73856093) ^ (y * 19349663);
-    return ((h >>> 0) % n);
+    var h = (x | 0) * 374761393 + (y | 0) * 668265263;
+    h = (h ^ (h >>> 13)) >>> 0;
+    h = (h * 1274126177) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h % n;
   }
 
   /* 미식별 물약은 겉모습 색이 곧 정보다 — 색마다 한 번 구워 둔다.
@@ -369,6 +382,12 @@
      *   전부 이 값을 쓰므로 확대해도 그대로 맞는다. */
     this.viewW = w / this.zoom;
     this.viewH = h / this.zoom;
+    /* ⚠ 캔버스 위 **UI**(미니맵·층 표시·토스트)는 지도와 같이 커지면 안 된다.
+     *   2배에서 토스트 글자가 두 배가 되어 지도를 덮었다. 그것들은 화면
+     *   좌표로 그린다 — 그래서 확대가 안 걸린 크기를 따로 들고 있는다. */
+    this.screenW = w;
+    this.screenH = h;
+    this.dpr = dpr;
     this.colsShown = Math.ceil(this.viewW / TILE) + 1;
     this.rowsShown = Math.ceil(this.viewH / TILE) + 1;
     this._vig = null;
@@ -574,7 +593,9 @@
   Renderer.prototype.drawMinimap = function (ctx) {
     /* ⚠ 좁은 화면에서는 한 칸 1px 로 줄인다. 2px 로 두면 62칸짜리 층이 132px 라
      *   390px 화면의 3분의 1을 덮는다. */
-    var g = this.game, lv = g.level, S2 = this.viewW < 620 ? 1 : 2, pad = 4;
+    /* ⚠ **화면 폭**을 본다. `viewW` 는 확대가 걸린 뒤의 세계 좌표라 2배에서
+     *   절반으로 보여, 넓은 화면인데 좁은 화면 배치가 걸린다. */
+    var g = this.game, lv = g.level, S2 = this.screenW < 620 ? 1 : 2, pad = 4;
     var w = lv.w * S2, h = lv.h * S2, x = 12, y = 12;
     ctx.fillStyle = "rgba(10,9,7,.86)";
     ctx.fillRect(x, y, w + pad * 2, h + pad * 2);
@@ -637,6 +658,10 @@
     var g = this.game, lv = g.level, ctx = this.ctx;
     dt = (dt === undefined) ? 16 : Math.min(48, dt);   /* 탭을 오래 떠났다 와도 한 번에 안 튀게 */
     var busy = false;
+    this.idleAnim = false;
+    /* 일렁임이 쓰는 시계. ⚠ `Date.now()` 를 쓰지 않는다 — 탭이 멈췄다 돌아오면
+     *   빛이 껑충 뛴다. 프레임 간격을 쌓는다. */
+    this.clock = (this.clock || 0) + dt;
     var i;
 
     this.drainEffects();
@@ -745,7 +770,19 @@
         sy = y * TILE + oy;
         ctx.globalAlpha = lv.visible[id] ? 1 : 0.30;   /* 기억은 어둡게 */
         if (t === D.WALL) {
-          ctx.drawImage(S.terrain("wall", variantAt(x, y, S.WALL_VARIANTS), zone), sx, sy);
+          /* 2.5D — **아래가 바닥인 벽만** 사람을 마주보는 앞면을 그린다.
+           * ⚠ 위아래가 다 바닥인 **한 칸 두께 벽**(층당 15칸)은 윗면을 넣을
+           *   자리가 없다. 앞면만 칸 전체에 세운다 — 안 그러면 그 칸만 벽이
+           *   절반 높이로 보인다.
+           * ⚠ 문도 '아래가 지나갈 수 있는 칸' 이다. 문 위 벽에 앞면이 없으면
+           *   문틀만 떠 보인다. */
+          var below = lv.at(x, y + 1), above = lv.at(x, y - 1);
+          var openBelow = (below === D.FLOOR || below === D.DOOR ||
+                           below === D.STAIRS || below === D.DEEP);
+          var openAbove = (above === D.FLOOR || above === D.DOOR ||
+                           above === D.STAIRS || above === D.DEEP);
+          var kind = !openBelow ? "wall" : (openAbove ? "wallthin" : "wallface");
+          ctx.drawImage(S.terrain(kind, variantAt(x, y, S.WALL_VARIANTS), zone), sx, sy);
         } else {
           ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), zone), sx, sy);
           if (t === D.DOOR) ctx.drawImage(S.bake("door"), sx, sy);
@@ -756,25 +793,97 @@
     }
     ctx.globalAlpha = 1;
 
+    /* 1-a2) 벽 밑 그림자(AO) — 벽과 바닥의 경계를 끊어 준다.
+     *
+     * ⚠ **두께를 한 칸(32px)으로 주면 안 된다.** 2배 확대에서 64px 이 되어
+     *   바닥의 절반이 검어진다. 10px 이면 확대해도 20px 이라 경계만 짚는다.
+     * ⚠ 위 칸이 벽인 **바닥** 칸에 깐다. 벽 칸에 깔면 벽 위에 얹혀 벽이 두 겹
+     *   으로 보인다.
+     * ⚠ 장식·함정·아이템보다 **먼저** 깐다. 나중에 깔면 상자와 물건이 그늘에
+     *   묻힌다.
+     * ⚠ 그라디언트를 칸마다 새로 만들지 않는다 — 한 번 만들어 쓴다.
+     *   칸마다 만들면 한 프레임에 백 번 넘게 만들어진다. */
+    if (!this._ao) {
+      var aoc = document.createElement("canvas");
+      aoc.width = 1; aoc.height = AO_H;
+      var aox = aoc.getContext("2d");
+      var aog = aox.createLinearGradient(0, 0, 0, AO_H);
+      aog.addColorStop(0, "rgba(6, 5, 9, .62)");
+      aog.addColorStop(0.55, "rgba(6, 5, 9, .22)");
+      aog.addColorStop(1, "rgba(6, 5, 9, 0)");
+      aox.fillStyle = aog;
+      aox.fillRect(0, 0, 1, AO_H);
+      this._ao = aoc;
+    }
+    for (y = y0; y <= y1; y++) {
+      for (x = x0; x <= x1; x++) {
+        id = lv.idx(x, y);
+        if (!lv.seen[id] || lv.tiles[id] === D.WALL) continue;
+        if (lv.at(x, y - 1) !== D.WALL) continue;
+        ctx.globalAlpha = lv.visible[id] ? 1 : 0.30;
+        ctx.drawImage(this._ao, 0, 0, 1, AO_H,
+                      x * TILE + ox, y * TILE + oy, TILE, AO_H);
+      }
+    }
+    ctx.globalAlpha = 1;
+
     /* 1-a) 구역 장식 — 바닥 바로 위, 함정·아이템보다 **아래**다.
      * ⚠ 순서를 바꾸면 물웅덩이가 아이템을 덮는다. 장식은 언제나 맨 밑이다. */
     if (lv.props && zone.props) {
       /* 횃불 빛을 **먼저** 깐다. 그림보다 위에 깔면 불이 빛에 묻힌다.
        * ⚠ 보이는 칸에만 깐다. 기억으로만 아는 자리까지 밝히면 지금 보이는 곳과
-       *   구별이 안 된다(안개의 뜻이 사라진다). */
+       *   구별이 안 된다(안개의 뜻이 사라진다).
+       *
+       * 일렁임 —
+       * ⚠ **게임 난수를 쓰지 않는다.** 이 저장소는 같은 씨앗이 같은 판이어야
+       *   한다. 시각 효과가 `this.rng` 를 건드리면 씨앗이 어긋난다.
+       *   자리와 시계로만 만든다(sin 둘을 어긋난 주기로 겹친다).
+       * ⚠ 횃불마다 **위상을 달리한다.** 같은 위상이면 층 전체가 한꺼번에
+       *   깜빡여 형광등처럼 보인다.
+       * ⚠ 그라디언트를 칸마다 새로 만들지 않는다. 한 번 구워 두고 **그릴 때
+       *   크기만 바꾼다** — 프레임마다 만들면 그리기 시간이 는다. */
+      if (!this._glow) {
+        var gc = document.createElement("canvas");
+        var GR = 64;                                   /* 구워 두는 반지름 */
+        gc.width = GR * 2; gc.height = GR * 2;
+        var gx2 = gc.getContext("2d");
+        var gg = gx2.createRadialGradient(GR, GR, 2, GR, GR, GR);
+        gg.addColorStop(0, "rgba(255, 176, 74, 1)");
+        gg.addColorStop(0.45, "rgba(255, 158, 62, .38)");
+        gg.addColorStop(1, "rgba(255, 150, 58, 0)");
+        gx2.fillStyle = gg;
+        gx2.fillRect(0, 0, GR * 2, GR * 2);
+        this._glow = gc;
+      }
+      var now = this.clock || 0;
+      var litTorch = 0;
+      ctx.globalCompositeOperation = "lighter";
       for (y = y0; y <= y1; y++) {
         for (x = x0; x <= x1; x++) {
           id = lv.idx(x, y);
           if (!lv.visible[id] || !lv.props[id]) continue;
           if (zone.props[(lv.props[id] - 1) % zone.props.length] !== "torch") continue;
+          var ph = (x * 12.9898 + y * 78.233);          /* 횃불마다 다른 위상 */
+          var fl = 1 +
+            Math.sin(now * 0.0091 + ph) * 0.055 +
+            Math.sin(now * 0.0237 + ph * 1.7) * 0.032;
+          var rad = TILE * 2.1 * fl;
           var tcx = x * TILE + ox + TILE / 2, tcy = y * TILE + oy + 8;
-          var tg = ctx.createRadialGradient(tcx, tcy, 2, tcx, tcy, TILE * 2.1);
-          tg.addColorStop(0, "rgba(255, 176, 74, .30)");
-          tg.addColorStop(1, "rgba(255, 176, 74, 0)");
-          ctx.fillStyle = tg;
-          ctx.fillRect(tcx - TILE * 2.1, tcy - TILE * 2.1, TILE * 4.2, TILE * 4.2);
+          ctx.globalAlpha = 0.30 * fl;
+          ctx.drawImage(this._glow, tcx - rad, tcy - rad, rad * 2, rad * 2);
+          litTorch++;
         }
       }
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+      /* ⚠ 일렁이려면 **계속 다시 그려야** 한다. 이 고리는 할 일이 없으면
+       *   멈추므로(main.js 의 loop) 횃불이 보일 때만 깨워 둔다. 항상 깨워
+       *   두면 턴제인데도 쉬는 동안 CPU 를 계속 쓴다. */
+      /* ⚠ 여기서 `busy = true` 를 주면 **유휴에도 60fps 로 돈다.** 턴제인데
+       *   가만히 있는 동안 CPU 한 코어를 계속 쓰는 셈이다(검사 「유휴 시
+       *   정지」가 그걸 지킨다). 일렁임은 **느린 박자로 충분하다** —
+       *   따로 알려서 부르는 쪽이 쉬엄쉬엄 부르게 한다. */
+      this.idleAnim = litTorch > 0;
       for (y = y0; y <= y1; y++) {
         for (x = x0; x <= x1; x++) {
           id = lv.idx(x, y);
@@ -986,12 +1095,21 @@
     this.drawDmgs(ctx, ox, oy);
 
     if (this.drawGoal()) busy = true;
-    /* 좌상단 미니맵 · 우하단 층 표시 — 진행 정보를 화면 구석에 고정한다(제안서) */
+    /* 좌상단 미니맵 · 우하단 층 표시 · 토스트 — **화면 좌표로** 그린다.
+     *
+     * ⚠ 여기서 확대 변환을 풀지 않으면 이것들이 지도와 같이 2배가 된다.
+     *   실제로 그랬다 — 토스트 글자가 두 배가 되어 지도 아래쪽을 덮고
+     *   퀵슬롯까지 가렸다. 이건 지도 위에 얹힌 **UI** 지 지도가 아니다.
+     * ⚠ 풀었으면 반드시 되돌린다. 다음 프레임이 이 변환을 물려받으면
+     *   지도가 확대되지 않은 채로 그려진다. */
+    var zsave = this.zoom || 1, dsave = this.dpr || 1;
+    ctx.setTransform(dsave, 0, 0, dsave, 0, 0);
     this.drawMinimap(ctx);
     this.drawDepthBadge();
     this.drawToasts();
     /* 뷰포트를 픽셀 테두리로 감싼다 — 화면 안에 "떠 있는 느낌" 을 없앤다 */
-    pxFrame(ctx, 0, 0, this.viewW, this.viewH);
+    pxFrame(ctx, 0, 0, this.screenW, this.screenH);
+    ctx.setTransform(dsave * zsave, 0, 0, dsave * zsave, 0, 0);
     return busy;
   };
 
@@ -1030,7 +1148,7 @@
     if (!this.toasts.length) return;
     var ctx = this.ctx;
     var lh = 20, pad = 9, left = 14;
-    var maxW = Math.max(60, this.viewW - left * 2 - pad * 2);
+    var maxW = Math.max(60, this.screenW - left * 2 - pad * 2);
     ctx.font = "600 12.5px " + (global.TOAST_FONT || '"Pretendard Variable", Pretendard, "Malgun Gothic", sans-serif');
     ctx.textBaseline = "middle";
 
@@ -1043,10 +1161,10 @@
       total += lines.length;
     }
     /* 화면보다 높으면 오래된 것부터 버린다 — 게임을 덮으면 안 된다 */
-    var room = Math.max(1, Math.floor((this.viewH - 60) / lh));
+    var room = Math.max(1, Math.floor((this.screenH - 60) / lh));
     while (total > room && blocks.length > 1) { total -= blocks[0].lines.length; blocks.shift(); }
 
-    var y = this.viewH - 12 - (total - 1) * lh;
+    var y = this.screenH - 12 - (total - 1) * lh;
     /* 그린 상자를 남긴다 — 캔버스 위 글자는 DOM 넘침 검사에 안 잡히므로
      * 점검기가 이 값으로 "새어 나갔는가" 를 센다. */
     this.toastBoxes = [];
@@ -1091,9 +1209,9 @@
      * ⚠ 좁은 화면에서는 **우상단**이다. 아래쪽은 토스트가 넓게 깔려 우하단에
      *   두면 가린다(390px 에서 실제로 가렸다). 위쪽은 미니맵 옆이 비어 있다. */
     var w = Math.max(14 + max * 9, nameW + 20), h = 54;
-    var narrow = this.viewW < 620;
-    var x = Math.max(12, this.viewW - w - 12);
-    var y = narrow ? 12 : Math.max(12, this.viewH - h - 12);
+    var narrow = this.screenW < 620;
+    var x = Math.max(12, this.screenW - w - 12);
+    var y = narrow ? 12 : Math.max(12, this.screenH - h - 12);
 
     ctx.fillStyle = "rgba(10,9,7,.86)";
     ctx.fillRect(x, y, w, h);
