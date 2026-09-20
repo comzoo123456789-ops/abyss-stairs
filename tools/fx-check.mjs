@@ -362,14 +362,30 @@ row("무기별로 다름", sig.length >= 4 && new Set(sig).size === sig.length,
     (w[0] ? w[0].name + " " + w[0].hitsOnMe + "대" : "?") + " vs " +
     (t[0] ? t[0].name + " " + t[0].hitsOnMe + "대" : "?") + " (약한 놈은 8대 이상이어야 한다)");
 
-  /* 화면에도 정말 뜨는가 — 머리 위 띠의 표식 색 픽셀을 센다 */
+  /* 화면에도 정말 뜨는가 — 머리 위 띠의 표식 색 픽셀을 센다.
+   *
+   * ⚠ **한 번만 재면 안 된다.** 표식은 떠오른 지 0.43초 뒤부터 흐려지는데
+   *   `sleep(260)` 한 번으로 재면 기계가 바쁠 때 그 창을 놓친다. 전체 검사
+   *   안에서만 12 → 0 으로 빨개지고 혼자 돌리면 세 번 다 통과했다.
+   *   깜빡이는 검사는 없는 것보다 나쁘다 — 빨개져도 무시하게 된다.
+   *   창 전체를 훑어 **제일 큰 값**을 쓴다. 시간 경합이 사라진다.
+   * ⚠ 약한 놈도 **똑같이** 훑는다. 센 놈만 여러 번 재면 비교가 불공정해진다. */
+  const PIP_COLS = "[[224,90,90],[224,160,58],[201,192,136]]";
+  const peak = async (x, y) => {
+    let best = 0;
+    for (let i = 0; i < 12; i++) {
+      const v = await ev("window.__pixMatch(" + x + ", " + y + ", 44, 6, " + PIP_COLS + ", 26)");
+      if (v > best) best = v;
+      await sleep(60);
+    }
+    return best;
+  };
   const a2 = await arena({ mon: "troll", calm: true, at: 2, depth: 9 });
-  await sleep(260);
-  const pip = await ev("window.__pixMatch(" + (a2.x * 32 - 6) + ", " + (a2.y * 32 - 11) + ", 44, 6, [[224,90,90],[224,160,58],[201,192,136]], 26)");
+  const pip = await peak(a2.x * 32 - 6, a2.y * 32 - 11);
   const b2 = await arena({ mon: "rat", calm: true, at: 2 });
-  await sleep(260);
-  const none = await ev("window.__pixMatch(" + (b2.x * 32 - 6) + ", " + (b2.y * 32 - 11) + ", 44, 6, [[224,90,90],[224,160,58],[201,192,136]], 26)");
-  row("위험 표식", pip > none, "센 놈 위 표식 픽셀 " + pip + " · 약한 놈 " + none);
+  const none = await peak(b2.x * 32 - 6, b2.y * 32 - 11);
+  row("위험 표식", pip > none, "센 놈 위 표식 픽셀 " + pip + " · 약한 놈 " + none +
+      " (0.72초를 훑어 가장 큰 값)");
 }
 
 /* ⑩ 구운 판이 새지 않는가 — 색을 값에서 만들면 여기가 끝없이 는다 */

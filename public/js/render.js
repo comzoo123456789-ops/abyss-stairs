@@ -1128,7 +1128,11 @@
     el.innerHTML =
       '<div class="hud-who">' +
         '<canvas class="hud-art" width="32" height="32" data-sprite="' + esc(p.sprite) + '"></canvas>' +
-        '<div class="hud-name"><b>' + esc(c.name) + "</b><em>" + esc(c.title) + "</em></div>" +
+        /* ⚠ 특화 이름은 사이드바 `.who` 에만 있었다. 그 줄이 HUD 와 통째로
+         *   겹쳐서 없앴으므로(css 참조) **여기로 옮겨 왔다.** 옮기기 전에
+         *   지우면 특화가 어디에도 안 보인다. */
+        '<div class="hud-name"><b>' + esc(c.name) + "</b><em>" + esc(c.title) +
+          (p.specName ? " · " + esc(p.specName) : "") + "</em></div>" +
       "</div>" +
       '<div class="hud-bars">' +
         meter(p.hp, mx, "hp", hpLabel, this.hudGhost) +
@@ -1207,29 +1211,9 @@
     }
     if (ails.length) html += '<div class="ails">' + ails.join("") + "</div>";
 
-    /* 스킬 — 쿨다운이 게이지로 차오른다. 키는 Q W E R */
-    var keys = ["Q", "W", "E", "R"];
-    html += '<div class="skills">';
-    for (var i = 0; i < DATA.SKILL_SLOTS; i++) {
-      var s = p.skills[i];
-      if (!s) {
-        html += '<div class="skill empty"><span class="k">' + keys[i] + "</span>" +
-                '<span class="n">빈 자리</span></div>';
-        continue;
-      }
-      var def = DATA.byId(DATA.SKILLS, s.id);
-      var cd = g.skillCd(s);
-      var ready = s.cd <= 0;
-      var fill = ready ? 100 : Math.round((1 - s.cd / Math.max(1, cd)) * 100);
-      html += '<button class="skill' + (ready ? " ready" : "") + '" data-skill="' + i + '"' +
-        (ready ? "" : " disabled") + ' title="' + esc(def.desc) + '">' +
-        '<i style="width:' + fill + '%"></i>' +
-        '<span class="k">' + keys[i] + "</span>" +
-        '<span class="n">' + esc(def.name) + '<em>' + s.rank + "단</em></span>" +
-        '<span class="cd">' + (ready ? "준비" : s.cd + "턴") + "</span>" +
-        "</button>";
-    }
-    html += "</div>";
+    /* ⚠ 스킬 네 칸은 **여기 없다.** 화면 아래 가운데(`drawQuick`)로 옮겼다.
+     *   사이드바에 있으면 싸우는 중에 시선이 오른쪽 끝까지 갔다 와야 하고,
+     *   사이드바 세로도 네 줄 먹는다. 같은 것을 두 군데서 그리지 않는다. */
 
     /* 핵심 수치 — **한 줄**이다.
      * ⚠ 2×2 상자표였다. 네 칸에 테두리를 두르니 좁은 화면에서 세로를 80px 넘게
@@ -1267,6 +1251,9 @@
     /* 장비 — 등급 색으로 한눈에 */
     /* ⚠ 빈 칸도 **보여 준다.** 비어 있다는 것이 정보다(제안서: "빈 칸도 정보").
      *   안 보여 주면 보조 장비를 낄 수 있다는 것조차 모른다. */
+    /* ⚠ 칸을 키웠다. 스킬 네 줄이 빠져나간 자리를 여기에 쓴다.
+     *   아이콘·칸 이름·물건 이름·수치가 **각자 제 줄**을 갖는다. 전에는 한 줄에
+     *   밀어 넣어 물건 이름이 말줄임으로 잘렸다. */
     html += '<div class="equip">';
     var slots = [["weapon", "무기", "ic-atk"], ["armor", "갑옷", "ic-armor"], ["offhand", "보조", "ic-off"]];
     for (var q = 0; q < slots.length; q++) {
@@ -1274,7 +1261,7 @@
       html += '<div class="eq-row' + (it ? "" : " none") + '">' +
         '<span class="eq-slot' + (it ? " on" + rarCls(it) : "") + '"><i class="ic ' + slots[q][2] + '"></i></span>' +
         "<em>" + slots[q][1] + "</em>" +
-        (it ? '<b class="' + rarCls(it).trim() + '">' + esc(it.name) + "<s>+" + it.power + "</s></b>"
+        (it ? '<b class="' + rarCls(it).trim() + '">' + esc(it.name) + "</b><s>+" + it.power + "</s>"
             : '<b class="dim">비어 있다</b>') + "</div>";
     }
     html += "</div>";
@@ -1288,6 +1275,49 @@
       /* 몸 → 갑옷 → 무기. 지도와 **같은 순서**여야 한다 */
       drawFigure(x, g.player, art.getAttribute("data-sprite"), 0, null, 0, 0);
     }
+  };
+
+  /* ── 스킬 퀵슬롯 ──────────────────────────────────────
+   *
+   * 화면 아래 가운데. 한 칸에 **셋**이 보인다.
+   *   단축키(Q W E R) · 스킬 이름 · 남은 턴
+   *
+   * ⚠ 쿨다운을 **칸이 차오르는 것**으로 보여 준다. 숫자만 있으면 곁눈으로는
+   *   못 읽는다. 턴제라도 싸우는 중에 눈은 지도에 있다.
+   * ⚠ 빈 자리도 그린다. 비어 있다는 것이 정보다 — 안 보여 주면 스킬을 넣을
+   *   수 있다는 것조차 모른다.
+   * ⚠ 이 함수가 스킬을 그리는 **유일한 곳**이다. 사이드바에도 있고 여기에도
+   *   있으면 한쪽만 고쳐져 어긋난다.
+   */
+  var QUICK_KEYS = ["Q", "W", "E", "R"];
+
+  Renderer.prototype.drawQuick = function (el) {
+    if (!el) return;
+    var g = this.game, p = g.player, DATA = global.DATA;
+    var html = "";
+    for (var i = 0; i < DATA.SKILL_SLOTS; i++) {
+      var s = p.skills[i];
+      if (!s) {
+        html += '<div class="qs empty"><b class="k">' + QUICK_KEYS[i] + "</b>" +
+                '<span class="n">빈 자리</span></div>';
+        continue;
+      }
+      var def = DATA.byId(DATA.SKILLS, s.id);
+      var cd = g.skillCd(s);
+      var ready = s.cd <= 0;
+      /* 남은 만큼 위에서 덮는다 — 덮인 넓이가 곧 남은 턴이다 */
+      var left = ready ? 0 : Math.round(s.cd / Math.max(1, cd) * 100);
+      html += '<button class="qs' + (ready ? " ready" : "") + '" data-skill="' + i + '"' +
+        (ready ? "" : " disabled") +
+        ' title="' + esc(def.name) + " — " + esc(def.desc) + '">' +
+        '<u style="height:' + left + '%"></u>' +
+        '<b class="k">' + QUICK_KEYS[i] + "</b>" +
+        '<span class="rk">' + s.rank + "단</span>" +
+        '<span class="n">' + esc(def.name) + "</span>" +
+        '<span class="cd">' + (ready ? "준비" : s.cd + "턴") + "</span>" +
+        "</button>";
+    }
+    el.innerHTML = html;
   };
 
   /* ── 장비 창 ──────────────────────────────────────────

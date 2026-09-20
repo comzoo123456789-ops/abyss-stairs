@@ -322,11 +322,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const build = await ev(
     "(function(){" +
     "  var p = window.__peek();" +
-    "  var skillRows = document.querySelectorAll('.skills .skill').length;" +
-    "  var ready = document.querySelectorAll('.skills .skill.ready').length;" +
+    /* ⚠ 스킬 칸은 사이드바(`.skills .skill`)가 아니라 **화면 아래 퀵슬롯**이다.
+     *   선택자가 검사 안에 박혀 있으면 제품이 옮겨갔을 때 조용히 0을 센다. */
+    "  var skillRows = document.querySelectorAll('.quick .qs').length;" +
+    "  var ready = document.querySelectorAll('.quick .qs.ready').length;" +
     "  var invColored = [...document.querySelectorAll('.inv-item .nm')]" +
     "     .filter(function(e){ return e.style.color; }).length;" +
-    "  var gold = document.querySelector('.who-gold');" +
+    /* ⚠ 금화를 `.who-gold` 에서 읽고 있었는데 그 줄을 감췄다. 감춰도
+     *   textContent 는 그대로 나오므로 **검사는 조용히 통과한다** — 아무도 못
+     *   보는 값을 재게 된다. 상단 상태줄에서 읽고, 눈에 보이는지까지 본다. */
+    "  var gEl = document.querySelector('.hud-num .g');" +
+    "  var gold = (gEl && gEl.checkVisibility && gEl.checkVisibility()) ? gEl : null;" +
     "  return { skillRows: skillRows, ready: ready, invColored: invColored," +
     "           gold: gold ? gold.textContent.trim() : '(없음)'," +
     "           skills: p.skills.length, crit: p.crit, weapon: p.weapon, rarity: p.rarity," +
@@ -699,36 +705,139 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
        * "버튼이 있다" 로는 이걸 못 잡는다. 사각형을 재서 줄과 좌우를 확인한다. */
       const box = e => e.getBoundingClientRect();
       const dp = box(document.querySelector(".dpad"));
-      const ac = box(document.querySelector(".acts:not(.skillpad)"));
-      const sk = box(document.querySelector(".skillpad"));
+      const ac = box(document.querySelector(".acts"));
       const rowOf = list => {
         const ys = list.map(e => Math.round(box(e).top));
         return new Set(ys).size;                    /* 한 줄이면 1 */
       };
+      /* ⚠ QWER 줄(.skillpad)이 여기 있었다. 스킬은 캔버스 위 퀵슬롯으로
+       *   옮겼으므로 패드에서는 더 안 센다. 퀵슬롯 자리는 아래에서 따로 잰다
+       *   — 뷰포트 안에 있는지, 넘치지 않는지는 여기와 조건이 다르다. */
       return { display:cs.display, count:btns.length, tooSmall:small.length, touchClass:document.body.classList.contains("is-touch"),
                minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(box(b).width,box(b).height)))):0,
                narrow: innerWidth <= 620,
-               dpadLeftmost: dp.left <= ac.left + 1 && dp.left <= sk.left + 1,
-               actsRows: rowOf([...document.querySelectorAll(".acts:not(.skillpad) button")]),
-               skillRows: rowOf([...document.querySelectorAll(".skillpad button")]),
-               skillsBelowActs: sk.top >= ac.bottom - 2,
-               dpadSpansBoth: dp.top <= ac.top + 2 && dp.bottom >= sk.bottom - 2,
+               dpadLeftmost: dp.left <= ac.left + 1,
+               actsRows: rowOf([...document.querySelectorAll(".acts button")]),
+               dpadSpansActs: dp.top <= ac.top + 2 && dp.bottom >= ac.bottom - 2,
                geo: "십자 x"+Math.round(dp.left)+"~"+Math.round(dp.right)+
-                    " · 행동 y"+Math.round(ac.top)+" · 스킬 y"+Math.round(sk.top) };
+                    " · 행동 y"+Math.round(ac.top) };
     })()`);
     /* 좁은 화면에서만 격자 배치를 요구한다 — 넓은 터치 화면은 한 줄이 정상이다 */
     const padPlaced = !pad.narrow ||
-      (pad.dpadLeftmost && pad.actsRows === 1 && pad.skillRows === 1 &&
-       pad.skillsBelowActs && pad.dpadSpansBoth);
-    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=8 && pad.tooSmall===0 && padPlaced),
+      (pad.dpadLeftmost && pad.actsRows === 1 && pad.dpadSpansActs);
+    console.log("터치 패드    :", ok(pad.display!=="none" && pad.count>=5 && pad.tooSmall===0 && padPlaced),
       "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
-    padPass = pad.display !== "none" && pad.count >= 8 && pad.tooSmall === 0 && padPlaced;
+    padPass = pad.display !== "none" && pad.count >= 5 && pad.tooSmall === 0 && padPlaced;
     console.log("  패드 배치  :", ok(padPlaced), pad.narrow
-      ? pad.geo + " · 행동 " + pad.actsRows + "줄 · 스킬 " + pad.skillRows + "줄" +
-        (pad.dpadLeftmost ? " · 십자 맨 왼쪽" : " · ⚠십자가 왼쪽이 아니다") +
-        (pad.skillsBelowActs ? " · 스킬이 행동 아래" : " · ⚠스킬이 행동 아래가 아니다")
+      ? pad.geo + " · 행동 " + pad.actsRows + "줄" +
+        (pad.dpadLeftmost ? " · 십자 맨 왼쪽" : " · ⚠십자가 왼쪽이 아니다")
       : "넓은 화면 — 한 줄 배치(정상) · " + pad.geo);
   }
+
+  /* ── 퀵슬롯이 **제자리에 있는가** ──────────────────────
+   *
+   * "칸이 넷 있다" 로는 부족하다. 캔버스 위에 떠 있는 띠라서 넘치거나
+   * 캔버스 밖으로 나가도 DOM 에는 멀쩡히 넷이다.
+   *
+   * ⚠ `.click()` 으로 판정하지 않는다. 잘린 요소에도 먹는다. 칸 한가운데
+   *   좌표를 **누가 받는지**(elementFromPoint) 본다.
+   * ⚠ 뷰포트(캔버스가 든 칸) 기준으로 잰다. 화면 기준으로 재면 사이드바가
+   *   덮고 있어도 통과한다. */
+  const qk = await ev(`(()=>{
+    const q = document.querySelector(".quick");
+    if (!q) return { n: 0, why: "#quick 이 없다" };
+    const vp = document.querySelector(".viewport").getBoundingClientRect();
+    const cells = [...q.querySelectorAll(".qs")];
+    const bs = cells.map(c => c.getBoundingClientRect());
+    const rows = new Set(bs.map(b => Math.round(b.top))).size;
+    /* 칸 한가운데를 그 칸이 받는가 — 덮였거나 잘리면 다른 것이 잡힌다.
+     *
+     * ⚠ **찬 칸만 센다.** 빈 칸은 pointer-events:none 이라 좌표가 지도로
+     *   내려가야 정상이다. 처음에 넷 다 받아야 한다고 썼다가 빨개졌는데
+     *   틀린 쪽은 제품이 아니라 이 전제였다 — 빈 칸이 지도 클릭을 삼키면
+     *   캔버스 아래 가운데를 눌러 걸어갈 수가 없다.
+     * ⚠ 그래서 빈 칸은 **반대로** 잰다. 삼키면 안 된다. */
+    let owned = 0, filled = 0, swallow = 0;
+    for (let i = 0; i < cells.length; i++) {
+      const b = bs[i];
+      const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+      const mine = hit && (hit === cells[i] || cells[i].contains(hit));
+      if (cells[i].classList.contains("empty")) { if (mine) swallow++; }
+      else { filled++; if (mine) owned++; }
+    }
+    const qb = q.getBoundingClientRect();
+    return {
+      n: cells.length, rows: rows, owned: owned, filled: filled, swallow: swallow,
+      inside: qb.left >= vp.left - 1 && qb.right <= vp.right + 1 &&
+              qb.bottom <= vp.bottom + 1 && qb.top >= vp.top - 1,
+      centered: Math.abs((qb.left + qb.right) / 2 - (vp.left + vp.right) / 2) <= 2,
+      minSide: bs.length ? Math.round(Math.min(...bs.map(b => Math.min(b.width, b.height)))) : 0,
+      /* 단축키 글자와 이름이 **정말 그려졌는가.** 빈 칸이면 이름이 '빈 자리' 다 */
+      keys: cells.map(c => (c.querySelector(".k") || {}).textContent || "").join(""),
+      named: cells.filter(c => ((c.querySelector(".n") || {}).textContent || "").trim()).length,
+      /* 남은 턴이 보이는가 */
+      cds: cells.filter(c => ((c.querySelector(".cd") || {}).textContent || "").trim()).length,
+      geo: "x" + Math.round(qb.left) + "~" + Math.round(qb.right) +
+           " · 뷰포트 x" + Math.round(vp.left) + "~" + Math.round(vp.right) +
+           " · 바닥에서 " + Math.round(vp.bottom - qb.bottom) + "px"
+    };
+  })()`);
+  const qkOK = qk.n === 4 && qk.rows === 1 && qk.owned === qk.filled && qk.filled >= 1 &&
+               qk.swallow === 0 && qk.inside &&
+               qk.centered && qk.keys === "QWER" && qk.named === 4 &&
+               (!TOUCH || qk.minSide >= 40);
+  console.log("퀵슬롯 자리  :", ok(qkOK),
+    qk.n + "칸(찬 것 " + qk.filled + ") · " + qk.rows + "줄 · 좌표를 받는 찬 칸 " +
+    qk.owned + "/" + qk.filled +
+    (qk.swallow ? " · ⚠빈 칸 " + qk.swallow + "개가 지도 클릭을 삼킨다" : " · 빈 칸은 지도로 통과") +
+    " · 가장 작은 변 " +
+    qk.minSide + "px · 키 " + (qk.keys || "없음") + " · 이름 " + qk.named + " · 남은턴 " + qk.cds +
+    (qk.inside ? "" : " · ⚠뷰포트를 넘는다") + (qk.centered ? " · 가운데" : " · ⚠가운데가 아니다") +
+    " · " + (qk.geo || qk.why || ""));
+  /* ── 고른 특화가 **화면에 보이는가** ────────────────────
+   *
+   * 특화 이름은 사이드바 "누구인가" 줄에만 있었다. 그 줄이 상단 상태줄과
+   * 통째로 겹쳐서 없앴고, 특화만 상태줄로 옮겼다. 옮긴 것이 진짜 그려지는지
+   * 재지 않으면 특화가 **어디에도 없는 채로** 검사가 파랗다.
+   *
+   * ⚠ 화면 글자에 들어 있나만 보면 안 된다. 특화를 안 골랐으면 기댓값도
+   *   빈 문자열이라 늘 통과한다. `__peek().specName` 을 기댓값으로 삼고,
+   *   그 값이 실제로 생겼는지부터 본다.
+   * ⚠ textContent 로는 부족하다 — 감춘 요소도 글자를 준다(`.who` 가 바로
+   *   그렇다). `checkVisibility()` 로 **보이는 것**만 읽는다.
+   */
+  const spec = await (async () => {
+    const D = await ev("window.DATA.SPEC_DEPTH");
+    await ev("window.__toDepth(" + D + ")");
+    await sleep(260);
+    /* 특화 고르기 창이 떴으면 첫 칸을 고른다. 레벨업 선택이 먼저 떠 있으면
+     * 줄을 서므로(pendingQueue) 몇 번 더 고른다. */
+    for (let i = 0; i < 4; i++) {
+      if (!(await ev("window.__peek().perkOpen"))) break;
+      await ev("window.__pickPerk && window.__pickPerk(0)");
+      await sleep(200);
+      if (await ev("window.__peek().specName")) break;
+    }
+    return await ev(`(function(){
+      var p = window.__peek();
+      function visText(sel) {
+        var e = document.querySelector(sel);
+        if (!e || !e.checkVisibility || !e.checkVisibility()) return "";
+        return (e.textContent || "").replace(/\s+/g, " ").trim();
+      }
+      var hud = visText(".hud");
+      var side = visText(".side .who");
+      return { name: p.specName, depth: p.depth, inHud: !!(p.specName && hud.indexOf(p.specName) >= 0),
+               inSide: !!(p.specName && side.indexOf(p.specName) >= 0),
+               hud: hud.slice(0, 60) };
+    })()`);
+  })();
+  const specOK = !!spec.name && spec.inHud;
+  console.log("특화 표시    :", ok(specOK),
+    spec.name ? "「" + spec.name + "」 · " + (spec.inHud ? "상단 상태줄에 있다" : "⚠상단 상태줄에 없다") +
+                (spec.inSide ? " · 사이드바에도 있다(중복)" : "") + " · " + spec.hud
+              : "⚠ " + spec.depth + "층까지 갔는데 특화를 못 골랐다");
+
   /* 스킬을 눌렀을 때 일어날 수 있는 일은 둘뿐이다.
    *   ① 터졌다  → 쿨다운이 생기고 버튼이 잠긴다
    *   ② 거절됐다 → 쿨다운이 그대로고 이유가 기록에 남는다("닿는 적이 없다")
@@ -872,6 +981,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                oldKeysDead && noDiagButtons &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
+               qkOK && specOK &&
                build.gold !== "(없음)" &&
                potions.looks.length >= potions.names.length &&
                startCheck.shown && startCheck.cards === 3 && startCheck.overflow === 0 && startCheck.hasSpace &&

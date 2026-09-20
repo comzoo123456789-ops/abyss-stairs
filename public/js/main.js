@@ -201,8 +201,11 @@
     els.seed.textContent = (game.mode === "daily" && window.DAILY)
       ? window.DAILY.dayLabel(window.DAILY.dayKey())
       : "#" + game.seed.toString(16).toUpperCase();
-    /* 스킬 버튼은 매번 다시 그려지므로 그때마다 배선한다 */
-    els.stats.querySelectorAll("[data-skill]").forEach(function (b) {
+    /* 스킬 퀵슬롯 — 화면 아래 가운데.
+     * ⚠ 매번 다시 그려지므로 **그릴 때마다 배선한다.** innerHTML 로 갈아
+     *   끼우면 안에 붙은 배선이 통째로 죽는다. */
+    view.drawQuick(els.quick);
+    els.quick.querySelectorAll("[data-skill]").forEach(function (b) {
       b.addEventListener("click", function () {
         game.useSkill(parseInt(b.getAttribute("data-skill"), 10));
         afterAction();
@@ -698,6 +701,7 @@
     els.stats = document.getElementById("stats");
     els.inv = document.getElementById("inv");
     els.log = document.getElementById("log");
+    els.quick = document.getElementById("quick");   /* 스킬 퀵슬롯 — 캔버스 아래 */
     els.end = document.getElementById("end");
     els.endTitle = document.getElementById("endTitle");
     els.endBody = document.getElementById("endBody");
@@ -981,10 +985,9 @@
     bindPress(document.getElementById("btnDown"), function () { game.descendIfStairs(); afterAction(); });
     bindPress(document.getElementById("btnWait"), function () { game.wait(); afterAction(); });
     bindPress(document.getElementById("btnShoot"), function () { game.shoot(); afterAction(); });
-    document.querySelectorAll("[data-skillbtn]").forEach(function (b) {
-      var sl = parseInt(b.getAttribute("data-skillbtn"), 10);
-      bindPress(b, function () { game.useSkill(sl); afterAction(); });
-    });
+    /* ⚠ `[data-skillbtn]` 배선이 여기 있었다. 그 단추(터치 패드의 QWER 줄)를
+     *   없앴으므로 배선도 지운다. 퀵슬롯 칸 자체가 눌리므로 터치에서도
+     *   그대로 쓴다 — 스킬을 그리는 곳도 누르는 곳도 한 군데다. */
 
     loadBest();
     view.resize();
@@ -1000,6 +1003,9 @@
         level: game.player.level, xp: game.player.xp,
         atk: game.power(), def: game.guard(),
         cls: game.cls.id,
+        /* 고른 특화. ⚠ 점검기가 **그 이름이 화면에 있는지** 재려면 기댓값이
+         *   있어야 한다. 화면 글자끼리만 맞대면 둘 다 비어도 통과한다. */
+        spec: game.player.spec || null, specName: game.player.specName || null,
         skills: game.player.skills.map(function (s) { return { id: s.id, rank: s.rank, cd: s.cd }; }),
         /* 첫 스킬의 남은 쿨다운. ⚠ 점검기가 "스킬이 터졌나" 를 이 값으로 가른다 —
          *   없으면 undefined 가 되어 성공 갈래가 통째로 죽는다(실제로 그랬다). */

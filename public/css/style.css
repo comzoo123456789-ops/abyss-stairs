@@ -427,29 +427,46 @@ button { font-family: inherit; cursor: pointer; }
 .stat-grid b { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--ink); }
 
 /* 장비 — 칸마다 아이콘 상자. **빈 칸도 그린다**(비어 있다는 것이 정보다). */
-.equip { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; }
-.equip > div {
-  display: flex;
+/* ══ 장비 — 스킬이 빠진 자리를 여기에 쓴다 ══════════
+ * ⚠ 전에는 한 줄에 아이콘·이름·수치를 다 밀어 넣어 물건 이름이 말줄임으로
+ *   잘렸다. 칸을 키우고 이름에 제 줄을 준다.
+ * ⚠ 빈 칸도 보여 준다. 비어 있다는 것이 정보다 — 안 보여 주면 보조 장비를
+ *   낄 수 있다는 것조차 모른다. */
+.equip { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+.eq-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto;
+  grid-template-areas: "ico slot num" "ico name num";
   align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  padding: 2px 0;
+  gap: 0 9px;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, .02);
 }
-.eq-slot {
-  width: 20px; height: 20px;
-  flex: 0 0 auto;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--panel-2);
-  border: 2px solid var(--line);
+.eq-row .eq-slot {
+  grid-area: ico;
+  width: 34px; height: 34px;
+  display: grid; place-items: center;
+  border: 2px solid var(--line); background: #17151d;
 }
-.eq-slot.on { border-color: currentColor; }
+.eq-row .eq-slot .ic { width: 20px; height: 20px; }
+.eq-row em {
+  grid-area: slot; font-style: normal;
+  font-size: 10.5px; color: var(--ink-dim); letter-spacing: 1px;
+}
+.eq-row b {
+  grid-area: name; font-size: 13.5px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.eq-row b.dim { color: var(--ink-dim); font-weight: 400; font-size: 12px; }
+.eq-row s {
+  grid-area: num; text-decoration: none;
+  font-family: var(--mono); font-size: 15px; color: var(--gold);
+}
+.eq-row.none { border-style: dashed; opacity: .75; }
 .eq-row.none .eq-slot { border-style: dashed; opacity: .55; }
 .eq-row.none .ic { opacity: .4; }
-.equip b { margin-left: auto; }
-.equip b.dim { color: var(--ink-dim); font-size: 10.5px; }
-.equip em { font-style: normal; color: var(--ink-dim); flex: 0 0 auto; }
-.equip b { font-weight: 500; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.equip b s { text-decoration: none; color: var(--gold); font-family: var(--mono); font-size: 10px; margin-left: 3px; }
+
 
 /* ── 직업 능력 ────────────────────────────────────────── */
 
@@ -498,7 +515,9 @@ button { font-family: inherit; cursor: pointer; }
 
 /* ── 가방 ─────────────────────────────────────────────── */
 
-.inv { display: flex; flex-direction: column; gap: 3px; max-height: 190px; overflow-y: auto; }
+/* ⚠ 스킬 네 줄이 빠져나갔으므로 가방이 그만큼 길어질 수 있다.
+ *   190px 이었을 때는 물건 넷만 보이고 나머지는 스크롤이었다. */
+.inv { display: flex; flex-direction: column; gap: 5px; max-height: 340px; overflow-y: auto; }
 /* 남은 자리 — 몇 칸이 비었는지가 **모양**으로 보인다. 눌러도 아무 일이 없다. */
 .inv-free {
   display: flex; align-items: center; gap: 3px;
@@ -540,9 +559,9 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--gold);
   text-align: center;
 }
-.inv-item .nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
+.inv-item .nm { grid-area: nm; font-size: 13.5px; font-weight: 600; }
 .inv-item .nm i { font-style: normal; font-size: 10px; color: var(--good); margin-left: 4px; }
-.inv-item .ds { grid-area: ds; font-size: 10.5px; color: var(--ink-dim); }
+.inv-item .ds { grid-area: ds; font-size: 11.5px; color: var(--ink-dim); }
 .inv-item.unknown { border-style: dashed; border-color: #4a4356; }
 /* 미식별 물약의 색 점 — 바닥에 놓인 병과 가방 속 병을 눈으로 짝지으려면 색이 있어야 한다 */
 .inv-item .dot {
@@ -950,7 +969,9 @@ kbd {
   .viewport { flex: 1 1 auto; min-height: 180px; }
   /* 좁은 화면에서는 기록 패널도 남는 자리를 먹지 않는다 — 각자 제 높이로 쌓인다. */
   .panel.grow { flex: 0 0 auto; }
-  .inv { max-height: 104px; }
+  /* ⚠ 여기에 `.inv { max-height }` 가 있었는데 **죽은 줄**이었다. 아래쪽
+   *   미디어 쿼리 밖의 `.inv` 규칙이 뒤에 있어서 늘 그쪽이 이겼다.
+   *   좁은 화면 값은 한 곳(맨 아래 900px 쿼리)에서만 정한다. */
   .log { max-height: 108px; min-height: 0; }
   .cols { grid-template-columns: 1fr; gap: 0; }
 
@@ -1030,44 +1051,63 @@ kbd {
 }
 
 /* 스킬 4칸 — 쿨다운이 게이지로 차오른다 */
-.skills { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
-.skills > * { min-width: 0; }
-.skill {
-  position: relative;
-  display: grid;
-  grid-template-columns: 20px 1fr auto;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 8px;
-  background: #15131b;
-  border: 1px solid var(--line);
-  border-radius: 0;
-  color: var(--ink-dim);
-  text-align: left;
-  overflow: hidden;
-  transition: border-color .12s;
+/* ══ 스킬 퀵슬롯 — 화면 아래 가운데 ══════════════════
+ *
+ * ⚠ 옛 `.skills`/`.skill` 블록을 **지우고** 다시 썼다. 남겨 두면 두 벌이
+ *   겹쳐 새 규칙을 덮는다.
+ * ⚠ 캔버스 **위에 떠 있다**(absolute). 세로를 먹으면 지도가 그만큼 줄어드는데,
+ *   좁은 화면에서 지도가 줄어드는 것이 제일 아프다.
+ * ⚠ `pointer-events` 를 칸에만 준다. 띠 전체가 받으면 칸 사이 빈 곳에서
+ *   지도 클릭(제자리 찍기)이 막힌다.
+ */
+.quick {
+  position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 4; pointer-events: none;
 }
-.skill > * { position: relative; min-width: 0; }
-.skill i {
-  position: absolute; inset: 0 auto 0 0;
-  background: linear-gradient(180deg, #2a3a22, #1d2a17);
-  transition: width .2s ease-out;
+.qs {
+  position: relative; overflow: hidden;
+  width: 76px; height: 68px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 1px; padding: 4px 4px 3px;
+  border: 2px solid var(--line);
+  background: rgba(20, 18, 25, .92);
+  color: var(--ink);
+  font-family: inherit; cursor: pointer;
+  pointer-events: auto;
 }
-.skill .k {
-  font-family: var(--title); font-size: 8px; text-align: center;
-  border: 1px solid var(--line); border-radius: 0; padding: 1px 0;
-  background: rgba(0,0,0,.35);
+.qs > * { position: relative; z-index: 1; }
+/* 남은 턴만큼 **위에서 덮는다.** 덮인 넓이가 곧 남은 턴이다 */
+.qs u {
+  position: absolute; left: 0; right: 0; top: 0; z-index: 0;
+  background: rgba(10, 9, 13, .72);
+  border-bottom: 1px solid rgba(120, 160, 220, .45);
 }
-.skill .n { font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.skill .n em { font-style: normal; font-size: 9.5px; color: var(--gold); margin-left: 4px; }
-.skill .cd { font-size: 10px; font-family: var(--mono); white-space: nowrap; }
-.skill.ready { color: var(--ink); border-color: #4e6a3c; cursor: pointer; }
-.skill.ready i { background: linear-gradient(180deg, #3a5a2c, #26401c); }
-.skill.ready .k { color: var(--good); border-color: #4e6a3c; }
-.skill.ready .cd { color: var(--good); font-weight: 700; }
-.skill.ready:hover { border-color: var(--good); }
-.skill.empty { opacity: .4; border-style: dashed; }
-.skill.empty .n { font-size: 11px; }
+/* 단축키는 왼쪽 위 배지 */
+.qs .k {
+  position: absolute; top: 0; left: 0; z-index: 2;
+  width: 19px; height: 17px; line-height: 17px; text-align: center;
+  font-family: var(--mono); font-size: 12px; font-weight: 700;
+  background: var(--gold); color: #1a1508;
+}
+.qs .rk {
+  position: absolute; top: 2px; right: 4px; z-index: 2;
+  font-family: var(--mono); font-size: 10px; color: var(--gold);
+}
+.qs .n {
+  margin-top: 12px; font-size: 11.5px; font-weight: 600; line-height: 1.2;
+  text-align: center; max-width: 68px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.qs .cd { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); }
+.qs.ready { border-color: #5b7fa8; }
+.qs.ready .cd { color: #9fd0ff; }
+.qs.ready:hover { background: #262230; }
+.qs:disabled { cursor: default; }
+.qs.empty {
+  border-style: dashed; opacity: .5; pointer-events: none;
+}
+.qs.empty .k { background: #3a3542; color: var(--ink-dim); }
+.qs.empty .n { color: var(--ink-dim); font-weight: 400; }
 
 /* 핵심 수치에 치명타 배수를 작게 붙인다 */
 .stat-grid b s { text-decoration: none; font-size: 10px; opacity: .7; margin-left: 3px; font-weight: 500; }
@@ -1087,13 +1127,13 @@ kbd {
 .build em { font-style: normal; font-size: 10px; color: var(--ink-dim); }
 .build b { font-family: var(--mono); font-size: 11px; color: #8fb8d8; }
 
-.equip b s { text-decoration: none; color: var(--gold); font-family: var(--mono); font-size: 10px; margin-left: 3px; }
 
-/* 가방 — 옵션 줄이 길어지므로 두 줄까지 보여 준다 */
-.inv { max-height: 260px; }
+/* 가방 — 사이드바에서는 `.side-scroll > .bagpanel .inv` 가 남는 세로를 먹으므로
+ * 이 상한은 안 걸린다. 장비 창 등 **다른 데 놓인 가방**의 기본값이다. */
+.inv { max-height: 420px; }
 .inv-item .ds {
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-  overflow: hidden; line-height: 1.4;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden; line-height: 1.45;
 }
 
 /* ── 레벨업 선택 ───────────────────────────────────────── */
@@ -1205,13 +1245,11 @@ kbd {
   .perk-note { flex: 1 1 100%; }
   .shop-cols { grid-template-columns: 1fr; gap: 10px; }
   .shop-list { max-height: 30vh; }
-  .inv { max-height: 150px; }
 }
 
-/* 터치 — 스킬 4칸을 한 줄로 */
+/* 터치 — 퀵슬롯은 손가락으로 누른다. 44px 권장에 맞춘다 */
 @media (pointer: coarse) {
-  .skillpad { flex-direction: row !important; gap: 4px; }
-  .skillpad button { padding: 12px 0; width: 40px; font-family: var(--mono); }
+  .qs { width: 80px; height: 72px; }
 }
 
 
@@ -1232,6 +1270,25 @@ kbd {
   background: var(--line);
 }
 .side-scroll > * { flex-shrink: 0; }
+
+/* ⚠ 사이드바의 "누구인가" 줄을 **넓은 화면에서도 감춘다.**
+ *   재 보니 51px 를 쓰면서 보여 주는 것이 이름·직함·Lv·금뿐인데 **넷 다 상단
+ *   상태줄에 이미 있다.** 좁은 화면에서는 진작 감추고 있었고, 이유("같은 값을
+ *   두 번 보여 주려고 자리를 내주는 것은 손해")는 넓은 화면에서도 똑같다.
+ *   그 51px 는 가방이 받는다.
+ * ⚠ 하나만 겹치지 않았다 — **특화 이름**. 감추기 전에 HUD 로 옮겼다
+ *   (render.js 의 drawHud). 옮기지 않고 감추면 특화가 어디에도 안 보인다. */
+.side .who { display: none; }
+/* ⚠ **스크롤이 둘 겹쳐 있었다.** `.side-scroll` 이 스크롤하는데 그 안의
+ *   `.inv` 도 제 상한(260px)으로 또 스크롤했다. 가방을 끝까지 보려면 바깥을
+ *   굴리고 다시 안을 굴려야 했다.
+ *   가방 패널이 **남는 세로를 먹게** 해서 스크롤을 하나로 만든다.
+ * ⚠ `min-height: 0` 이 없으면 flex 칸은 내용보다 안 작아져서 상한이 안 먹는다. */
+.side-scroll > .bagpanel {
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
+}
+.side-scroll > .bagpanel .inv { flex: 1 1 auto; min-height: 0; max-height: none; }
 .side-scroll::-webkit-scrollbar { width: 6px; }
 .side-scroll::-webkit-scrollbar-thumb { background: #38333f; border-radius: 3px; }
 .side-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -1251,12 +1308,9 @@ kbd {
  *   띄우고 3.6초 뒤 사라진다(render.js 의 drawToasts) — 그쪽이 시선 이동도 없다. */
 @media (max-width: 900px) {
   .logpanel { display: none; }
-  /* ⚠ 상단 상태줄이 생기면서 사이드바의 "누구인가" 줄(이름·직함·금화)이 **중복**이 됐다.
-   *   좁은 화면에서 같은 값을 두 번 보여 주려고 캔버스를 60px 넘게 내주는 것은 손해다
-   *   — 여기서는 접고, 대신 사이드바를 줄여 캔버스를 키운다. */
-  .side .who { display: none; }
   .side { max-height: 27vh; }
-  .inv { max-height: 116px; }
+  /* ⚠ 여기에 `.inv { max-height }` 가 있었는데 **죽은 줄**이었다. 같은 폭에서
+   *   가방 패널을 통째로 감추고 있다(아래 `.side-scroll > .bagpanel`). */
 }
 /* ⚠ 터치라는 이유만으로 감추면 안 된다 — 터치 노트북(1440)도 coarse 로 잡히는데
  *   거기는 자리가 넉넉하다. 감추는 이유는 '터치' 가 아니라 '좁음' 이다. */
@@ -1306,13 +1360,17 @@ kbd {
     gap: 5px;
   }
   .acts button { flex: 1 1 0; padding: 0 6px; min-height: 42px; font-size: 12px; }
-  .skillpad {
-    grid-area: 2 / 2 / 3 / 3;
-    flex-direction: row;
-    width: 100%;
-    gap: 5px;
-  }
-  .skillpad button { flex: 1 1 0; width: auto; min-height: 42px; }
+  /* ⚠ `.skillpad` 가 여기 `2 / 2 / 3 / 3` 을 잡고 있었다. 요소를 없앴으므로
+   *   규칙도 지운다. 안 지우면 다음 사람이 없는 요소를 찾아 헤맨다. */
+}
+
+/* 퀵슬롯 — **폭이 좁아지면 칸을 줄인다.**
+ * ⚠ 76×4 + 8×3 = 328px 이다. 360px 화면에서 좌우 16px 밖에 안 남는다.
+ *   여기서 안 줄이면 띠가 캔버스를 넘어 잘린다. */
+@media (max-width: 420px) {
+  .quick { gap: 5px; bottom: 6px; }
+  .qs { width: 66px; height: 62px; }
+  .qs .n { font-size: 10.5px; max-width: 58px; margin-top: 11px; }
 }
 
 /* 상단 상태줄도 좁은 화면에서는 납작하게 — 캔버스가 주인공이다 */
@@ -1467,7 +1525,7 @@ kbd {
 }
 
 /* 스킬 칸 · 가방 칸 — 종이에 찍은 도장 자리 */
-.skill, .inv-item, .ability, .perk, .shop-row, .cls-card {
+.qs, .inv-item, .ability, .perk, .shop-row, .cls-card {
   background-image: var(--grain);
   background-blend-mode: overlay;
   background-size: 120px 120px;
@@ -1475,7 +1533,7 @@ kbd {
 }
 
 /* 계급 강조 — 준비된 스킬은 잉크가 진하다 */
-.skill.ready, .ability.ready { box-shadow: inset 0 1px 0 rgba(222,214,194,.09), 0 0 0 1px rgba(110,192,110,.12); }
+.qs.ready, .ability.ready { box-shadow: inset 0 1px 0 rgba(222,214,194,.09), 0 0 0 1px rgba(110,192,110,.12); }
 
 
 /* ══════════════════════════════════════════════════════════
@@ -1681,7 +1739,7 @@ kbd {
   .gear-btn { display: inline-block; }
   .side .equip, .side .build { display: none; }
   .side .relics { margin-top: 6px; }
-  .side-scroll > .panel:nth-child(2) { display: none; }   /* 가방 패널 */
+  .side-scroll > .bagpanel { display: none; }
 }
 @media (pointer: coarse) and (max-width: 900px) {
   .gear-btn { display: inline-block; }
