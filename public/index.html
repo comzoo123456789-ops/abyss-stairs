@@ -116,12 +116,23 @@
               잡혔다). 여기에 두면 44×42 짜리 제 칸을 얻으면서 자리를 더 안 쓴다.
            ⚠ 접혀도 이 버튼은 남는다 — 완전히 감추면 되돌릴 방법이 없어진다
               (옛 rl_pad 토글이 그렇게 사고를 냈다). -->
+      <!-- 접기 손잡이. ⚠ 접혀도 남는다 — 완전히 감추면 되돌릴 방법이 없어진다
+           (옛 rl_pad 토글이 그렇게 사고를 냈다). -->
       <button id="padFold" class="padfold" aria-expanded="true" title="방향 패드 접기">▼</button>
-      <button data-dir="0,-1" class="p-up" aria-label="위">↑</button>
-      <button data-dir="-1,0" class="p-left" aria-label="왼쪽">←</button>
-      <button id="btnWait" class="p-mid" aria-label="한 턴 쉬기">·</button>
-      <button data-dir="1,0" class="p-right" aria-label="오른쪽">→</button>
-      <button data-dir="0,1" class="p-down" aria-label="아래">↓</button>
+
+      <!-- 둥근 조작 패드.
+           ⚠ 화살표 버튼 넷이었다. 그러면 **대각선으로 갈 방법이 아예 없다** —
+             버튼 사이를 눌러도 아무 일이 안 난다. 원판은 누른 **각도**를 읽으므로
+             여덟 방향이 저절로 나오고, 손가락을 굴리면 방향이 이어서 바뀐다.
+           ⚠ 가운데를 누르면(죽은 구역) 한 턴 쉰다 — 옛 「·」 버튼이 하던 일이다.
+             원판만 두고 그 기능을 없애면 제자리에서 기다릴 방법이 사라진다. -->
+      <div id="stick" class="stick" role="application"
+           aria-label="이동 — 원판을 눌러 그 방향으로 걷는다. 가운데는 한 턴 쉬기">
+        <div class="stick-ring"></div>
+        <div class="stick-tick n"></div><div class="stick-tick e"></div>
+        <div class="stick-tick s"></div><div class="stick-tick w"></div>
+        <div class="stick-knob" id="stickKnob"></div>
+      </div>
     </div>
     <!-- 오른손 묶음 — 스킬 넷이 마름모, 가운데가 **통합 행동** 하나.
          ⚠ 줍기·쏘기·내려가기를 따로 세 개 두었더니 셋 다 위쪽에 눕는 바람에

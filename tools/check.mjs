@@ -377,23 +377,53 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
              log: (document.querySelector("#log .m:last-child")||{}).textContent || "" };
   })()`);
 
-  //  터치 패드에 대각선 버튼이 남아 있지 않은가
-  const padDirs = await ev(`[...document.querySelectorAll(".pad [data-dir]")].map(b=>b.getAttribute("data-dir"))`);
-  const noDiagButtons = padDirs.every(d => d.split(",").some(v => v === "0"));
+  //  둥근 조작 패드가 **여덟 방향을 다 주는가**.
+  //  ⚠ 예전에는 "대각선 버튼이 남아 있지 않은가" 를 봤다. 4방향이던 시절의
+  //    전제다 — 지금은 8방향이 요구사항이라 그 검사는 거꾸로다.
+  //    제품이 아니라 검사를 고친다.
+  //  ⚠ 원판 가운데는 **죽은 구역**이어야 한다. 없으면 손가락을 올리는 순간
+  //    방향을 정하기도 전에 한 칸이 튀어 나간다.
+  const stick8 = await ev(`(()=>{
+    const el = document.getElementById("stick");
+    if (!el || !window.__stickDir) return null;
+    /* ⚠ 패드는 터치 기기에서만 뜬다. 안 보이는데 재면 크기가 0 이라
+     *   "방향이 하나뿐" 으로 나온다 — 잰 자리가 틀린 것이다. */
+    if (el.getBoundingClientRect().width < 10) return { hidden: true };
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const R = r.width * 0.42;
+    const got = [];
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4;
+      const d = window.__stickDir(cx + Math.cos(a) * R, cy + Math.sin(a) * R);
+      if (d) got.push(d.dx + "," + d.dy);
+    }
+    return { dirs: [...new Set(got)], center: window.__stickDir(cx, cy),
+             size: Math.round(r.width) };
+  })()`);
+  const stickOk = !!stick8 && (stick8.hidden === true ||
+                  (stick8.dirs.length === 8 && stick8.center === null));
   // ── 3-e) 모바일 연타 확대 — 방향 버튼을 빠르게 두 번 눌러도 배율이 안 변해야 한다 ──
   //    ⚠ 실제 신고: "방향키 연속으로 누르면 확대가 되고 있어서 이동하는데 불편해".
   //      touch-action 을 안 걸면 브라우저가 더블탭으로 보고 확대한다.
   let zoomCheck = null;
+  /* ⚠ 확대 판정을 **출력과 최종 판정 두 곳에** 적어 두었더니 한쪽만 고쳐져
+   *   화면에는 ✔ 인데 결과는 "확인 필요" 가 나왔다(원판의 touch-action 이
+   *   manipulation → none 으로 바뀐 자리다). 한 변수로 묶어 다시 갈라지지 않게 한다. */
+  let noZoomOK = true;
   if (TOUCH) {
     const before = await ev(
       "({ scale: window.visualViewport ? window.visualViewport.scale : 1," +
-      "   ta: getComputedStyle(document.querySelector('.dpad button')).touchAction })");
+      "   ta: getComputedStyle(document.getElementById('stick')).touchAction })");
     /* ⚠ 한 방향만 두드리면 안 된다 — 그쪽이 벽이면 턴이 안 늘어 "터치가 안 먹는다" 로
-     *   오진한다(실제로 그렇게 나왔다). 네 방향을 돌려 가며 두드린다. */
+     *   오진한다(실제로 그렇게 나왔다). 원판의 네 방향을 돌려 가며 두드린다. */
     const btns = await ev(
-      "['.p-right','.p-down','.p-left','.p-up'].map(function(s){" +
-      "  var r = document.querySelector(s).getBoundingClientRect();" +
-      "  return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })");
+      "(function(){" +
+      "  var r = document.getElementById('stick').getBoundingClientRect();" +
+      "  var cx = r.left + r.width/2, cy = r.top + r.height/2, R = r.width*0.4;" +
+      "  return [[1,0],[0,1],[-1,0],[0,-1]].map(function(d){" +
+      "    return { x: Math.round(cx + d[0]*R), y: Math.round(cy + d[1]*R) }; });" +
+      "})()");
     const st0 = await ev("window.__peek()");
     for (let i = 0; i < 8; i++) {
       const b = btns[i % btns.length];
@@ -767,11 +797,14 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
        * ⚠ .acts (줍기·쏘기·내려가기 셋)를 여기서 재고 있었다. 가운데
        *   통합 행동 하나로 합쳤으므로 그 선택자는 이제 없다. */
       const box = e => e.getBoundingClientRect();
+      const st = document.getElementById("stick");
       const dp = box(document.querySelector(".dpad"));
       const rg = document.querySelector(".ring") ? box(document.querySelector(".ring")) : null;
       const pb = box(p);
       const act = document.querySelector("#btnAct");
       return { display:cs.display, count:btns.length, tooSmall:small.length, touchClass:document.body.classList.contains("is-touch"),
+               hasStick: !!st,
+               stickSize: st ? Math.round(box(st).width) : 0,
                minSide: btns.length?Math.round(Math.min(...btns.map(b=>Math.min(box(b).width,box(b).height)))):0,
                narrow: innerWidth <= 620,
                hasRing: !!rg,
@@ -792,12 +825,17 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const padPlaced = pad.hasRing && pad.leftEdge >= 0 && pad.leftEdge <= 24 &&
                       pad.rightEdge >= 0 && pad.rightEdge <= 24 &&
                       pad.apart > 20 && pad.level <= 4;
-    /* ⚠ 문턱을 9 로 뒀다가 빨개졌다. 빈 스킬 칸은 button 이 아니라 div 라
-     *   (눌러도 아무 일 없는 것을 button 으로 두면 안 된다) 스킬을 하나만
-     *   배운 판에서는 십자 6 + 스킬 1 + 가운데 1 = **8개**다. */
-    const padOK = pad.display !== "none" && pad.count >= 8 && pad.tooSmall === 0 && padPlaced;
+    /* ⚠ 예전에는 **버튼 개수**(8개 이상)를 셌다. 십자가 버튼 다섯이던 시절의
+     *   수다 — 원판은 <div> 하나라 버튼이 셋으로 줄면서 이 검사가 빨개졌다.
+     *   제품이 아니라 검사의 전제가 낡은 것이었다. 세어야 할 것은 옛 모양이 아니라
+     *   **있어야 할 것**이다: 원판이 있고 · 충분히 크고 · 버튼이 손가락에 맞는가.
+     * ⚠ 원판은 100px 아래로 내려가면 여덟 방향을 손가락으로 가를 수 없다. */
+    const padOK = pad.display !== "none" && pad.hasStick && pad.stickSize >= 100 &&
+                  pad.tooSmall === 0 && padPlaced;
     console.log("터치 패드    :", ok(padOK),
-      "display="+pad.display+" · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" + (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
+      "display="+pad.display+" · 원판 "+(pad.hasStick?pad.stickSize+"px":"⚠없음")+
+      " · 버튼 "+pad.count+"개 · 가장 작은 변 "+pad.minSide+"px" +
+      (pad.tooSmall?" · 40px 미만 "+pad.tooSmall+"개":""));
     padPass = padOK;
     console.log("  패드 배치  :", ok(padPlaced),
       pad.geo + " · 왼끝에서 " + pad.leftEdge + "px · 오른끝에서 " + pad.rightEdge +
@@ -1209,15 +1247,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   console.log("함정·보물방  :", ok(true), "이 층 함정 " + feat.traps + "개 · 보물방 " + (feat.treasure ? "있음" : "없음"));
   console.log("미식별 물약  :", ok(potions.looks.length >= potions.names.length),
     "물약 " + potions.names.length + "종 · 겉모습 후보 " + potions.looks.length + "개");
-  console.log("대각선 제거  :", ok(oldKeysDead && noDiagButtons),
-    (oldKeysDead ? "YUBN·WASD·HJKL 무반응" : "⚠ 옛 키가 아직 움직인다") +
-    " · 패드 방향 " + padDirs.length + "개" + (noDiagButtons ? "(대각 없음)" : " ⚠대각 남음"));
+  console.log("옛 키 죽음   :", ok(oldKeysDead),
+    oldKeysDead ? "YUBN·WASD·HJKL 무반응" : "⚠ 옛 키가 아직 움직인다");
+  console.log("둥근 패드    :", ok(stickOk),
+    !stick8 ? "⚠ 원판이 없다"
+      : stick8.hidden ? "이 화면에서는 패드를 안 쓴다(정상) — 검사 안 함"
+      : "지름 " + stick8.size + "px · 방향 " + stick8.dirs.length + "가지" +
+        (stick8.dirs.length === 8 ? "" : " ⚠여덟이 아니다") +
+        " · 가운데 " + (stick8.center === null ? "죽은 구역(정상)" : "⚠방향이 나온다"));
   console.log("우클릭 버리기:", ok(dropTest.skipped ? true : (dropTest.prevented && dropTest.after < dropTest.before)),
     dropTest.skipped ? "가방이 비어 검사 못 함"
       : "가방 " + dropTest.before + " → " + dropTest.after + " · 기본메뉴 " +
         (dropTest.prevented ? "막음" : "⚠안 막음") + " · \"" + dropTest.log.trim() + "\"");
   if (zoomCheck) {
-    const noZoom = Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 && zoomCheck.ta === "manipulation";
+    /* ⚠ 원판은 **none** 이어야 한다. manipulation 은 한 손가락 끌기를 브라우저가
+     *   가져가 버려서 굴릴 때 화면이 따라 움직인다. */
+    const noZoom = Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 &&
+                   (zoomCheck.ta === "none" || zoomCheck.ta === "manipulation");
+    noZoomOK = noZoom && zoomCheck.turn1 > zoomCheck.turn0;
     const moved6 = zoomCheck.turn1 > zoomCheck.turn0;
     console.log("연타 확대    :", ok(noZoom && moved6),
       "touch-action=" + zoomCheck.ta + " · 배율 " + zoomCheck.scale0 + " → " + zoomCheck.scale1 +
@@ -1327,9 +1374,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const pass = errs.length === 0 && canvas.litPct > 3 && moved && turned && canvas2.hash !== canvas.hash &&
                !overflow.docScroll && overflow.count === 0 && helpOpen && helpClosed &&
-               (!zoomCheck || (Math.abs(zoomCheck.scale1 - zoomCheck.scale0) < 0.01 && zoomCheck.ta === "manipulation" && zoomCheck.turn1 > zoomCheck.turn0)) &&
+               noZoomOK &&
                (!canAct || (heldTurns >= 2 && heldTurns <= 9)) && logBox.inView && logBox.atBottom &&
-               oldKeysDead && noDiagButtons &&
+               oldKeysDead && stickOk &&
                (dropTest.skipped || (dropTest.prevented && dropTest.after < dropTest.before)) &&
                build.skillRows === 4 && build.skills >= 1 && build.crit > 0 && !!build.weapon &&
                qkOK && specOK && zoomOK && dcOK && toastOK && logOK && padWhenOK &&

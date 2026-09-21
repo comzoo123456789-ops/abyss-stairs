@@ -17,13 +17,25 @@
   var MAP_W = 62, MAP_H = 38;
   var FOV_RADIUS = 8;
 
-  /* ⚠ 이동은 4방향이다(화살표만). 그래서 **근접 판정도 4방향**이어야 한다.
-   *   체비쇼프 거리(대각 포함)로 두면 플레이어는 대각에 있는 적을 때릴 수 없는데
-   *   적은 대각에서 때린다 — 일방적으로 맞는다. 인접은 맨해튼 거리 1 이다.
-   *   범위 효과(폭발·지진)는 그대로 대각을 포함한다 — 그건 '폭발' 이라 자연스럽다. */
-  var STEPS = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+  /* ⚠ 이동은 **8방향**이다(대각선 포함). 그래서 **근접 판정도 8방향**이어야 한다 —
+   *   한쪽만 바꾸면 반드시 한쪽이 일방적으로 맞는다:
+   *     이동 8 · 판정 4 → 대각으로 붙은 적을 나는 못 때리는데 나는 맞는다
+   *     이동 4 · 판정 8 → 그 반대
+   *   그래서 **둘을 같은 파일 같은 줄에** 둔다. 하나를 고치면 다른 하나가 눈에 띈다.
+   *   붙었다는 것은 체비쇼프 거리 1 이다(adjacent 함수 하나만 쓴다).
+   * ⚠ 예전에는 4방향이었다. 그때 근접이 맨해튼 1 이었던 것도 같은 이유였다. */
+  var STEPS = [
+    [0, -1], [0, 1], [-1, 0], [1, 0],
+    [-1, -1], [1, -1], [-1, 1], [1, 1]
+  ];
+  var STEPS4 = [[0, -1], [0, 1], [-1, 0], [1, 0]];
   function manhattan(ax, ay, bx, by) { return Math.abs(ax - bx) + Math.abs(ay - by); }
   function cheb(ax, ay, bx, by) { return Math.max(Math.abs(ax - bx), Math.abs(ay - by)); }
+  /* **붙어 있는가.** 이동이 8방향이므로 대각도 붙은 것이다.
+   * ⚠ 이 판정을 손으로 적지 말 것(manhattan===1 같은 것). 이동 방향을 바꿀 때
+   *   같이 안 바뀌어 한쪽이 일방적으로 맞는 상태가 된다. */
+  function adjacent(ax, ay, bx, by) { return cheb(ax, ay, bx, by) === 1; }
+  global.STEPS4 = STEPS4;
   global.STEPS = STEPS;
 
   function sfx(name) { if (global.SFX) global.SFX.play(name); }
@@ -908,7 +920,7 @@
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (m.hp <= 0 || !m.awake || m.ail.stun) continue;
-      if (manhattan(m.x, m.y, x, y) === 1) out.push(m);
+      if (adjacent(m.x, m.y, x, y)) out.push(m);
     }
     return out;
   };
@@ -932,7 +944,7 @@
     for (var i = 0; i < foes.length; i++) {
       var m = foes[i];
       if (m.hp <= 0 || m.ail.stun) continue;
-      if (manhattan(m.x, m.y, nx, ny) === 1) continue;   /* 아직 붙어 있으면 아니다 */
+      if (adjacent(m.x, m.y, nx, ny)) continue;          /* 아직 붙어 있으면 아니다 */
       this.attack(m, this.player, josa(m.name, "이", "가") + " 물러서는 틈을 노렸다.");
       /* 유물: 물러선 자리 — 물러서다 맞으면 그 적이 중독된다.
        * ⚠ **맞은 뒤에** 건다. 앞에 두면 그 적이 반사로 죽었을 때 시체에 거는 셈이다. */
@@ -1805,12 +1817,15 @@
 
   /* ── 스킬 사용 ──────────────────────────────────────── */
 
+  /* ⚠ 사거리는 **체비쇼프**로 잰다. 범위 스킬(폭발·지진)이 이미 cheb 이라
+   *   겨냥 스킬만 맨해튼이면 같은 "5칸" 이 두 가지 뜻이 된다 — 대각으로 5칸
+   *   떨어진 적이 폭발에는 들어오고 투척에는 안 닿는다. */
   Game.prototype.nearestVisible = function (maxRange) {
     var p = this.player, best = null, bestD = 1e9;
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (!this.isVisible(m.x, m.y)) continue;
-      var d = manhattan(m.x, m.y, p.x, p.y);
+      var d = cheb(m.x, m.y, p.x, p.y);
       if (maxRange && d > maxRange) continue;
       if (d < bestD) { bestD = d; best = m; }
     }
@@ -1821,7 +1836,7 @@
     for (var i = 0; i < this.monsters.length; i++) {
       var m = this.monsters[i];
       if (!this.isVisible(m.x, m.y)) continue;
-      var d = manhattan(m.x, m.y, p.x, p.y);
+      var d = cheb(m.x, m.y, p.x, p.y);
       if (maxRange && d > maxRange) continue;
       if (d > bestD) { bestD = d; best = m; }
     }
@@ -2059,7 +2074,9 @@
       if (this.isVisible(m.x, m.y) && cheb(m.x, m.y, p.x, p.y) <= notice) m.awake = true;
       else return;
     }
-    var dist = manhattan(m.x, m.y, p.x, p.y);
+    /* ⚠ 8방향이므로 거리도 **체비쇼프**다. 맨해튼으로 두면 대각으로 붙은 적이
+     *   "거리 2" 로 읽혀 때리지 않고 다가오려 한다(그 자리에서 떤다). */
+    var dist = cheb(m.x, m.y, p.x, p.y);
 
     /* 실명 — 플레이어를 **못 찾는다.** 붙어 있으면 손에 잡히니 때리지만
      * 다가오지도 던지지도 못한다. 도망칠 틈을 만드는 것이 이 상태의 값어치다. */

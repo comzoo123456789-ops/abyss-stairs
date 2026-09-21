@@ -17,8 +17,15 @@
    * ⚠ WASD·HJKL·YUBN·숫자패드를 되살리지 말 것. 대각선을 없앤 결정이라
    *   YUBN 을 남겨 두면 그 키로만 대각 이동이 되어 규칙이 두 개가 된다.
    *   몬스터도 4방향으로 움직이고 근접 판정도 4방향이다(js/game.js 의 adjacent). */
+  /* 이동은 **8방향**이다.
+   * ⚠ 화살표 둘을 동시에 눌러 대각으로 가게 하지 않았다. 키 반복(repeat)을
+   *   직접 돌리는 구조라 두 키의 반복이 어긋나면 지그재그로 걷는다.
+   *   대각은 **숫자패드**와 **둥근 조작 패드**가 맡는다 — 둘 다 한 번에 한 방향을 준다. */
   var MOVE = {
-    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0]
+    ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0],
+    /* 숫자패드 — 로그라이크의 전통 배치 그대로 */
+    Numpad8: [0, -1], Numpad2: [0, 1], Numpad4: [-1, 0], Numpad6: [1, 0],
+    Numpad7: [-1, -1], Numpad9: [1, -1], Numpad1: [-1, 1], Numpad3: [1, 1]
   };
 
   /* ── 그리는 고리 ─────────────────────────────────────────
@@ -381,6 +388,9 @@
     }
 
     var k = e.key;
+    /* ⚠ 숫자패드는 NumLock 에 따라 e.key 가 "7" 이 되기도 "Home" 이 되기도 한다.
+     *   **e.code** 는 항상 "Numpad7" 이라 그쪽을 먼저 본다. */
+    if (MOVE[e.code]) k = e.code;
     var mv = MOVE[k];
     if (mv) {
       e.preventDefault();
@@ -1139,6 +1149,101 @@
     try {
       if (localStorage.getItem("rl_pad2") === "1") setPadFold(true, false);
     } catch (err) {}
+
+    /* ── 둥근 조작 패드 ─────────────────────────────────
+     *
+     * 누른 **각도**를 여덟 방향 중 하나로 접는다. 화살표 버튼 넷일 때는 대각선으로
+     * 갈 방법이 아예 없었다 — 버튼 사이를 눌러도 아무 일이 안 났다.
+     *
+     * ⚠ **가운데는 죽은 구역이다.** 안 두면 손가락을 올리는 순간(아직 방향을
+     *   안 정했는데) 한 칸이 튀어 나간다. 반지름의 30% 안은 「한 턴 쉬기」다.
+     * ⚠ 손가락을 **굴리면 방향이 따라온다**(touchmove). 떼었다 다시 누르게 하면
+     *   원판을 쓰는 뜻이 없다.
+     * ⚠ 걸음 간격은 키보드와 **같은 값**(stepInterval)을 쓴다. 따로 두면
+     *   패드로 걸을 때만 빠르거나 느려진다. */
+    (function () {
+      var stick = document.getElementById("stick");
+      var knob = document.getElementById("stickKnob");
+      if (!stick) return;
+      var timer = 0, curDir = null, touching = false;
+
+      function dirFrom(cx, cy) {
+        var r = stick.getBoundingClientRect();
+        var dx = cx - (r.left + r.width / 2);
+        var dy = cy - (r.top + r.height / 2);
+        var len = Math.sqrt(dx * dx + dy * dy);
+        var max = r.width / 2;
+        if (len < max * 0.30) return null;               /* 죽은 구역 — 쉬기 */
+        /* 각도를 여덟 칸으로 접는다. 0 이 오른쪽, 시계 방향. */
+        var a = Math.atan2(dy, dx);
+        var k = Math.round(a / (Math.PI / 4));
+        if (k < 0) k += 8;
+        var TBL = [[1,0],[1,1],[0,1],[-1,1],[-1,0],[-1,-1],[0,-1],[1,-1]];
+        return { d: TBL[k % 8], k: k, len: Math.min(1, len / max) };
+      }
+
+      function showKnob(info) {
+        if (!knob) return;
+        if (!info) { knob.style.transform = "translate(-50%,-50%)"; knob.classList.remove("on"); return; }
+        var push = 26 * info.len;
+        knob.style.transform = "translate(-50%,-50%) translate(" +
+          (info.d[0] * push).toFixed(1) + "px," + (info.d[1] * push).toFixed(1) + "px)";
+        knob.classList.add("on");
+      }
+
+      function step() {
+        if (!curDir) { game.wait(); afterAction(); return; }
+        doMove(curDir);
+      }
+
+      function begin(cx, cy) {
+        var info = dirFrom(cx, cy);
+        curDir = info ? info.d : null;
+        showKnob(info);
+        step();
+        clearInterval(timer);
+        timer = setInterval(function () {
+          if (game.over || game.busy() || !started()) { end(); return; }
+          step();
+        }, stepInterval());
+      }
+      function move(cx, cy) {
+        if (!touching) return;
+        var info = dirFrom(cx, cy);
+        curDir = info ? info.d : null;      /* 굴리면 방향이 따라온다 */
+        showKnob(info);
+      }
+      function end() {
+        touching = false;
+        if (timer) { clearInterval(timer); timer = 0; }
+        curDir = null;
+        showKnob(null);
+      }
+
+      stick.addEventListener("touchstart", function (e) {
+        e.preventDefault(); touching = true;
+        var t = e.touches[0]; begin(t.clientX, t.clientY);
+      }, { passive: false });
+      stick.addEventListener("touchmove", function (e) {
+        e.preventDefault();
+        var t = e.touches[0]; move(t.clientX, t.clientY);
+      }, { passive: false });
+      stick.addEventListener("touchend", end);
+      stick.addEventListener("touchcancel", end);
+      /* 마우스로도 된다 — 터치 없는 노트북에서 패드를 켜 두는 사람이 있다 */
+      stick.addEventListener("mousedown", function (e) {
+        e.preventDefault(); touching = true; begin(e.clientX, e.clientY);
+      });
+      window.addEventListener("mousemove", function (e) { move(e.clientX, e.clientY); });
+      window.addEventListener("mouseup", end);
+      window.addEventListener("blur", end);
+
+      /* 점검기 창구 — 원판의 어느 자리를 누르면 어느 방향이 되는가 */
+      window.__stickDir = function (cx, cy) {
+        var i = dirFrom(cx, cy);
+        return i ? { dx: i.d[0], dy: i.d[1] } : null;
+      };
+    })();
 
     /* 터치 패드도 꾹 누르면 걷는 속도로 계속 간다(키보드와 같은 규칙) */
     document.querySelectorAll("[data-dir]").forEach(function (b) {
