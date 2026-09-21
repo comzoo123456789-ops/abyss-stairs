@@ -168,8 +168,12 @@ window.__trials = function (cfg, n) {
    *   (실측으로 그렇게 나왔다 — 깸 75%인 것들만 125초대로 뭉쳐 있었다).
    *   빠르기와 안정성은 **다른 숫자**다. 따로 본다. */
   var won = function (r) { return r.cleared; };
+  /* 비율의 **표준오차** — sqrt(p(1-p)/n).
+   * ⚠ 이걸 안 내면 "70%" 와 "70%±15" 를 구별할 수 없고, 문턱 근처 판정이
+   *   실행마다 뒤집힌다(실측: 같은 코드로 두 번 돌려 판정 셋이 갈렸다). */
+  var p = ok / n;
   return {
-    n: n, clear: ok / n,
+    n: n, clear: p, se: Math.sqrt(p * (1 - p) / n),
     time: +avg(function (r) { return r.time; }, won).toFixed(1),
     taken: Math.round(avg(function (r) { return r.taken; })),
     hpLow: +avg(function (r) { return r.hpLow; }).toFixed(2),
@@ -201,7 +205,10 @@ for (const d of CURVE) {
      *   30층보다 어렵다는 말이 안 되는 결과가 나왔다 — 지도 탓이었다). */
     const r = await ev(`window.__trials({ depth: ${d}, level: ${lv}, seed: ${d * 131 + lv * 977} }, ${N})`);
     rows.push({ lv, r });
-    if (!found && r.clear >= 0.7) found = { lv, r };
+    /* ⚠ **문턱을 넉넉히 넘었을 때만** 찾았다고 한다. 딱 걸친 값(70%±15)에서
+     *   멈추면 다음 실행에 뒤집혀 곡선 전체가 달라진다 — 실행마다 "28층에
+     *   Lv.34 가 필요하다" 와 "Lv.25 면 된다" 가 오갔다. */
+    if (!found && r.clear - 1.0 * r.se >= 0.7) found = { lv, r };
     if (found) break;
   }
   const show = found || rows[rows.length - 1];
@@ -449,6 +456,18 @@ const dodgeWorth = blind.taken > 0 ? (blind.taken - mid.taken) / blind.taken : 0
 console.log("\n─── 판정 ───\n");
 const verdict = [];
 const V = (n, ok, note) => { verdict.push([n, ok, note]); };
+/* 비율 판정 전용 — 문턱이 오차 범위 안에 들면 **판정하지 않는다.**
+ * ⚠ "이 판수로는 못 가린다" 와 "통과" 는 다른 말이다. 섞으면 잡음을 결론으로
+ *   보고하게 된다(실제로 그랬다 — 같은 코드로 두 번 돌려 판정 셋이 갈렸다). */
+const VR = (name, rate, se, want, note, higherIsBetter = true) => {
+  const lo = rate - 1.96 * se, hi = rate + 1.96 * se;
+  const shaky = want > lo && want < hi;
+  const ok = higherIsBetter ? rate >= want : rate <= want;
+  verdict.push([name, ok, note + " · " + (rate * 100).toFixed(0) + "%±" +
+    (1.96 * se * 100).toFixed(0) + "%p" +
+    (shaky ? "  ⚠ 문턱(" + (want * 100).toFixed(0) + "%)이 오차 안이라 이 판수로는 못 가린다" : ""),
+    shaky]);
+};
 
 const curveOK = curve.every(c => c.ok);
 const overLevel = curve.filter(c => c.ok && c.lv > c.d + 4);
@@ -458,11 +477,13 @@ V("적정 레벨이 층과 맞는가", curveOK && overLevel.length === 0,
     : "모든 층이 층수 ±4레벨 안에서 깨진다")
   : "⚠ Lv+10 에도 못 깨는 층: " + curve.filter(c => !c.ok).map(c => c.d + "층").join(" · "));
 
-const bossHard = bossRows.filter(b => b.r.clear < 0.5);
-V("보스 벽이 없는가", bossHard.length === 0,
-  bossHard.length ? "⚠ 절반도 못 깨는 보스: " +
-    bossHard.map(b => b.name + "(" + (b.r.clear * 100).toFixed(0) + "%)").join(" · ")
-  : "다섯 보스 모두 50% 이상");
+/* 보스는 다섯을 **합쳐** 본다 — 하나씩 10판이면 오차가 너무 크다 */
+const bossAll = bossRows.reduce((a, b) => a + b.r.clear, 0) / bossRows.length;
+const bossSe = Math.sqrt(bossAll * (1 - bossAll) / (bossRows.length * N));
+const bossHard = bossRows.filter(b => b.r.clear + 1.96 * b.r.se < 0.5);
+VR("보스 벽이 없는가", bossAll, bossSe, 0.5,
+  bossRows.map(b => b.name + " " + (b.r.clear * 100).toFixed(0) + "%").join(" · ") +
+  (bossHard.length ? "  ⚠ 확실히 못 깨는 보스: " + bossHard.map(b => b.name).join(",") : ""));
 
 const naked = gearRows[0].r, rich = gearRows[3].r;
 const gearGap = naked.time > 0 ? rich.time / naked.time : 0;
@@ -498,19 +519,27 @@ V("피하는 것이 값어치를 하는가", dodgeWorth > 0.15,
 
 /* ⚠ 옛 턴제판에서 쓰던 잣대를 그대로 가져왔다 — **25%p 이하**.
  *   그보다 벌어지면 "고를 수 있다" 가 아니라 "정답이 있다" 가 된다. */
-V("직업이 고르다", clsGap <= 25,
+/* ⚠ 격차는 두 비율의 차라 오차가 **각각의 오차를 합친 것**이다.
+ *   10판씩이면 ±20%p 가 예사다 — 그래서 clsgap.mjs 로 실력별로 따로 잰다. */
+const clsSe = Math.sqrt(2) * 1.96 * Math.sqrt(0.25 / (N * 3)) * 100;
+V("직업이 고르다", clsGap <= 25 + clsSe,
   CLS_ROWS.map(r => r.name + " " + (r.avg * 100).toFixed(0) + "%").join(" · ") +
-  " · 격차 " + clsGap.toFixed(0) + "%p");
+  " · 격차 " + clsGap.toFixed(0) + "%p (오차 ±" + clsSe.toFixed(0) +
+  "%p — 실력별 갈라 보기는 tools/clsgap.mjs)");
 
 V("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 2).join(" / ") : "0건");
 
-let bad = 0;
-for (const [n, ok, note] of verdict) {
-  if (!ok) bad++;
-  console.log((ok ? "✔" : "✘") + " " + n.padEnd(22, " ") + " " + note);
+let bad = 0, shaky = 0;
+for (const row of verdict) {
+  const [n, ok, note, isShaky] = row;
+  if (isShaky) shaky++;
+  else if (!ok) bad++;
+  console.log((isShaky ? "~" : ok ? "✔" : "✘") + " " + n.padEnd(22, " ") + " " + note);
 }
 console.log("\n걸린 시간 " + ((Date.now() - t0) / 1000).toFixed(0) + "초 · " +
-  (bad ? "✘ 손볼 곳 " + bad + "군데" : "✔ 지금 수치로 할 만하다"));
+  (bad ? "✘ 손볼 곳 " + bad + "군데" : "✔ 손볼 곳 없음") +
+  (shaky ? " · ~ 판정 보류 " + shaky + "건(판수를 늘려야 가린다)" : ""));
+if (shaky) console.log("  판수를 늘려 다시: node tools/balance.mjs " + (N * 4));
 console.log("\n⚠ 이 수치는 **반응 0.22초 · 조준 오차 8° 봇**의 것이다. 사람은 다르다 —");
 console.log("  결론을 쓰기 전에 두어 개는 직접 밟아 대조할 것.");
 
