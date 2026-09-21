@@ -178,13 +178,21 @@ if (up) {
     (flush ? "딱 붙음" : "⚠틈 " + (slide.top - 10).toFixed(3)));
 
   /* ── 실제 화면에서 걸으면 시야가 따라오는가 ────────── */
+  /* ⚠ 씨앗을 고정하고 **네 방향을 돌린다.** 전에는 무작위 씨앗에서 오른쪽만
+   *   눌렀는데, 시작 자리 오른쪽이 벽인 판에서는 한 칸도 못 가 "시야가 안 는다" 로
+   *   빨개졌다(단독으로는 통과, 묶어 돌리면 가끔 실패 — 가장 나쁜 종류다).
+   *   제품이 아니라 검사가 불안정했던 자리다. */
+  await ev("window.__start({ seed: 4242 })");
+  await sleep(300);
   const seen0 = await ev(`(function(){
     var w = window.__w(); var n = 0;
     for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];
-    window.__hold(["KeyD"]);
     return n;
   })()`);
-  await sleep(1500);
+  for (const k of ["KeyD", "KeyS", "KeyA", "KeyW"]) {
+    await ev(`window.__hold(["` + k + `"])`);
+    await sleep(420);
+  }
   const after = await ev(`(function(){
     window.__hold([]); var w = window.__w(); var n = 0;
     for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];

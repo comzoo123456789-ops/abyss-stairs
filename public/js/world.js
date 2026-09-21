@@ -123,6 +123,8 @@
     this.think = 0; this.memory = 0; this.goal = null;
     this.lastX = 0; this.lastY = 0;
     this.name = o.name || "";
+    this.xp = o.xp || 0;               /* 잡으면 주는 경험치 */
+    this.gold = o.gold || 0;
     /* 개체마다 고정된 각도. 완전히 포개졌을 때 **어느 쪽으로 흩어질지**를 정한다.
      * ⚠ Math.random 을 쓰지 말 것 — 같은 판을 다시 돌렸을 때 결과가 달라진다.
      *   황금각(2.39996rad)으로 돌리면 몇 마리든 고르게 벌어진다. */
@@ -134,6 +136,10 @@
 
   function World(opt) {
     opt = opt || {};
+    /* 캐릭터는 세계보다 오래 산다 — 세계는 층마다 새로 만들어지지만 이건 이어진다.
+     * ⚠ 여기에 **사본**을 두지 말 것. 층을 옮길 때마다 경험치가 되감긴다.
+     *   바깥(app.js)이 쥔 바로 그 객체를 가리켜야 한다. */
+    this.hero = opt.hero || (global.SAVE ? global.SAVE.blank() : null);
     var seed = opt.seed === undefined ? (Date.now() & 0x7fffffff) : opt.seed;
     this.seed = seed;
     this.depth = opt.depth || 1;
@@ -149,9 +155,10 @@
     var s = this.level.upAt || { x: 2, y: 2 };
     this.player = new Entity({
       x: s.x + 0.5, y: s.y + 0.5, kind: "player", sprite: opt.sprite || "warrior",
-      team: 0, hp: 60, name: "주인공"
+      team: 0, hp: 50, name: "주인공"
     });
     this.ents.push(this.player);
+    this.applyHero();
     this.refreshFov();
     if (opt.mobs !== 0) this.spawn(opt.mobs === undefined ? 10 : opt.mobs);
   }
@@ -170,7 +177,8 @@
       if (!boxFree(lv, x, y, 0.34)) continue;
       this.ents.push(new Entity({
         x: x, y: y, sprite: "rat", brain: "melee", team: 1,
-        hp: 14, spd: 3.0, name: "쥐",
+        hp: 14 + (this.depth - 1) * 4, spd: 3.0, name: "쥐",
+        xp: 8 + (this.depth - 1) * 3, gold: 2 + this.depth,
         swing: { aps: 0.85, windup: 0.32, recover: 0.30, reach: 0.95,
                  arc: 120, dmg: 4, push: 0.15 }
       }));
@@ -179,10 +187,40 @@
     return placed;
   };
 
-  /* 누가 죽었다. 지금은 알리기만 한다 — 경험치·전리품은 뼈대가 선 뒤다. */
+  /* 누가 죽었다. */
   World.prototype.onDeath = function (who, by) {
     this.log.push({ t: this.time, what: "death", who: who.name || who.sprite });
-    if (who === this.player) this.playerDeadAt = this.time;
+    if (who === this.player) { this.playerDeadAt = this.time; return; }
+    /* ⚠ 보상은 **주인공이 잡았을 때만.** 안 걸면 몬스터끼리 싸움 붙였을 때나
+     *   함정에 죽었을 때도 경험치가 들어온다(무한 파밍 통로다). */
+    if (!this.hero || by !== this.player) return;
+    var S = global.SAVE;
+    if (!S) return;
+    var ups = S.gainXp(this.hero, who.xp);
+    this.hero.gold += who.gold;
+    if (who.xp) this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + who.xp + "xp",
+                                     t: 0, life: 1.0, foe: true });
+    if (ups > 0) {
+      this.log.push({ t: this.time, what: "levelup", level: this.hero.level });
+      if (global.SFX) global.SFX.play("level");
+      /* 레벨이 오르면 **그 자리에서 체력이 늘고 다 찬다.** 실시간에서는 숨 돌릴
+       * 틈이 없으므로 이게 유일한 회복 순간이다(물약이 붙기 전까지). */
+      this.applyHero();
+      this.player.hp = this.player.maxHp;
+    }
+  };
+
+  /* 캐릭터 수치 → 몸. 레벨이 오르거나 불러온 직후에 부른다.
+   * ⚠ 이 계산이 **한 곳**이어야 한다. 화면에 쓰는 값과 실제 몸이 갈리면
+   *   "체력이 100인데 3대 맞고 죽는다" 가 된다. */
+  World.prototype.applyHero = function () {
+    if (!this.hero) return;
+    var p = this.player;
+    var lv = this.hero.level;
+    var was = p.maxHp;
+    p.maxHp = 50 + (lv - 1) * 12;
+    p.hp = Math.min(p.maxHp, p.hp + (p.maxHp - was));   /* 늘어난 만큼만 채운다 */
+    p.name = this.hero.name;
   };
 
   World.prototype.refreshFov = function () {

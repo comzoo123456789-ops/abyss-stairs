@@ -16,6 +16,10 @@
   /* 마우스 — **PC 에서 조준은 마우스다.** 이것이 손가락 조작과 가장 크게 다른 점이고
    * PC 부터 만들기로 한 이유다(엄지 두 개로는 이동과 조준을 동시에 못 한다). */
   var mouse = { cx: 0, cy: 0, down: false, has: false };
+  /* 캐릭터. **세계보다 오래 산다** — 층을 옮겨도 이 객체 하나를 계속 들고 다닌다.
+   * ⚠ 층마다 새로 불러오지 말 것. 저장이 마지막으로 쓰인 시점으로 되감긴다. */
+  var hero = null;
+  var saveAcc = 0;
 
   /* 키 → 방향. e.code 로 읽는다 —
    * ⚠ e.key 로 읽으면 한글 입력 상태에서 "ㅏ" 같은 값이 와서 조작이 통째로 죽는다.
@@ -59,6 +63,18 @@
     var r = world.advance(dt);
     view.draw(world, r.alpha);
 
+    /* 논 시간도 캐릭터의 시간이다(죽어 있을 때는 안 센다) */
+    if (!world.player.dead) hero.playSec += dt;
+
+    /* 자동 저장 — **묶어서 드문드문.** 맞을 때마다 쓰면 초당 수십 번 쓴다.
+     * ⚠ 값이 안 바뀌었으면 SAVE 가 알아서 건너뛴다. */
+    saveAcc += dt;
+    if (saveAcc >= global.SAVE.AUTO_EVERY) { saveAcc = 0; global.SAVE.save(hero); }
+
+    /* 죽으면 되살린다. 대가는 **아직 정하지 않았다**(보류) — 지금은 세어만 둔다.
+     * ⚠ 죽자마자 되살리면 무슨 일이 있었는지 모른다. 1.2초를 둔다. */
+    if (world.player.dead && world.time - world.playerDeadAt > 1.2) revive();
+
     fps.t += dt; fps.n++;
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
   }
@@ -70,6 +86,14 @@
     return view.toWorld(mouse.cx, mouse.cy);
   }
 
+  /* 되살린다. 캐릭터는 그대로 두고 **층만 다시 만든다.**
+   * ⚠ 마을은 5단계다. 그때까지는 같은 층을 새로 뽑는다. */
+  function revive() {
+    hero.deaths++;
+    global.SAVE.save(hero);
+    start({ depth: world.depth });
+  }
+
   function diag() {
     var el = document.getElementById("diag");
     if (!el) return;
@@ -77,14 +101,24 @@
     var alive = 0;
     for (var i = 0; i < world.ents.length; i++)
       if (!world.ents[i].dead && world.ents[i].team !== 0) alive++;
-    el.textContent = fps.v + "fps · 체력 " + p.hp + "/" + p.maxHp +
-      " · 적 " + alive + "마리 · " + world.time.toFixed(1) + "초" +
-      (p.dead ? " · 죽었다(R 로 다시)" : "");
+    var need = global.SAVE.needFor(hero.level);
+    el.textContent =
+      "Lv." + hero.level + " " + hero.xp + "/" + need + "xp" +
+      " · 체력 " + p.hp + "/" + p.maxHp +
+      " · 금화 " + hero.gold +
+      " · " + world.depth + "층(최고 " + hero.maxDepth + ")" +
+      " · 적 " + alive +
+      " · " + fps.v + "fps" +
+      (p.dead ? " · 쓰러졌다…" : "");
   }
 
   function start(opt) {
     if (raf) cancelAnimationFrame(raf);
-    world = new W.World(opt || {});
+    opt = opt || {};
+    opt.hero = hero;                 /* **같은 객체**를 넘긴다(사본 아님) */
+    opt.sprite = hero.cls;
+    world = new W.World(opt);
+    if (world.depth > hero.maxDepth) hero.maxDepth = world.depth;
     last = 0;
     raf = requestAnimationFrame(frame);
     return world;
@@ -103,13 +137,24 @@
   function boot() {
     var canvas = document.getElementById("view");
     view = new V.View(canvas);
+
+    /* ⚠ 캐릭터를 **가장 먼저** 불러온다. 세계보다 먼저 있어야 한다 —
+     *   세계가 만들어질 때 체력·레벨을 여기서 읽는다. */
+    var loaded = global.SAVE.load();
+    hero = loaded.save;
+    if (loaded.broken) console.warn("저장이 깨져 새로 시작한다(옛 것은 :broken 에 치워 뒀다)");
+    if (loaded.blocked) console.warn("이 브라우저는 저장을 막았다 — 저장 없이 돈다");
     start({});
 
     global.addEventListener("resize", function () { view.resize(); });
     global.addEventListener("keydown", function (e) {
       wakeAudio();
       if (MOVE[e.code]) { keys[e.code] = 1; e.preventDefault(); }
-      if (e.code === "KeyR") start({});
+      if (e.code === "KeyR") start({ depth: world.depth });
+      /* 다음 층 — 마을·계단은 5단계다. 그때까지 키로 내려간다. */
+      if (e.code === "Period" || e.code === "PageDown") start({ depth: world.depth + 1 });
+      if (e.code === "Comma" || e.code === "PageUp")
+        start({ depth: Math.max(1, world.depth - 1) });
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
       if (e.code === "Space") { var a = aim(); world.swing(a.x, a.y); e.preventDefault(); }
     });
@@ -128,6 +173,13 @@
     canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
     /* ⚠ 창에서 초점이 나가면 keyup 이 안 온다 — 누른 채로 굳어 혼자 걸어간다. */
     global.addEventListener("blur", function () { keys = Object.create(null); });
+    /* 창을 닫거나 탭을 감출 때 한 번 더 쓴다 — 자동 저장 사이에 닫으면 최대
+     * 5초를 잃는다. ⚠ beforeunload 만 믿지 말 것: 모바일 브라우저는 안 부르는
+     * 경우가 있다. visibilitychange 를 함께 건다. */
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") global.SAVE.save(hero);
+    });
+    global.addEventListener("beforeunload", function () { global.SAVE.save(hero); });
 
     /* 점검기용 손잡이. 화면을 눈으로 보는 것만으로는 60Hz 규칙이 맞는지 모른다. */
     global.__w = function () { return world; };
@@ -143,12 +195,22 @@
       keys = Object.create(null);
       (codes || []).forEach(function (c) { keys[c] = 1; });
     };
+    global.__hero = function () { return hero; };
+    global.__save = function () { return global.SAVE.save(hero); };
+    global.__reload = function () {
+      hero = global.SAVE.load().save;
+      start({ depth: 1 });
+      return hero;
+    };
     global.__peek = function () {
       var p = world.player;
       var foes = world.ents.filter(function (e) { return e.team !== 0 && !e.dead; });
       return { x: p.x, y: p.y, hp: p.hp, maxHp: p.maxHp, dead: p.dead,
                steps: world.steps, time: world.time, fps: fps.v,
-               foes: foes.length, atk: !!p.atk, rest: p.atkRest };
+               foes: foes.length, atk: !!p.atk, rest: p.atkRest,
+               depth: world.depth,
+               level: hero.level, xp: hero.xp, gold: hero.gold,
+               maxDepth: hero.maxDepth, deaths: hero.deaths };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };
