@@ -167,6 +167,13 @@
     this._dropId = 0;
     this.gear = null;       /* 입은 것의 합 — applyHero 가 채운다 */
     this.equipped = {};
+    /* 스킬 — **시계는 world.time 하나뿐이다.** Date.now 를 쓰면 창을 감췄다
+     * 돌아올 때 쿨다운이 통째로 어긋난다. */
+    this.cds = {};
+    this.fields = [];
+    this.buffs = [];
+    this._fieldId = 0;
+    this.castBroke = null;
     this.log = [];          /* 무슨 일이 있었나(검사가 읽는다) */
     this.time = 0;          /* 세계가 흐른 초 — 스킬 재사용도 전부 이 값이 기준이다 */
     this.steps = 0;
@@ -236,6 +243,9 @@
                                      t: 0, life: 1.0, foe: true });
     if (ups > 0) {
       this.log.push({ t: this.time, what: "levelup", level: this.hero.level });
+      /* **레벨업은 재주 점수를 준다.** 턴제 시절의 3지선다를 대신하는 자리다 —
+       * 캐릭터가 영구히 남는 게임에서는 매번 뽑기보다 쌓아 가는 쪽이 맞다. */
+      this.hero.points += ups;
       if (global.SFX) global.SFX.play("level");
       /* 레벨이 오르면 **그 자리에서 체력이 늘고 다 찬다.** 실시간에서는 숨 돌릴
        * 틈이 없으므로 이게 유일한 회복 순간이다(물약이 붙기 전까지). */
@@ -267,6 +277,9 @@
     p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - was)));
     p.def = t.armor || 0;
     p.spd = 4.2 * (1 + (t.spdPct || 0) / 100);
+    /* 버프가 얹히기 **전의** 값을 따로 둔다. 안 두면 버프가 끝날 때 무엇으로
+     * 되돌릴지 몰라 방어가 계속 쌓인다(버프를 걸수록 세지는 고전 버그). */
+    p.baseDef = t.armor || 0;
     p.critPct = t.critPct || 0;
     p.critDmgPct = t.critDmgPct || 0;
     p.lifeOnHit = t.lifeOnHit || 0;
@@ -280,7 +293,29 @@
         dmg: Math.max(1, Math.round(baseDmg + (t.dmg || 0)))
       };
     }
+    p.baseAps = p.swing ? p.swing.aps : null;
+    p.baseDmg = p.swing ? p.swing.dmg : null;
+    if (p.stam === undefined) p.stam = global.SKILLS ? global.SKILLS.STAM_MAX : 100;
+    this.refreshBuffs();
     p.name = h.name;
+  };
+
+  /* 걸려 있는 버프를 **기준값 위에 다시 얹는다.**
+   * ⚠ 더하고 빼는 식으로 두면 반올림과 순서 때문에 조금씩 어긋나 쌓인다. */
+  World.prototype.refreshBuffs = function () {
+    var p = this.player;
+    if (p.baseDef === undefined) return;
+    var armor = 0, aps = 0, dmg = 0;
+    for (var i = 0; i < this.buffs.length; i++) {
+      armor += this.buffs[i].armor || 0;
+      aps += this.buffs[i].apsPct || 0;
+      dmg += this.buffs[i].dmgPct || 0;
+    }
+    p.def = Math.max(0, p.baseDef + armor);
+    if (p.swing && p.baseAps !== null) {
+      p.swing.aps = p.baseAps * (1 + aps / 100);
+      p.swing.dmg = Math.max(1, Math.round(p.baseDmg * (1 + dmg / 100)));
+    }
   };
 
   /* ── 전리품 ─────────────────────────────────────────────
@@ -368,6 +403,7 @@
       if (e.hurt > 0) e.hurt = Math.max(0, e.hurt - SIM_DT);
       if (global.COMBAT) global.COMBAT.tick(this, e, SIM_DT);
     }
+    if (global.SKILLS) global.SKILLS.tick(this, SIM_DT);
 
     /* ③ 움직인다. */
     for (i = 0; i < this.ents.length; i++) {
@@ -388,6 +424,12 @@
        * ⚠ 완전히 묶으면(root) 조작이 끊긴 것처럼 느끼고, 안 묶으면 선딜이
        *   의미를 잃는다(휘두르며 그대로 돌진). 실시간 전투의 손맛이 여기 있다. */
       var slow = (e.atk || e.atkRest > 0) ? 0.30 : 1;
+      /* 시전 중에는 발이 거의 멈춘다 — 그래야 상대가 비킬 값어치가 있다 */
+      if (e.cast && e.cast.sk.cast > 0) slow = 0.15;
+      /* 둔화 — 충격파의 시너지 */
+      if (e.slowUntil && this.time < e.slowUntil) slow *= (1 - (e.slowPct || 0) / 100);
+      /* 돌진 중에는 조작으로 움직이지 않는다(돌진이 대신 옮긴다) */
+      if (e.dash) slow = 0;
       var len = Math.sqrt(mx * mx + my * my);
       if (len > 1e-6) {
         /* ⚠ 대각선을 정규화하지 않으면 **대각이 1.41배 빠르다.** 그러면 모두가
@@ -519,10 +561,19 @@
     return this.recall ? Math.max(0, RECALL_SEC - this.recall.t) : 0;
   };
 
+  /* 스킬을 쓴다. **왜 못 쓰는지**를 돌려준다 — null 이면 성공. */
+  World.prototype.useSkill = function (id, aimX, aimY, taken) {
+    if (!global.SKILLS) return "재주가 없다";
+    return global.SKILLS.use(this, id, aimX, aimY, taken);
+  };
+
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */
   World.prototype.swing = function (aimX, aimY) {
     if (!global.COMBAT) return false;
     var p = this.player;
+    /* ⚠ 스킬을 쓰는 중에는 평타가 안 나간다. 안 막으면 시전 중에 마우스를
+     *   누르고 있는 것만으로 평타가 섞여 나가 시전의 뜻이 없어진다. */
+    if (p.cast || p.dash) return false;
     return global.COMBAT.begin(p, aimX - p.x, aimY - p.y);
   };
 

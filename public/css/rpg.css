@@ -95,3 +95,54 @@ html, body {
 .tot .hr { height: 1px; background: #3c3448; margin: 8px 0; }
 .set { margin-top: 10px; font-size: 12px; color: #b06be0; }
 .set .on { color: #9fd29a; margin-left: 8px; }
+
+/* 아래 줄 — 기력 바 + 스킬 넷.
+   ⚠ 조작 안내(.hint)·행동 안내(.act)와 **겹치면 셋 다 안 읽힌다.**
+     .act 34px · .hint 8px 이므로 여기는 그 위에 둔다. */
+.bottom {
+  position: absolute; left: 0; right: 0; bottom: 56px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  pointer-events: none;
+}
+.stamwrap {
+  width: 268px; height: 5px; border-radius: 3px;
+  background: rgba(0,0,0,.6); overflow: hidden;
+}
+.stam { display: block; height: 100%; width: 100%; background: #6fb3d2; transition: width .1s linear; }
+.skillbar { display: flex; gap: 6px; }
+.sk {
+  position: relative; width: 62px; height: 50px; border-radius: 6px; overflow: hidden;
+  background: rgba(24,20,30,.92); border: 1px solid #574d66;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+  padding-bottom: 4px;
+}
+/* 쿨다운은 **아래에서 차오르는 덮개**다. 숫자만 두면 흘긋 봐서는 안 읽힌다. */
+.sk .cool {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+  background: rgba(0,0,0,.62); transition: height .08s linear;
+}
+.sk .key { position: absolute; left: 4px; top: 2px; font-size: 10px; color: var(--ink-dim); }
+.sk .nm { position: relative; font-size: 11px; color: var(--ink); }
+.sk .cd {
+  position: absolute; left: 0; right: 0; top: 13px; text-align: center;
+  font-size: 16px; color: #ffe9a8;
+}
+.sk.empty { opacity: .4; }
+.sk.nostam { border-color: #7a4050; }
+.sk.nostam .nm { color: #d98b8b; }
+
+/* 재주책 */
+.col.skill { min-width: 0; }
+.col.skill h3 .key {
+  display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 3px;
+  background: #8f6bff; color: #fff; font-size: 11px;
+}
+.itm.syn.got { border-color: #7bbd5a; background: #26301f; }
+.itm.reset { margin-top: 4px; }
+.bar-pick { display: flex; gap: 4px; margin-top: 6px; }
+.bar-pick .slot {
+  flex: 1; padding: 5px 0; cursor: pointer; font: inherit; font-size: 12px;
+  background: #241f2e; border: 1px solid #3c3448; border-radius: 4px; color: var(--ink-dim);
+}
+.bar-pick .slot.on { background: #8f6bff; border-color: #8f6bff; color: #fff; }
+.bar-pick .slot:hover { border-color: #8f6bff; }

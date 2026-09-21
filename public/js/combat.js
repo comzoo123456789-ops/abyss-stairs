@@ -108,6 +108,9 @@
 
   function damage(world, from, to, amount, opt) {
     if (to.dead) return 0;
+    /* 무적(돌진 시너지). ⚠ **여기 한 곳**에서만 본다 — 장판·부채꼴·평타가
+     *   각자 검사하면 하나를 빠뜨려 "무적인데 장판에는 맞는다" 가 된다. */
+    if (to.dash && to.dash.iframe) return 0;
     opt = opt || {};
     /* 치명타 — **때리는 쪽의 값**으로 굴린다.
      * ⚠ 방어(armor)는 치명타 **뒤에** 뺀다. 먼저 빼면 방어가 높은 상대에게

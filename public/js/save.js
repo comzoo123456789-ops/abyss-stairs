@@ -43,7 +43,8 @@
     playSec:  { def: 0, min: 0, max: 1e9 },
     deaths:   { def: 0, min: 0, max: 1e9, int: true },
     born:     { def: 0, min: 0, max: 1e15, int: true }, /* 만든 시각 */
-    potions:  { def: 3, min: 0, max: 99, int: true }
+    potions:  { def: 3, min: 0, max: 99, int: true },
+    points:   { def: 0, min: 0, max: 200, int: true }  /* 안 쓴 재주 점수 */
   };
 
   /* 가방 크기. ⚠ 무제한으로 두면 회원이 정리를 안 하고, 저장이 끝없이 커진다.
@@ -81,6 +82,41 @@
     out.equip = {};
     out.bag = [];
     out.stash = [];
+
+    /* ── 재주. **표에 있는 것만** 남긴다.
+     * ⚠ 손으로 고쳐 시너지를 셋 다 켜면 게임이 무너진다 — 스킬마다 **하나**만
+     *   받는다(고르는 것이 곧 빌드다. 다 켤 수 있으면 고를 이유가 없다). */
+    out.skills = {};
+    out.bar = [null, null, null, null];
+    var SK = global.SKILLS;
+    if (SK) {
+      var rawSk = (raw.skills && typeof raw.skills === "object") ? raw.skills : {};
+      for (var ki = 0; ki < SK.LIST.length; ki++) {
+        var def = SK.LIST[ki];
+        var want = rawSk[def.id];
+        if (!Array.isArray(want) || !want.length) continue;
+        var ok = null;
+        for (var wi = 0; wi < want.length && !ok; wi++)
+          for (var yi = 0; yi < def.syn.length; yi++)
+            if (def.syn[yi].id === want[wi]) { ok = want[wi]; break; }
+        out.skills[def.id] = ok ? [ok] : [];
+      }
+      var rawBar = Array.isArray(raw.bar) ? raw.bar : [];
+      for (var bi2 = 0; bi2 < 4; bi2++) {
+        var want2 = rawBar[bi2];
+        out.bar[bi2] = SK.byId(want2) ? want2 : null;
+      }
+      /* ⚠ 같은 스킬이 두 칸에 있으면 하나가 죽은 칸이 된다 — 뒤엣것을 비운다 */
+      for (var a = 0; a < 4; a++)
+        for (var b2 = a + 1; b2 < 4; b2++)
+          if (out.bar[a] && out.bar[a] === out.bar[b2]) out.bar[b2] = null;
+      /* 새 캐릭터는 첫 두 개를 쥐고 시작한다 — 빈 손잡이로 시작하면
+       * 실시간 전투를 배울 수가 없다(평타만으로는 아무것도 못 한다). */
+      if (out.bar.every(function (x) { return !x; })) {
+        out.bar[0] = SK.LIST[0].id;
+        out.bar[1] = SK.LIST[1].id;
+      }
+    }
     if (I) {
       var raw_e = (raw.equip && typeof raw.equip === "object") ? raw.equip : {};
       for (var si = 0; si < I.SLOTS.length; si++) {
@@ -227,6 +263,7 @@
     load: load, save: save, wipe: wipe, blank: blank, sanitize: sanitize,
     needFor: needFor, gainXp: gainXp,
     BAG: BAG, STASH: STASH,
+    liveSkills: function (s) { return (s && s.skills) || {}; },
     liveEquip: liveEquip, liveBag: liveBag, liveStash: liveStash,
     blocked: function () { return !store(); }
   };

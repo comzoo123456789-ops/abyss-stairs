@@ -79,6 +79,7 @@
     if (world.player.dead && world.time - world.playerDeadAt > 1.2) revive();
 
     hud();
+    drawBar();
 
     fps.t += dt; fps.n++;
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
@@ -173,6 +174,16 @@
 
   /* [E] — 발밑/눈앞의 것에 말을 건다. **한 키로 다 한다.**
    * ⚠ 물건마다 키를 따로 두면 회원이 외워야 할 것이 늘어난다. */
+  /* 손잡이 한 칸을 쓴다. **왜 못 썼는지**를 알린다 —
+   * ⚠ 아무 일도 안 일어나면 회원은 키가 안 먹는 줄 안다(실시간에서는 특히). */
+  function castSlot(i) {
+    var id = hero.bar[i];
+    if (!id) return toast((i + 1) + "번 칸이 비었다 — K 로 재주를 넣는다");
+    var a = aim();
+    var no = world.useSkill(id, a.x, a.y, hero.skills);
+    if (no) toast(global.SKILLS.byId(id).name + " — " + no);
+  }
+
   function interact() {
     if (world.player.dead) return;
     var dp = world.nearDrop();
@@ -543,6 +554,141 @@
     openStash();
   }
 
+  /* ── 재주책(K) ───────────────────────────────────────
+   * 레벨업으로 받은 점수로 **시너지 하나**를 고른다. 스킬마다 하나뿐이다 —
+   * 셋 다 켤 수 있으면 고를 이유가 없고, 그럼 빌드가 사라진다.
+   * ⚠ 되돌리기(초기화)를 둔다. 캐릭터가 영구히 남는 게임에서 잘못 찍은 것을
+   *   못 되돌리면 그 캐릭터를 버려야 한다. */
+  function openBook() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var SK = global.SKILLS;
+    var html = '<h2>재주</h2><p class="sub">남은 점수 <b>' + hero.points +
+      '</b> · 손잡이는 1·2·3·4</p><div class="cols">';
+
+    for (var i = 0; i < SK.LIST.length; i++) {
+      var def = SK.LIST[i];
+      var r = SK.resolve(def.id, hero.skills);
+      var barAt = hero.bar.indexOf(def.id);
+      html += '<div class="col skill">';
+      html += '<h3>' + esc(def.name) +
+        (barAt >= 0 ? ' <b class="key">' + (barAt + 1) + '</b>' : '') + '</h3>';
+      html += '<p class="sub">' + esc(def.text) + '</p>';
+      html += '<div class="tot">재사용 ' + r.cd.toFixed(1) + '초 · 시전 ' +
+        r.cast.toFixed(2) + '초 · 기력 ' + r.stam +
+        (r.mult ? ' · 위력 ' + r.mult.toFixed(1) + '배' : '') + '</div>';
+      for (var j = 0; j < def.syn.length; j++) {
+        var sy = def.syn[j];
+        var got = (hero.skills[def.id] || []).indexOf(sy.id) >= 0;
+        var locked = !got && ((hero.skills[def.id] || []).length > 0 || hero.points < 1);
+        html += '<button class="itm syn' + (got ? " got" : "") + '"' +
+          (locked ? ' data-locked="1"' : '') +
+          ' data-syn="' + def.id + ':' + sy.id + '">' +
+          '<span class="nm">' + (got ? "✔ " : "") + esc(sy.name) + '</span>' +
+          '<span class="st">' + esc(sy.text) + '</span></button>';
+      }
+      html += '<div class="bar-pick">';
+      for (var b = 0; b < 4; b++)
+        html += '<button class="slot' + (barAt === b ? " on" : "") +
+          '" data-bar="' + def.id + ':' + b + '">' + (b + 1) + '</button>';
+      html += '</div></div>';
+    }
+    html += '</div>';
+    html += '<p class="sub"><button class="itm reset" data-reset="1">' +
+      '<span class="nm">전부 되돌리기</span>' +
+      '<span class="mt">점수를 돌려받는다 — 잘못 찍어도 캐릭터를 버리지 않게</span>' +
+      '</button></p>';
+    html += '<p class="sub">K 또는 Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    wire(box, "syn", function (v) { takeSyn(v); });
+    wire(box, "bar", function (v) { setBar(v); });
+    wire(box, "reset", function () { resetSkills(); });
+  }
+
+  function takeSyn(v) {
+    var p = v.split(":"), id = p[0], sy = p[1];
+    var have = hero.skills[id] || [];
+    if (have.indexOf(sy) >= 0) return;
+    if (have.length) return toast("이 재주는 이미 하나를 골랐다 — 되돌리기로 바꾼다");
+    if (hero.points < 1) return toast("점수가 없다 — 레벨을 올린다");
+    hero.points--;
+    hero.skills[id] = [sy];
+    if (global.SFX) global.SFX.play("level");
+    global.SAVE.save(hero);
+    openBook();
+  }
+
+  function setBar(v) {
+    var p = v.split(":"), id = p[0], i = Number(p[1]);
+    /* ⚠ 같은 스킬이 두 칸에 있으면 하나가 죽은 칸이 된다 — 옮긴다 */
+    var was = hero.bar.indexOf(id);
+    if (was === i) { hero.bar[i] = null; }
+    else {
+      if (was >= 0) hero.bar[was] = null;
+      hero.bar[i] = id;
+    }
+    global.SAVE.save(hero);
+    openBook();
+  }
+
+  function resetSkills() {
+    var back = 0;
+    for (var k in hero.skills) back += (hero.skills[k] || []).length;
+    if (!back) return toast("되돌릴 것이 없다");
+    hero.points += back;
+    hero.skills = {};
+    global.SAVE.save(hero);
+    toast("점수 " + back + "개를 돌려받았다");
+    openBook();
+  }
+
+  /* 화면 아래 스킬 줄 — **쿨다운이 보여야** 언제 쓸지 안다.
+   * ⚠ 매 프레임 innerHTML 을 다시 만들지 말 것(초당 60번이면 눈에 띄게 끊긴다).
+   *   칸은 한 번만 만들고 **채움만** 고친다. */
+  var barEls = null;
+  function buildBar() {
+    var el = document.getElementById("skillbar");
+    if (!el) return;
+    el.innerHTML = "";
+    barEls = [];
+    for (var i = 0; i < 4; i++) {
+      var d = document.createElement("div");
+      d.className = "sk";
+      d.innerHTML = '<i class="cool"></i><b class="key">' + (i + 1) +
+                    '</b><span class="nm"></span><span class="cd"></span>';
+      el.appendChild(d);
+      barEls.push({ root: d, cool: d.querySelector(".cool"),
+                    nm: d.querySelector(".nm"), cd: d.querySelector(".cd") });
+    }
+  }
+  function drawBar() {
+    if (!barEls) buildBar();
+    if (!barEls) return;
+    var SK = global.SKILLS;
+    for (var i = 0; i < 4; i++) {
+      var id = hero.bar[i], e = barEls[i];
+      if (!id) {
+        e.root.className = "sk empty";
+        e.nm.textContent = "—"; e.cd.textContent = "";
+        e.cool.style.height = "0%";
+        continue;
+      }
+      var def = SK.byId(id), r = SK.resolve(id, hero.skills);
+      var left = SK.cdLeft(world, id, hero.skills);
+      var lowStam = world.player.stam < r.stam;
+      e.root.className = "sk" + (left > 0 ? " cooling" : "") + (lowStam ? " nostam" : "");
+      e.nm.textContent = def.name;
+      e.cd.textContent = left > 0 ? left.toFixed(1) : "";
+      e.cool.style.height = left > 0 ? Math.round(left / r.cd * 100) + "%" : "0%";
+    }
+    var st = document.getElementById("stam");
+    if (st) st.style.width = Math.round(world.player.stam /
+      global.SKILLS.STAM_MAX * 100) + "%";
+  }
+
   function panelOpen() {
     var box = document.getElementById("panel");
     return !!box && !box.hidden;
@@ -612,6 +758,7 @@
       if (e.code === "Escape") { closePanel(); return; }
       /* ⚠ **연 키로 닫히게** 한다. I 로 열고 Esc 로만 닫히면 매번 손이 멀리 간다. */
       if (e.code === "KeyI" && panelOpen()) { closePanel(); return; }
+      if (e.code === "KeyK" && panelOpen()) { closePanel(); return; }
       /* ⚠ 창 잠금은 **무엇보다 먼저**다. 아래에 두면 이동 키가 이미 처리된
        *   뒤라 층을 고르는 동안 주인공이 그대로 걸어간다(실측 2.24칸 이동).
        *   ⚠ 게다가 keys[] 에 눌림이 남아 창을 닫은 뒤에도 혼자 걸어간다. */
@@ -624,6 +771,12 @@
       if (e.code === "KeyE") { interact(); e.preventDefault(); return; }
       if (e.code === "KeyI") { openBag(); e.preventDefault(); return; }
       if (e.code === "KeyQ") { drink(); e.preventDefault(); return; }
+      if (e.code === "KeyK") { openBook(); e.preventDefault(); return; }
+      /* QWER 이 아니라 **1234** 다 — Q 는 물약이고, WASD 가 이동이라
+       * Q·W·E·R 은 이미 넷 중 셋이 다른 일을 한다(전에 그렇게 배선했다가
+       * W 를 누르면 걸으면서 스킬이 나갔다). 숫자 줄이 비어 있다. */
+      var slot = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
+      if (slot !== undefined) { castSlot(slot); e.preventDefault(); return; }
       if (e.code === "KeyT") { world.recallStart(); return; }
       if (e.code === "KeyR" && !world.inTown) start({ depth: world.depth });
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
@@ -669,6 +822,11 @@
     global.__hero = function () { return hero; };
     global.__town = toTown;
     global.__bag = openBag;
+    global.__book = openBook;
+    global.__cast = castSlot;
+    global.__syn = takeSyn;
+    global.__setbar = setBar;
+    global.__resetsk = resetSkills;
     global.__shop = openShop;
     global.__stash = openStash;
     global.__buyback = function () { return buyback.length; };
@@ -710,7 +868,11 @@
                equipped: Object.keys(hero.equip).length, potions: hero.potions,
                dmg: world.player.swing ? world.player.swing.dmg : null,
                aps: world.player.swing ? world.player.swing.aps : null,
-               def: world.player.def, critPct: world.player.critPct };
+               def: world.player.def, critPct: world.player.critPct,
+               stam: Math.round(world.player.stam), points: hero.points,
+               bar: hero.bar.slice(), casting: world.player.cast ? world.player.cast.id : null,
+               dashing: !!world.player.dash, fields: world.fields.length,
+               buffs: world.buffs.length };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };

@@ -164,6 +164,22 @@
               (pr.x - 0.5) * TILE + ox, (pr.y - 0.5) * TILE + oy);
     }
 
+    /* 2-a2) 장판. **개체보다 아래**에 깐다 — 바닥에 붙은 것이다. */
+    for (var fi = 0; fi < world.fields.length; fi++) {
+      var fd = world.fields[fi];
+      var fleft = fd.until - world.time;
+      var fcx = fd.x * TILE + ox, fcy = fd.y * TILE + oy;
+      var fr = fd.r * TILE;
+      var fg = ctx.createRadialGradient(fcx, fcy, fr * 0.2, fcx, fcy, fr);
+      /* ⚠ 끝나기 전에 **옅어진다.** 안 그러면 사라지는 순간을 못 읽어
+       *   "아직 타는 줄 알고" 서 있게 된다. */
+      var fa = Math.min(1, fleft / 1.2);
+      fg.addColorStop(0, "rgba(255,150,60," + (0.34 * fa).toFixed(3) + ")");
+      fg.addColorStop(1, "rgba(200,60,20,0)");
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.fill();
+    }
+
     /* 2-b) 바닥의 전리품. **개체보다 먼저** — 사람이 그 위에 서야 한다.
      * ⚠ 등급 빛을 **아래에 깐다**(위에 얹으면 그림을 덮어 뭔지 안 보인다).
      * ⚠ 위아래로 살짝 떠 있게 한다. 바닥 무늬에 섞이면 못 보고 지나친다 —
@@ -194,6 +210,20 @@
      * ⚠ 개체마다 자기 부채꼴을 그리게 두었더니, 주인공보다 **아래에 선 몬스터**의
      *   빨간 예고가 y 정렬 때문에 주인공 위에 덮였다(실측: 몸이 통째로 빨개져
      *   맞은 줄 알았다). 예고는 바닥에 그린 표시지 서 있는 물건이 아니다. */
+    /* 시전 예고 — **차오르는 고리.** 이걸 안 보여 주면 상대도 나도
+     * 무엇이 오는지 모르고, 그럼 시전 시간이 아무 뜻이 없어진다. */
+    var pc = world.player.cast;
+    if (pc && pc.sk.cast > 0) {
+      var k2 = Math.min(1, pc.t / pc.sk.cast);
+      var ccx = lerp(world.player.px, world.player.x, alpha) * TILE + ox;
+      var ccy = (lerp(world.player.py, world.player.y, alpha) - 0.3) * TILE + oy;
+      var rr = (pc.sk.reach || 1.5) * TILE;
+      ctx.strokeStyle = "rgba(255,225,150,.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ccx, ccy, rr, -Math.PI / 2, -Math.PI / 2 + k2 * Math.PI * 2);
+      ctx.stroke();
+    }
+
     for (var ai = 0; ai < world.ents.length; ai++) {
       var ae = world.ents[ai];
       if (!ae.atk || ae.dead) continue;
