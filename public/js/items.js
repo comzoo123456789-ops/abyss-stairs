@@ -133,10 +133,21 @@
     return list[list.length - 1];
   }
 
-  function scaleStat(v, t, mult) {
-    /* 단계와 등급으로 키운다. 반올림은 **마지막에 한 번만** — 중간에 하면
-     * 작은 값이 계속 0 으로 깎인다. */
-    return Math.max(1, Math.round(v * mult));
+  /* 접사 값이 **물건 수준(ilvl)을 따라 커진다.**
+   *
+   * ⚠ 전에는 ilvl 을 무시했다. `il` 은 "언제부터 나올 수 있나" 만 막고 값은
+   *   고정이라, **30층에서 주운 「날카로운 검」이 1층 것과 똑같이 +2** 였다.
+   *   그래서 Lv.15 에 최고 접사가 다 열리면 그 뒤로 강해질 방법이 없었고,
+   *   실측에서 한 대 피해가 Lv.15~30 동안 **28 에서 멈췄다**(몬스터 체력 합은
+   *   같은 구간에 1,445 → 4,172 로 늘었다). 던전이 뒤로 갈수록 벽이 된 원인이다.
+   * ⚠ 계수를 여기 **한 곳**에 둔다. 값마다 따로 적으면 균형을 다시 잡을 때
+   *   열여섯 군데를 고쳐야 하고 반드시 하나를 빠뜨린다. */
+  var ILVL_GROW = 0.14;
+
+  function scaleStat(v, t, mult, ilvl) {
+    var grow = 1 + Math.max(0, (ilvl || 1) - 1) * ILVL_GROW;
+    /* 반올림은 **마지막에 한 번만** — 중간에 하면 작은 값이 계속 0 으로 깎인다. */
+    return Math.max(1, Math.round(v * mult * grow));
   }
 
   /* 물건 하나를 굴린다. ilvl 은 대개 층 깊이다. */
@@ -197,7 +208,7 @@
       var a = avail[Math.floor(rng() * avail.length)];
       used[a.id] = 1;
       it.affixes.push(a.id);
-      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult);
+      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult, ilvl);
     }
 
     it.name = affixName(it, base, tier);
@@ -298,7 +309,7 @@
     }
     for (var n = 0; n < affixes.length; n++) {
       var af = byId(affixes[n]);
-      for (var kk in af.s) it.s[kk] = (it.s[kk] || 0) + scaleStat(af.s[kk], af.t, tier.mult);
+      for (var kk in af.s) it.s[kk] = (it.s[kk] || 0) + scaleStat(af.s[kk], af.t, tier.mult, ilvl);
     }
     if (!it.set) it.name = affixName(it, base, tier);
     it.req = reqLevel(it);
@@ -388,6 +399,7 @@
   global.ITEMS = {
     SLOTS: SLOTS, SLOT_NAME: SLOT_NAME, TIERS: TIERS, BASES: BASES,
     PREFIX: PREFIX, SUFFIX: SUFFIX, SETS: SETS,
+    ILVL_GROW: ILVL_GROW,
     roll: roll, totals: totals, swingOf: swingOf, canEquip: canEquip,
     pack: pack, rebuild: rebuild,
     reqLevel: reqLevel, audit: audit,
