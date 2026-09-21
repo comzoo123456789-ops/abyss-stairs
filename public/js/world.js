@@ -124,6 +124,11 @@
     this.lastX = 0; this.lastY = 0;
     this.name = o.name || "";
     this.xp = o.xp || 0;               /* 잡으면 주는 경험치 */
+    /* 치명타·흡혈 — 장비에서 온다(몬스터는 0). **이름이 늘 있어야** 한다:
+     * undefined 로 두면 화면 쪽 오타와 구별이 안 된다. */
+    this.critPct = o.critPct || 0;
+    this.critDmgPct = o.critDmgPct || 0;
+    this.lifeOnHit = o.lifeOnHit || 0;
     this.gold = o.gold || 0;
     /* 개체마다 고정된 각도. 완전히 포개졌을 때 **어느 쪽으로 흩어질지**를 정한다.
      * ⚠ Math.random 을 쓰지 말 것 — 같은 판을 다시 돌렸을 때 결과가 달라진다.
@@ -158,6 +163,10 @@
     }
     this.ents = [];
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
+    this.drops = [];        /* 바닥에 떨어진 것 */
+    this._dropId = 0;
+    this.gear = null;       /* 입은 것의 합 — applyHero 가 채운다 */
+    this.equipped = {};
     this.log = [];          /* 무슨 일이 있었나(검사가 읽는다) */
     this.time = 0;          /* 세계가 흐른 초 — 스킬 재사용도 전부 이 값이 기준이다 */
     this.steps = 0;
@@ -219,9 +228,11 @@
     if (!this.hero || by !== this.player) return;
     var S = global.SAVE;
     if (!S) return;
-    var ups = S.gainXp(this.hero, who.xp);
-    this.hero.gold += who.gold;
-    if (who.xp) this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + who.xp + "xp",
+    /* 경험치 보너스는 **여기서 한 번만** 곱한다 */
+    var xpMult = 1 + ((this.gear && this.gear.xpPct) || 0) / 100;
+    var ups = S.gainXp(this.hero, Math.round(who.xp * xpMult));
+    this.dropFrom(who);
+    if (who.xp) this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + Math.round(who.xp * xpMult) + "xp",
                                      t: 0, life: 1.0, foe: true });
     if (ups > 0) {
       this.log.push({ t: this.time, what: "levelup", level: this.hero.level });
@@ -238,13 +249,91 @@
    *   "체력이 100인데 3대 맞고 죽는다" 가 된다. */
   World.prototype.applyHero = function () {
     if (!this.hero) return;
-    var p = this.player;
-    var lv = this.hero.level;
+    var p = this.player, h = this.hero;
+    var lv = h.level;
+    var I = global.ITEMS, S = global.SAVE;
+    /* 입은 것을 **여기서 한 번만** 합친다. 화면이 따로 더하면
+     * "표시는 +30 인데 실제로는 +24" 가 된다. */
+    var eq = (I && S) ? S.liveEquip(h) : {};
+    var t = I ? I.totals(eq) : { dmg:0, hp:0, armor:0, spdPct:0, apsPct:0,
+                                 critPct:0, critDmgPct:0, lifeOnHit:0, goldPct:0, xpPct:0 };
+    this.gear = t;
+    this.equipped = eq;
+
     var was = p.maxHp;
-    p.maxHp = 50 + (lv - 1) * 12;
-    p.hp = Math.min(p.maxHp, p.hp + (p.maxHp - was));   /* 늘어난 만큼만 채운다 */
-    p.name = this.hero.name;
+    p.maxHp = 50 + (lv - 1) * 12 + (t.hp || 0);
+    /* ⚠ 늘어난 **차이만큼만** 채운다. 새로 다 채우면 장비를 뺐다 끼는 것만으로
+     *   무한 회복이 된다(장비 바꾸기 = 물약). */
+    p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - was)));
+    p.def = t.armor || 0;
+    p.spd = 4.2 * (1 + (t.spdPct || 0) / 100);
+    p.critPct = t.critPct || 0;
+    p.critDmgPct = t.critDmgPct || 0;
+    p.lifeOnHit = t.lifeOnHit || 0;
+    /* 무기가 몸짓과 피해를 함께 정한다 — 없으면 맨손(COMBAT.SWING) */
+    var sw = I ? I.swingOf(eq, t) : null;
+    if (sw) {
+      var baseDmg = (eq.weapon && eq.weapon.s && eq.weapon.s.dmg) ? 0 : global.COMBAT.SWING.dmg;
+      p.swing = {
+        aps: sw.aps, windup: sw.windup, recover: sw.recover,
+        reach: sw.reach, arc: sw.arc, push: sw.push,
+        dmg: Math.max(1, Math.round(baseDmg + (t.dmg || 0)))
+      };
+    }
+    p.name = h.name;
   };
+
+  /* ── 전리품 ─────────────────────────────────────────────
+   * ⚠ 굴리기는 **씨앗 난수**다. 같은 판을 다시 돌리면 같은 것이 나와야
+   *   "이게 왜 나왔지" 를 두 번 볼 수 있다. */
+  World.prototype.dropFrom = function (who) {
+    var I = global.ITEMS;
+    if (!I) return;
+    this._dropSeed = (this._dropSeed || (this.seed ^ 0x2545f491)) >>> 0;
+    var rng = D.makeRng(this._dropSeed + who.uid * 2654435761);
+    this._dropSeed = (this._dropSeed * 1664525 + 1013904223) >>> 0;
+
+    /* 금화는 **거의 늘** 나온다 — 빈손으로 끝나는 전투가 이어지면 지친다 */
+    var mult = 1 + ((this.gear && this.gear.goldPct) || 0) / 100;
+    var g = Math.max(1, Math.round(who.gold * mult * (0.7 + rng() * 0.8)));
+    this.drops.push({ id: ++this._dropId, x: who.x, y: who.y, gold: g, t: this.time });
+
+    /* 물건은 가끔. ⚠ 너무 자주 나오면 가방이 차서 정리만 하게 된다. */
+    if (rng() < 0.22) {
+      var it = I.roll(rng, { ilvl: Math.max(1, this.depth) });
+      this.drops.push({ id: ++this._dropId, x: who.x + (rng() - 0.5) * 0.8,
+                        y: who.y + (rng() - 0.5) * 0.8, item: it, t: this.time });
+    }
+  };
+
+  /* 발밑의 전리품. 금화는 **닿으면 알아서** 들어오고 물건은 눌러서 줍는다 —
+   * ⚠ 물건까지 자동으로 주우면 가방이 쓰레기로 차고, 무엇을 주웠는지 모른다. */
+  World.prototype.nearDrop = function () {
+    var best = null, bd = 1e9, p = this.player;
+    for (var i = 0; i < this.drops.length; i++) {
+      var d = this.drops[i];
+      if (!d.item) continue;
+      var dd = Math.hypot(d.x - p.x, d.y - p.y);
+      if (dd > 1.1) continue;
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    return best;
+  };
+
+  World.prototype.takeDrop = function (drop) {
+    var S = global.SAVE, I = global.ITEMS;
+    if (!drop || !this.hero || !S || !I) return "없다";
+    var i = this.drops.indexOf(drop);
+    if (i < 0) return "없다";
+    if (this.hero.bag.length >= S.BAG) return "가방이 가득 찼다";
+    this.hero.bag.push(I.pack(drop.item));
+    this.drops.splice(i, 1);
+    if (global.SFX) global.SFX.play("pickup");
+    this.log.push({ t: this.time, what: "pickup", name: drop.item.name });
+    return null;
+  };
+
+  /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */
 
   World.prototype.refreshFov = function () {
     /* 마을은 안개가 없다 — 집 안에서 길을 잃으면 안 된다 */
@@ -340,6 +429,19 @@
         moveBy(this.level, a, -ux * pushAmt, -uy * pushAmt);
         moveBy(this.level, b, ux * pushAmt, uy * pushAmt);
       }
+    }
+
+    /* ④-b 금화는 **닿으면 들어온다.** 물건은 눌러야 줍는다(무엇을 주웠는지
+     *      알아야 하고, 가방이 쓰레기로 차면 안 된다). */
+    for (i = this.drops.length - 1; i >= 0; i--) {
+      var dr = this.drops[i];
+      if (!dr.gold) continue;
+      if (Math.hypot(dr.x - this.player.x, dr.y - this.player.y) > 0.85) continue;
+      if (this.hero) this.hero.gold += dr.gold;
+      this.floaters.push({ x: dr.x, y: dr.y - 0.5, text: "+" + dr.gold + "금",
+                           t: 0, life: 0.8, foe: true });
+      if (global.SFX) global.SFX.play("gold");
+      this.drops.splice(i, 1);
     }
 
     /* ⑤ 떠오르는 숫자. */

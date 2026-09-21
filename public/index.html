@@ -29,12 +29,16 @@
   <div id="act" class="act"></div>
   <!-- 층 선택 창. 캔버스가 아니라 DOM 이다(키보드로 고를 수 있어야 한다). -->
   <div id="panel" class="panel" hidden style="display:none"></div>
-  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; 마우스 조준 · 클릭/스페이스 공격 &nbsp;·&nbsp; E 조작 · T 귀환 · R 새 층</div>
+  <!-- 짧은 알림. 못 한 일에는 **왜 못 했는지**를 말해야 한다 —
+       아무 일도 안 일어나면 회원은 고장으로 느낀다. -->
+  <div id="toast" class="toast"></div>
+  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; 마우스 조준 · 클릭/스페이스 공격 &nbsp;·&nbsp; E 조작 · I 가방 · Q 물약 · T 귀환</div>
 </div>
 
 <script src="js/sprites.js?v=1"></script>
 <script src="js/sprites-art.js?v=1"></script>
 <script src="js/sound.js?v=1"></script>
+<script src="js/items.js?v=1"></script>
 <script src="js/save.js?v=1"></script>
 <script src="js/dungeon.js?v=1"></script>
 <script src="js/town.js?v=1"></script>

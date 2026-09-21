@@ -134,8 +134,15 @@
     } else if (world.player.dead) {
       txt = "쓰러졌다…";
     } else {
+      var dp = world.nearDrop();
       var pr = world.nearProp();
-      if (pr) txt = "[E] " + pr.def.label + " — " + pr.def.verb;
+      /* ⚠ 전리품을 **먼저** 본다. 포탈 위에 떨어진 물건을 못 줍는 일이 없게. */
+      if (dp) {
+        var ti = global.ITEMS.tierOf(dp.item.tier);
+        txt = "[E] " + dp.item.name + " (" + ti.name + " · " +
+              global.ITEMS.SLOT_NAME[dp.item.slot] + " · Lv." + dp.item.req + ")";
+      }
+      else if (pr) txt = "[E] " + pr.def.label + " — " + pr.def.verb;
       else if (world.onStairs()) txt = "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
       else if (!world.inTown) txt = "[T] 마을로 귀환 (2초간 가만히)";
     }
@@ -143,10 +150,38 @@
     el.style.visibility = txt ? "visible" : "hidden";
   }
 
+  /* 물약 — 실시간에서는 **멈추지 않는다.** 마시는 동안에도 맞는다.
+   * ⚠ 즉시 다 채우면 물약이 무적 버튼이 된다. 절반만, 그리고 쿨다운을 둔다. */
+  var POTION_CD = 8;
+  var potionAt = -99;
+  function drink() {
+    var p = world.player;
+    if (p.dead) return;
+    if (hero.potions <= 0) return toast("물약이 없다");
+    if (world.time - potionAt < POTION_CD)
+      return toast("아직 못 마신다 — " + (POTION_CD - (world.time - potionAt)).toFixed(1) + "초");
+    if (p.hp >= p.maxHp) return toast("멀쩡하다");
+    hero.potions--;
+    potionAt = world.time;
+    p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.5));
+    world.floaters.push({ x: p.x, y: p.y - 0.8, text: "회복", t: 0, life: 0.8, foe: true });
+    if (global.SFX) global.SFX.play("potion");
+    global.SAVE.save(hero);
+  }
+
   /* [E] — 발밑/눈앞의 것에 말을 건다. **한 키로 다 한다.**
    * ⚠ 물건마다 키를 따로 두면 회원이 외워야 할 것이 늘어난다. */
   function interact() {
     if (world.player.dead) return;
+    var dp = world.nearDrop();
+    if (dp) {
+      var why = world.takeDrop(dp);
+      /* ⚠ 못 주웠으면 **왜 못 주웠는지** 말한다. 아무 일도 안 일어나면
+       *   회원은 고장으로 느낀다(가방이 찼다는 걸 알 길이 없다). */
+      if (why) toast(why);
+      else if (panelOpen()) openBag();     /* 창을 열어 둔 채 주우면 바로 보인다 */
+      return;
+    }
     var pr = world.nearProp();
     if (pr) {
       if (pr.id === "portal") return openPortal();
@@ -173,6 +208,7 @@
       html += '<button data-depth="' + d + '">' + d + '층</button>';
     html += '</div><p class="sub">Esc 로 닫는다</p>';
     box.innerHTML = html;
+    box.className = "panel";
     box.hidden = false;
     box.style.display = "";
     var btns = box.querySelectorAll("button[data-depth]");
@@ -184,15 +220,154 @@
     if (btns.length) btns[btns.length - 1].focus();
   }
 
+  /* 짧은 알림. ⚠ 캔버스가 아니라 DOM 이다 — 캔버스에 그리면 창 위에 안 뜬다. */
+  var toastT = 0;
+  function toast(msg) {
+    var el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = msg;
+    el.style.opacity = "1";
+    clearTimeout(toastT);
+    toastT = setTimeout(function () { el.style.opacity = "0"; }, 1600);
+  }
+
   function closePanel() {
     var box = document.getElementById("panel");
     if (!box) return;
+    /* ⚠ 모양(class)을 되돌린다. 가방(wide)을 한 번 열면 그 뒤 포탈 창까지
+     *   계속 넓게 뜬다 — 열 때만 고치고 닫을 때 안 되돌리면 상태가 샌다. */
+    box.className = "panel";
     box.hidden = true;
     /* ⚠ hidden 만으로는 안 감춰지는 경우가 있다(다른 규칙이 display 를 주면).
      *   둘 다 건다 — 전에 같은 함정을 여러 번 밟았다. */
     box.style.display = "none";
     box.innerHTML = "";
   }
+  /* ── 가방과 장착 ───────────────────────────────────────
+   * ⚠ 수치는 **world.gear** 를 읽는다. 여기서 다시 더하면 두 벌이 되어
+   *   "표시는 +30 인데 실제로는 +24" 가 된다(items.js 의 totals 가 유일한 합산). */
+  var STAT_NAME = {
+    dmg: "피해", hp: "체력", armor: "방어", spdPct: "이동",
+    apsPct: "공격속도", critPct: "치명타", critDmgPct: "치명타 피해",
+    lifeOnHit: "타격 회복", goldPct: "금화", xpPct: "경험치"
+  };
+  var PCT = { spdPct: 1, apsPct: 1, critPct: 1, critDmgPct: 1, goldPct: 1, xpPct: 1 };
+
+  function statLine(k, v) {
+    if (!v) return "";
+    return (v > 0 ? "+" : "") + v + (PCT[k] ? "%" : "") + " " + (STAT_NAME[k] || k);
+  }
+  function statsOf(it) {
+    var parts = [], k;
+    for (k in it.s) { var t = statLine(k, it.s[k]); if (t) parts.push(t); }
+    return parts.join(" · ");
+  }
+  function esc(t) {
+    return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function itemHTML(it, action, idx, wearable) {
+    var ti = global.ITEMS.tierOf(it.tier);
+    return '<button class="itm" data-' + action + '="' + idx + '"' +
+      (wearable === false ? ' data-locked="1"' : '') + '>' +
+      '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
+      '<span class="mt">' + global.ITEMS.SLOT_NAME[it.slot] + ' · Lv.' + it.req +
+      (wearable === false ? ' <b class="no">레벨 부족</b>' : '') + '</span>' +
+      '<span class="st">' + esc(statsOf(it)) + '</span>' +
+      (it.note ? '<span class="nt">' + esc(it.note) + '</span>' : '') +
+      '</button>';
+  }
+
+  function openBag() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var I = global.ITEMS, S = global.SAVE;
+    var eq = S.liveEquip(hero), bag = S.liveBag(hero);
+    var t = world.gear || I.totals(eq);
+
+    var html = '<h2>장비와 가방</h2><div class="cols">';
+
+    html += '<div class="col"><h3>입은 것</h3>';
+    for (var i = 0; i < I.SLOTS.length; i++) {
+      var sl = I.SLOTS[i], it = eq[sl];
+      html += it
+        ? itemHTML(it, "off", sl)
+        : '<div class="itm empty"><span class="nm">' + I.SLOT_NAME[sl] + '</span>' +
+          '<span class="mt">비어 있다</span></div>';
+    }
+    html += '</div>';
+
+    html += '<div class="col"><h3>가방 <span class="mt">' + bag.length + ' / ' + S.BAG + '</span></h3>';
+    if (!bag.length) html += '<p class="sub">아직 아무것도 없다.</p>';
+    for (var b = 0; b < bag.length; b++)
+      html += itemHTML(bag[b], "on", b, I.canEquip(bag[b], hero.level));
+    html += '</div>';
+
+    /* 합계 — 세트 보너스까지 한 자리에 */
+    html += '<div class="col"><h3>지금 내 수치</h3><div class="tot">';
+    var order = ["dmg", "hp", "armor", "apsPct", "critPct", "critDmgPct",
+                 "spdPct", "lifeOnHit", "goldPct", "xpPct"];
+    for (var o = 0; o < order.length; o++) {
+      var line = statLine(order[o], t[order[o]]);
+      if (line) html += '<div>' + line + '</div>';
+    }
+    var p = world.player;
+    html += '<div class="hr"></div>';
+    html += '<div>체력 ' + p.hp + ' / ' + p.maxHp + '</div>';
+    html += '<div>한 대 ' + (p.swing ? p.swing.dmg : global.COMBAT.SWING.dmg) +
+            ' · 초당 ' + (p.swing ? p.swing.aps : global.COMBAT.SWING.aps).toFixed(2) + '회</div>';
+    html += '<div>사거리 ' + (p.swing ? p.swing.reach : global.COMBAT.SWING.reach).toFixed(2) + '칸</div>';
+    html += '</div>';
+    for (var si2 = 0; si2 < (t._sets || []).length; si2++) {
+      var st = t._sets[si2];
+      html += '<div class="set"><b>' + esc(st.name) + '</b> ' + st.have + '/' + st.of;
+      for (var bo = 0; bo < st.on.length; bo++)
+        html += '<div class="on">' + st.on[bo].at + '피스 · ' + esc(st.on[bo].text) + '</div>';
+      html += '</div>';
+    }
+    html += '</div></div><p class="sub">I 또는 Esc 로 닫는다 · 눌러서 입거나 벗는다</p>';
+
+    box.innerHTML = html;
+    box.hidden = false;
+    box.style.display = "";
+    box.className = "panel wide";
+
+    box.querySelectorAll("[data-on]").forEach(function (el) {
+      el.addEventListener("click", function () { equipFromBag(Number(this.getAttribute("data-on"))); });
+    });
+    box.querySelectorAll("[data-off]").forEach(function (el) {
+      el.addEventListener("click", function () { unequip(this.getAttribute("data-off")); });
+    });
+  }
+
+  /* 입는다. **자리에 있던 것은 가방으로 돌아간다** —
+   * ⚠ 안 돌려주면 바꿔 끼는 순간 전에 쓰던 것이 사라진다(되돌릴 수 없다). */
+  function equipFromBag(idx) {
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero);
+    var it = bag[idx];
+    if (!it) return;
+    if (!I.canEquip(it, hero.level)) return toast("Lv." + it.req + " 부터 쓸 수 있다");
+    var old = hero.equip[it.slot] || null;
+    hero.bag.splice(idx, 1);
+    hero.equip[it.slot] = I.pack(it);
+    if (old) hero.bag.push(old);
+    world.applyHero();
+    global.SAVE.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    openBag();
+  }
+
+  function unequip(slot) {
+    var S = global.SAVE;
+    if (!hero.equip[slot]) return;
+    if (hero.bag.length >= S.BAG) return toast("가방이 가득 찼다");
+    hero.bag.push(hero.equip[slot]);
+    delete hero.equip[slot];
+    world.applyHero();
+    S.save(hero);
+    openBag();
+  }
+
   function panelOpen() {
     var box = document.getElementById("panel");
     return !!box && !box.hidden;
@@ -209,7 +384,7 @@
     el.textContent =
       "Lv." + hero.level + " " + hero.xp + "/" + need + "xp" +
       " · 체력 " + p.hp + "/" + p.maxHp +
-      " · 금화 " + hero.gold +
+      " · 금화 " + hero.gold + " · 물약 " + hero.potions +
       " · " + (world.inTown ? "마을" : world.depth + "층") +
       "(최고 " + hero.maxDepth + ")" +
       " · 적 " + alive +
@@ -260,6 +435,8 @@
     global.addEventListener("keydown", function (e) {
       wakeAudio();
       if (e.code === "Escape") { closePanel(); return; }
+      /* ⚠ **연 키로 닫히게** 한다. I 로 열고 Esc 로만 닫히면 매번 손이 멀리 간다. */
+      if (e.code === "KeyI" && panelOpen()) { closePanel(); return; }
       /* ⚠ 창 잠금은 **무엇보다 먼저**다. 아래에 두면 이동 키가 이미 처리된
        *   뒤라 층을 고르는 동안 주인공이 그대로 걸어간다(실측 2.24칸 이동).
        *   ⚠ 게다가 keys[] 에 눌림이 남아 창을 닫은 뒤에도 혼자 걸어간다. */
@@ -270,6 +447,8 @@
        *   "눌렀는데 아직 도는" 한 프레임이 안 생긴다. */
       if (MOVE[e.code] && world.recall) world.recallStop("움직임");
       if (e.code === "KeyE") { interact(); e.preventDefault(); return; }
+      if (e.code === "KeyI") { openBag(); e.preventDefault(); return; }
+      if (e.code === "KeyQ") { drink(); e.preventDefault(); return; }
       if (e.code === "KeyT") { world.recallStart(); return; }
       if (e.code === "KeyR" && !world.inTown) start({ depth: world.depth });
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
@@ -314,6 +493,12 @@
     };
     global.__hero = function () { return hero; };
     global.__town = toTown;
+    global.__bag = openBag;
+    global.__drink = drink;
+    global.__equip = equipFromBag;
+    global.__unequip = unequip;
+    global.__drops = function () { return world.drops.slice(); };
+    global.__gear = function () { return world.gear; };
     global.__depth = toDepth;
     global.__act = interact;
     global.__descend = descend;
@@ -342,7 +527,12 @@
                maxDepth: hero.maxDepth, deaths: hero.deaths,
                inTown: world.inTown, props: world.props.length,
                recall: world.recall ? world.recallLeft() : null,
-               onStairs: !!world.onStairs() };
+               onStairs: !!world.onStairs(),
+               drops: world.drops.length, bag: hero.bag.length,
+               equipped: Object.keys(hero.equip).length, potions: hero.potions,
+               dmg: world.player.swing ? world.player.swing.dmg : null,
+               aps: world.player.swing ? world.player.swing.aps : null,
+               def: world.player.def, critPct: world.player.critPct };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };

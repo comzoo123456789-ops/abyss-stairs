@@ -61,3 +61,37 @@ html, body {
 }
 .floors button:hover { background: #3a3348; border-color: #8f6bff; }
 .floors button:focus-visible { outline: 2px solid #8f6bff; outline-offset: 2px; }
+
+/* 짧은 알림 */
+.toast {
+  position: absolute; left: 50%; top: 18%; transform: translateX(-50%);
+  padding: 9px 16px; border-radius: 6px; z-index: 950;
+  background: rgba(24,20,30,.94); border: 1px solid #574d66; color: #ffe9a8;
+  font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none;
+}
+
+/* 가방·장착 창 — 세 칸. 창이 넓어야 비교가 된다(좁으면 스크롤하며 외워야 한다). */
+.panel.wide { min-width: min(980px, 94vw); max-width: 94vw; max-height: 88vh; overflow: auto; }
+.cols { display: flex; gap: 18px; align-items: flex-start; }
+/* ⚠ min-width:0 이 없으면 줄어들지 않는 내용이 칸을 밀어 **화면 밖으로 잘린다.**
+   `1fr`·`flex:1` 은 min-content 아래로 안 줄어든다 — 전에 카드 격자에서 겪었다. */
+.col { flex: 1; min-width: 0; }
+.col h3 { margin: 0 0 8px; font-size: 14px; color: var(--ink-dim); font-weight: normal; }
+.itm {
+  display: block; width: 100%; text-align: left; margin: 0 0 6px;
+  padding: 8px 10px; border-radius: 6px; cursor: pointer; font: inherit;
+  background: #241f2e; border: 1px solid #3c3448; color: var(--ink);
+}
+.itm:hover { background: #322b40; border-color: #8f6bff; }
+.itm:focus-visible { outline: 2px solid #8f6bff; outline-offset: 2px; }
+.itm.empty { cursor: default; opacity: .5; background: #1d1a24; }
+.itm[data-locked] { opacity: .55; }
+.itm .nm { display: block; font-size: 14px; }
+.itm .mt { display: block; font-size: 11px; color: var(--ink-dim); margin-top: 2px; }
+.itm .st { display: block; font-size: 12px; color: #9fd29a; margin-top: 3px; }
+.itm .nt { display: block; font-size: 11px; color: #9a8fb5; margin-top: 2px; }
+.itm .no { color: #e07a6a; }
+.tot { font-size: 13px; line-height: 1.7; }
+.tot .hr { height: 1px; background: #3c3448; margin: 8px 0; }
+.set { margin-top: 10px; font-size: 12px; color: #b06be0; }
+.set .on { color: #9fd29a; margin-left: 8px; }

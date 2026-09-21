@@ -19,6 +19,15 @@
 
   function lerp(a, b, t) { return a + (b - a) * t; }
 
+  /* "#e0742a" + 투명도 → rgba(). 등급 빛에 쓴다. */
+  function hexA(hex, a) {
+    if (!hex) return "rgba(255,255,255," + a + ")";
+    var h = hex.replace("#", "");
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var v = parseInt(h, 16);
+    return "rgba(" + ((v >> 16) & 255) + "," + ((v >> 8) & 255) + "," + (v & 255) + "," + a + ")";
+  }
+
   /* 바닥·벽 변종을 **자리로만** 정한다(난수 아님) — 새로고침마다 무늬가
    * 바뀌면 안 된다. 하위 비트가 규칙적으로 도는 것을 막으려고 한 번 섞는다. */
   function variantAt(x, y, n) {
@@ -155,6 +164,31 @@
               (pr.x - 0.5) * TILE + ox, (pr.y - 0.5) * TILE + oy);
     }
 
+    /* 2-b) 바닥의 전리품. **개체보다 먼저** — 사람이 그 위에 서야 한다.
+     * ⚠ 등급 빛을 **아래에 깐다**(위에 얹으면 그림을 덮어 뭔지 안 보인다).
+     * ⚠ 위아래로 살짝 떠 있게 한다. 바닥 무늬에 섞이면 못 보고 지나친다 —
+     *   전리품이 안 보이는 것은 "안 떨어진 것" 과 구별이 안 된다. */
+    for (var di = 0; di < world.drops.length; di++) {
+      var dp = world.drops[di];
+      var dtx = Math.floor(dp.x), dty = Math.floor(dp.y);
+      if (dtx < 0 || dty < 0 || dtx >= lv.w || dty >= lv.h) continue;
+      if (!lv.visible[dty * lv.w + dtx]) continue;
+      var bob = Math.sin((world.time + dp.id * 0.7) * 3) * 2;
+      var dx0 = dp.x * TILE + ox, dy0 = dp.y * TILE + oy + bob;
+      if (dp.item) {
+        var tc = global.ITEMS ? global.ITEMS.tierOf(dp.item.tier).color : "#fff";
+        var gr = ctx.createRadialGradient(dx0, dy0, 1, dx0, dy0, 15);
+        gr.addColorStop(0, hexA(tc, 0.55));
+        gr.addColorStop(1, hexA(tc, 0));
+        ctx.fillStyle = gr;
+        ctx.beginPath(); ctx.arc(dx0, dy0, 15, 0, Math.PI * 2); ctx.fill();
+        placeAt(ctx, S.bake(dp.item.sprite), dp.item.sprite,
+                dx0 - TILE / 2, dy0 - TILE / 2);
+      } else {
+        placeAt(ctx, S.bake("gold"), "gold", dx0 - TILE / 2, dy0 - TILE / 2);
+      }
+    }
+
     /* 3) 휘두르는 부채꼴 — **개체보다 먼저, 한 벌로** 깐다.
      *
      * ⚠ 개체마다 자기 부채꼴을 그리게 두었더니, 주인공보다 **아래에 선 몬스터**의
@@ -201,9 +235,11 @@
       var f = world.floaters[i];
       var k = f.t / f.life;
       ctx.globalAlpha = 1 - k * k;                 /* 끝에 가서 훅 사라진다 */
-      ctx.font = "bold 11px " + (global.NUM_FONT || "monospace");
       ctx.textAlign = "center";
-      ctx.fillStyle = f.foe ? "#ffe9a8" : "#ff8d7a";
+      /* ⚠ 치명타는 **한눈에 달라 보여야** 한다 — 같은 색·같은 크기면
+       *   치명타가 터졌는지 아무도 모르고, 그럼 치명타 옵션이 무의미해진다. */
+      ctx.font = (f.crit ? "bold 15px " : "bold 11px ") + (global.NUM_FONT || "monospace");
+      ctx.fillStyle = f.crit ? "#ffd34d" : (f.foe ? "#ffe9a8" : "#ff8d7a");
       ctx.strokeStyle = "rgba(0,0,0,.85)";
       ctx.lineWidth = 3;
       var fx2 = f.x * TILE + ox, fy2 = (f.y - k * 0.7) * TILE + oy;

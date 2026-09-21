@@ -42,8 +42,13 @@
     maxDepth: { def: 1, min: 1, max: 30, int: true },   /* 여기까지 내려가 봤다 */
     playSec:  { def: 0, min: 0, max: 1e9 },
     deaths:   { def: 0, min: 0, max: 1e9, int: true },
-    born:     { def: 0, min: 0, max: 1e15, int: true }  /* 만든 시각 */
+    born:     { def: 0, min: 0, max: 1e15, int: true }, /* 만든 시각 */
+    potions:  { def: 3, min: 0, max: 99, int: true }
   };
+
+  /* 가방 크기. ⚠ 무제한으로 두면 회원이 정리를 안 하고, 저장이 끝없이 커진다.
+   *   차면 마을에 다녀오게 만드는 것이 이 숫자의 목적이다. */
+  var BAG = 24;
 
   function clampNum(v, f) {
     var n = Number(v);
@@ -66,8 +71,52 @@
       else if (f.str) out[k] = (typeof v === "string" && v.length) ? v.slice(0, f.str) : f.def;
       else out[k] = clampNum(v, f);
     }
+    /* ── 물건. **다섯 칸으로 다시 만든다**(items.js 의 rebuild).
+     * ⚠ 수치를 그대로 믿지 않는다. 표에 없는 베이스·접사는 애초에 만들어지지
+     *   않으므로 구조 자체가 검증이다. */
+    var I = global.ITEMS;
+    out.equip = {};
+    out.bag = [];
+    if (I) {
+      var raw_e = (raw.equip && typeof raw.equip === "object") ? raw.equip : {};
+      for (var si = 0; si < I.SLOTS.length; si++) {
+        var sl = I.SLOTS[si];
+        var it = I.rebuild(raw_e[sl]);
+        /* ⚠ **슬롯이 맞는지 다시 본다.** 손으로 고쳐 무기를 반지 칸에 넣으면
+         *   화면과 계산이 어긋난다(반지 칸에 장검이 끼워진다). */
+        if (it && it.slot === sl) out.equip[sl] = I.pack(it);
+      }
+      var raw_b = Array.isArray(raw.bag) ? raw.bag : [];
+      for (var bi = 0; bi < raw_b.length && out.bag.length < BAG; bi++) {
+        var bit = I.rebuild(raw_b[bi]);
+        if (bit) out.bag.push(I.pack(bit));
+      }
+    }
+
     /* 서로 어긋난 값 바로잡기 — 칸별로만 보면 못 잡는 종류다 */
     if (out.born <= 0) out.born = Date.now();
+    return out;
+  }
+
+  /* 저장본(팩된 것) → 쓸 수 있는 물건. 화면·계산은 늘 이쪽을 본다.
+   * ⚠ 캐릭터 객체 위에 **캐시해 두지 말 것.** 두 벌이 되면 장착을 바꿨는데
+   *   수치가 안 따라오는 일이 생긴다. 장착은 일곱 개뿐이라 매번 만들어도 싸다. */
+  function liveEquip(s) {
+    var I = global.ITEMS, out = {};
+    if (!I || !s || !s.equip) return out;
+    for (var i = 0; i < I.SLOTS.length; i++) {
+      var it = I.rebuild(s.equip[I.SLOTS[i]]);
+      if (it) out[I.SLOTS[i]] = it;
+    }
+    return out;
+  }
+  function liveBag(s) {
+    var I = global.ITEMS, out = [];
+    if (!I || !s || !Array.isArray(s.bag)) return out;
+    for (var i = 0; i < s.bag.length; i++) {
+      var it = I.rebuild(s.bag[i]);
+      if (it) out.push(it);
+    }
     return out;
   }
 
@@ -166,6 +215,7 @@
     KEY: KEY, VERSION: VERSION, FIELDS: FIELDS, AUTO_EVERY: AUTO_EVERY,
     load: load, save: save, wipe: wipe, blank: blank, sanitize: sanitize,
     needFor: needFor, gainXp: gainXp,
+    BAG: BAG, liveEquip: liveEquip, liveBag: liveBag,
     blocked: function () { return !store(); }
   };
 })(window);

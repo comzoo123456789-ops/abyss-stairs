@@ -106,13 +106,29 @@
     return hit;
   }
 
-  function damage(world, from, to, amount) {
+  function damage(world, from, to, amount, opt) {
     if (to.dead) return 0;
-    var n = Math.max(1, Math.round(amount - (to.def || 0)));
+    opt = opt || {};
+    /* 치명타 — **때리는 쪽의 값**으로 굴린다.
+     * ⚠ 방어(armor)는 치명타 **뒤에** 뺀다. 먼저 빼면 방어가 높은 상대에게
+     *   치명타가 두 배로 먹혀 "갑옷이 치명타를 키우는" 거꾸로가 된다. */
+    var crit = false;
+    if (from && from.critPct > 0 && opt.canCrit !== false) {
+      /* ⚠ 여기만 Math.random 을 쓴다. 치명타는 **매 타격마다 새로 굴려야** 하고
+       *   씨앗을 쓰면 같은 자리에서 같은 결과가 반복돼 도박이 아니게 된다.
+       *   던전 생성·전리품과 달리 재현할 이유도 없다(그 둘은 씨앗 난수다). */
+      crit = Math.random() * 100 < from.critPct;
+    }
+    var raw = amount;
+    if (crit) raw = raw * (150 + (from.critDmgPct || 0)) / 100;
+    var n = Math.max(1, Math.round(raw - (to.def || 0)));
     to.hp -= n;
     to.hurt = 0.18;                 /* 맞은 티(깜빡임) — 초 */
-    world.floaters.push({ x: to.x, y: to.y - 0.6, text: String(n), t: 0,
-                          life: 0.75, crit: false, foe: to.team !== 0 });
+    /* 흡혈 — 때린 **사람 수만큼** 회복된다(광역 무기의 값어치다) */
+    if (from && from.lifeOnHit > 0 && from.hp < from.maxHp && !from.dead)
+      from.hp = Math.min(from.maxHp, from.hp + from.lifeOnHit);
+    world.floaters.push({ x: to.x, y: to.y - 0.6, text: String(n) + (crit ? "!" : ""), t: 0,
+                          life: crit ? 0.95 : 0.75, crit: crit, foe: to.team !== 0 });
     if (to.hp <= 0) {
       to.hp = 0;
       to.dead = true;
