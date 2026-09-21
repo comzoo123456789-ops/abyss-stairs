@@ -1303,6 +1303,21 @@ for (const [label, args] of SCREENS) {
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 배경음 — 구역마다 다른가 · 효과음을 덮지 않는가 · 층 따라 바뀌는가
+// ⚠ 귀로 "괜찮네" 는 근거가 아니다. 처음 값은 배경음 최대 진폭이 0.24 로
+//   효과음 중간값(0.28)과 **같은 수준**이었다 — 배경음이 타격음을 덮으면
+//   무슨 일이 났는지 못 듣는다. 3분의 1로 내렸고 이 검사가 그 선을 지킨다.
+{
+  const rm = spawnSync(process.execPath, [path.join(ROOT, "tools", "music-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rm.stdout.match(/✘/g) || []).length;
+  if (rm.status !== 0) fails++;
+  console.log("배경음".padEnd(20), ok(rm.status === 0),
+    bad ? "문제 " + bad + "건" : (rm.stdout.match(/✔/g) || []).length + "개 항목 통과");
+  if (bad) rm.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 장비 창 · 유물 표시 — 휴대폰에서 장비를 볼 수 있는가, 그리고 턴을 안 쓰는가
 {
   const rg = spawnSync(process.execPath, [path.join(ROOT, "tools", "gear-check.mjs")],

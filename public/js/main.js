@@ -229,9 +229,26 @@
 
   /* 화면 전체 갱신 — 캔버스는 고리에 맡기고 DOM(상태창·가방·기록)만 여기서 다시 쓴다.
    * DOM 을 매 프레임 다시 쓰면 60fps 로 innerHTML 을 갈아 치우는 셈이라 느려진다. */
+  /* 지금 들리고 있는 구역. ⚠ refresh 는 매 행동마다 불린다 — 같은 구역인데
+   * 다시 시작하면 음악이 계속 끊긴다. 바뀔 때만 움직인다. */
+  var musicZone = null;
+  function syncMusic() {
+    if (!window.MUSIC || !window.DATA || !game) return;
+    /* 시작 화면에서는 안 튼다 — 직업을 고르기 전에 음악이 나오면 뜬금없다.
+     * (그리고 브라우저가 첫 조작 전에는 어차피 소리를 막는다.) */
+    if (!started() || game.over) {
+      if (musicZone) { window.MUSIC.stop(); musicZone = null; }
+      return;
+    }
+    var z = window.DATA.zoneAt(game.depth);
+    if (!z || z.id === musicZone) return;
+    if (window.MUSIC.zone(z.id)) musicZone = z.id;
+  }
+
   function refresh() {
     view.draw(0);
     kick();
+    syncMusic();
     view.drawHud(els.hud);
     view.drawStats(els.stats);
     view.drawInventory(els.inv);
@@ -738,6 +755,8 @@
   function showStart() {
     els.end.hidden = true;
     els.start.hidden = false;
+    /* ⚠ 시작 화면으로 돌아왔는데 던전 음악이 계속 흐르면 화면과 소리가 어긋난다 */
+    if (window.MUSIC) { window.MUSIC.stop(); musicZone = null; }
     /* ⚠ 판이 끝나면 오늘 몫이 소진된다 — 다시 읽지 않으면 "하루 한 번" 안내가
      *   옛 상태로 남아 눌렀을 때만 막히는 것처럼 보인다. */
     refreshDailyNote();
@@ -788,11 +807,33 @@
 
   /* 소리는 **M 키로만** 켜고 끈다 — 헤더 버튼을 지웠다(좁은 화면에서 제목과
    * 폭을 다투다 상태가 들어갈 자리가 없었다). 껐는지는 토스트로 알린다. */
+  /* 소리는 **M 키 하나로 세 단계**를 돈다.
+   *   둘 다 → 효과음만(음악 끔) → 전부 끔 → 둘 다
+   * ⚠ 키를 둘로 나누지 않았다. 헤더에 버튼이 없고 키는 이미 빽빽하다 —
+   *   "음악만 끄고 싶다" 는 흔한 요구라 한 키로 다 되게 한다.
+   * ⚠ 어느 단계인지 **반드시 알려 준다.** 안 알리면 세 번 눌러야 원래대로
+   *   돌아오는 것을 모른다. */
   function toggleSound() {
     if (!window.SFX) return;
-    var on = window.SFX.toggle();
+    var sfxOn = window.SFX.isOn();
+    var musOn = window.MUSIC ? window.MUSIC.isOn() : false;
+    var msg;
+    if (sfxOn && musOn) {                  /* 둘 다 → 효과음만 */
+      if (window.MUSIC) window.MUSIC.setOn(false);
+      musicZone = null;
+      msg = "음악을 껐다. (효과음은 그대로)";
+    } else if (sfxOn && !musOn) {          /* 효과음만 → 전부 끔 */
+      window.SFX.toggle();
+      musicZone = null;
+      msg = "소리를 모두 껐다.";
+    } else {                               /* 전부 끔 → 둘 다 */
+      if (!window.SFX.isOn()) window.SFX.toggle();
+      if (window.MUSIC) window.MUSIC.setOn(true);
+      musicZone = null;
+      msg = "소리를 모두 켰다.";
+    }
     if (!game || !els.start.hidden) return;      /* 시작 화면 — 알릴 데가 없다 */
-    game.say(on ? "효과음을 켰다." : "효과음을 껐다.", "");
+    game.say(msg, "");
     refresh();
   }
 
@@ -1353,6 +1394,10 @@
     /* 구역을 눈으로 보려면 그 층까지 내려가야 한다 — 검사용 창구.
      * ⚠ 게임 로직은 쓰지 않는다(__force·__putMonster 와 같은 자리). */
     window.__lvl = function () { return game.level; };
+    window.__music = function () {
+      return { zone: musicZone, on: window.MUSIC ? window.MUSIC.isOn() : null,
+               sfx: window.SFX ? window.SFX.isOn() : null };
+    };
     /* 지금 플레이어가 **어떤 자세 프레임**으로 그려지고 있는가.
      * ⚠ 스프라이트에 공격 프레임이 있다는 것과, 때릴 때 그 프레임이 쓰인다는 것은
      *   다른 얘기다 — 렌더러가 안 골라 주면 그림만 있고 화면은 그대로다. */

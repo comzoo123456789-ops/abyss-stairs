@@ -335,6 +335,231 @@
     } catch (e) { return false; }   /* 재생 실패는 게임을 멈출 이유가 아니다 */
   }
 
+  /* ══════════════════════════════════════════════════════
+     배경음 — 구역마다 다른 울림
+     ══════════════════════════════════════════════════════
+
+     구역마다 ① 바탕음(지속음) ② 드문드문 떨어지는 음 ③ 음계 가 다르다.
+     내려갈수록 낮아지고 느려진다 — 숫자가 아니라 **귀로** 깊이가 느껴져야 한다.
+
+     ⚠ 음계는 전부 **단조 계열**이다. 장조를 섞으면 그 층만 갑자기 밝아져
+       "지하 10층" 이 아니라 마을처럼 들린다.
+     ⚠ 크기는 효과음보다 **한참 아래**다(0.06~0.12). 배경음이 타격음을 덮으면
+       무슨 일이 났는지 못 듣는다 — 그건 정보를 잃는 것이다. */
+
+  /* ⚠ 크기는 **실측으로 정했다.** 처음 값(0.070~0.085)은 배경음 최대 진폭이
+   *   0.19~0.24 로, 효과음 최대(0.13~0.55 · 중간값 0.23)와 **같은 수준**이었다.
+   *   배경음이 타격음을 덮으면 무슨 일이 났는지 못 듣는다 — 그건 정보를 잃는 것이다.
+   *   3분의 1 남짓으로 내렸다. 올리지 말 것(music-check 가 견준다). */
+  var ZONE_MUSIC = {
+    /* office  관리소 아래 — 아직 사람 손이 닿은 곳. 조금 따뜻하고 규칙적이다 */
+    office:  { root: 110.00, scale: [0, 3, 5, 7, 10], drone: "sine",
+               voice: "triangle", every: [3.4, 6.0], vol: 0.030, cut: 900, det: 4 },
+    /* flood   물이 든 계단실 — 물방울처럼 높고 짧게 떨어진다 */
+    flood:   { root: 98.00,  scale: [0, 2, 3, 7, 8],  drone: "sine",
+               voice: "sine", every: [2.2, 4.6], vol: 0.028, cut: 1500, det: 7 },
+    /* library 이름의 도서관 — 종이 넘기는 방. 음이 길게 끌린다 */
+    library: { root: 87.31,  scale: [0, 2, 3, 5, 10], drone: "triangle",
+               voice: "triangle", every: [4.0, 7.5], vol: 0.027, cut: 780, det: 5 },
+    /* bones   뼈 무덤 — 메마르다. 반음이 섞여 불안하다 */
+    bones:   { root: 82.41,  scale: [0, 1, 5, 6, 8],  drone: "sawtooth",
+               voice: "square", every: [3.0, 6.5], vol: 0.025, cut: 620, det: 9 },
+    /* lord    군주의 방 — 벽이 숨을 쉰다. 아주 낮고 아주 느리다 */
+    lord:    { root: 69.30,  scale: [0, 1, 4, 6, 11], drone: "sawtooth",
+               voice: "triangle", every: [4.5, 9.0], vol: 0.026, cut: 480, det: 12 }
+  };
+
+  var mus = null;      /* { zone, drone:[], lfo, gain, timer, next } */
+  var musicOn = true;
+
+  try {
+    var savedM = localStorage.getItem("rl_music");
+    if (savedM === "0") musicOn = false;
+  } catch (e) { /* 저장이 막힌 브라우저 */ }
+
+  function musicStop(fade) {
+    if (!mus) return;
+    var a = ctx, m = mus;
+    mus = null;
+    if (m.timer) clearInterval(m.timer);
+    try {
+      var t = a.currentTime;
+      m.gain.gain.cancelScheduledValues(t);
+      m.gain.gain.setValueAtTime(Math.max(0.0001, m.gain.gain.value), t);
+      m.gain.gain.exponentialRampToValueAtTime(0.0001, t + (fade || 0.8));
+      /* ⚠ 지속음을 **반드시 멈춘다.** 안 멈추면 층을 옮길 때마다 하나씩 쌓여
+       *   10층쯤에서 다섯 겹이 울린다(소리는 작아도 CPU 는 계속 쓴다). */
+      for (var i = 0; i < m.osc.length; i++) {
+        try { m.osc[i].stop(t + (fade || 0.8) + 0.05); } catch (e) {}
+      }
+    } catch (e) {}
+  }
+
+  /* 한 음을 예약한다 — 뜯는 소리처럼 짧게 올라갔다 길게 사라진다 */
+  function musicNote(a, dest, freq, at, dur, type, vol, cut) {
+    var osc = a.createOscillator();
+    var g = a.createGain();
+    var lp = a.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = cut;
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, at);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(vol, at + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    osc.connect(lp); lp.connect(g); g.connect(dest);
+    osc.start(at);
+    osc.stop(at + dur + 0.1);
+  }
+
+  /* 다음 몇 초치를 채운다. **느린 타이머**가 부른다 — 프레임마다 만들지 않는다. */
+  function musicFill() {
+    if (!mus || !ctx) return;
+    var a = ctx, m = mus, cfg = m.cfg;
+    var horizon = a.currentTime + 2.5;
+    var guard = 0;
+    while (m.next < horizon && guard++ < 12) {
+      var deg = cfg.scale[Math.floor(Math.random() * cfg.scale.length)];
+      /* 한 옥타브 위나 두 옥타브 위 — 바탕음과 안 겹치게 */
+      var oct = Math.random() < 0.65 ? 4 : 8;
+      var f = cfg.root * oct * Math.pow(2, deg / 12);
+      var dur = 1.6 + Math.random() * 2.2;
+      musicNote(a, m.gain, f, m.next, dur, cfg.voice, cfg.vol * 0.9, cfg.cut * 2.2);
+      /* 가끔 5도 아래를 겹쳐 준다 — 두 음이 겹치면 방이 넓어진다 */
+      if (Math.random() < 0.3) {
+        musicNote(a, m.gain, f * 0.6674, m.next + 0.12, dur * 0.8,
+                  cfg.voice, cfg.vol * 0.55, cfg.cut * 1.8);
+      }
+      m.next += cfg.every[0] + Math.random() * (cfg.every[1] - cfg.every[0]);
+    }
+  }
+
+  /* 구역 음악을 시작한다. 이미 그 구역이면 아무 것도 안 한다. */
+  function musicStart(zoneId) {
+    if (!musicOn || !on) return false;
+    var cfg = ZONE_MUSIC[zoneId];
+    if (!cfg) return false;
+    if (mus && mus.zone === zoneId) return true;     /* 같은 구역 — 그대로 둔다 */
+    var a = ac();
+    if (!a || !bus) return false;
+    musicStop(0.9);
+    try {
+      if (a.state === "suspended") a.resume();
+      var g = a.createGain();
+      g.gain.setValueAtTime(0.0001, a.currentTime);
+      g.gain.exponentialRampToValueAtTime(1, a.currentTime + 1.6);   /* 스며들 듯 들어온다 */
+      /* ⚠ 배경음도 **같은 줄기**를 탄다(dry+wet). 따로 destination 에 꽂으면
+       *   compressor 를 안 거쳐 효과음과 합쳐질 때 찌그러진다. */
+      g.connect(bus.dry);
+      var w = a.createGain();
+      w.gain.value = 0.5;
+      g.connect(w); w.connect(bus.wet);
+
+      /* 바탕음 — 살짝 어긋난 둘을 겹쳐 두께를 낸다 */
+      var osc = [];
+      var lp = a.createBiquadFilter();
+      lp.type = "lowpass";
+      lp.frequency.value = cfg.cut;
+      lp.connect(g);
+      for (var i = 0; i < 2; i++) {
+        var o = a.createOscillator();
+        o.type = cfg.drone;
+        o.frequency.value = cfg.root * (i === 0 ? 1 : 2);
+        o.detune.value = (i === 0 ? -1 : 1) * cfg.det;
+        var og = a.createGain();
+        og.gain.value = i === 0 ? cfg.vol : cfg.vol * 0.45;
+        o.connect(og); og.connect(lp);
+        o.start();
+        osc.push(o);
+      }
+      /* 아주 느린 숨 — 걸러내는 높이를 흔든다. 고정이면 "삐" 소리처럼 들린다 */
+      var lfo = a.createOscillator();
+      var lg = a.createGain();
+      lfo.frequency.value = 0.05 + Math.random() * 0.04;
+      lg.gain.value = cfg.cut * 0.35;
+      lfo.connect(lg); lg.connect(lp.frequency);
+      lfo.start();
+      osc.push(lfo);
+
+      mus = { zone: zoneId, cfg: cfg, gain: g, osc: osc, next: a.currentTime + 1.2, timer: 0 };
+      musicFill();
+      mus.timer = setInterval(musicFill, 500);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  global.MUSIC = {
+    /* 층이 바뀔 때 부른다. 같은 구역이면 아무 일도 안 일어난다. */
+    zone: function (zoneId) { return musicStart(zoneId); },
+    stop: function () { musicStop(0.6); },
+    isOn: function () { return musicOn; },
+    setOn: function (v) {
+      musicOn = !!v;
+      try { localStorage.setItem("rl_music", musicOn ? "1" : "0"); } catch (e) {}
+      if (!musicOn) musicStop(0.5);
+      return musicOn;
+    },
+    zones: function () { return Object.keys(ZONE_MUSIC); },
+    /* 점검기 창구 — **틀지 않고 렌더해서** 잰다(효과음의 render 와 같은 뜻).
+     * ⚠ 귀로 "괜찮네" 는 근거가 아니다. 구역마다 정말 다른지·찌그러지지 않는지·
+     *   효과음을 덮지 않는지는 숫자로 나온다. */
+    render: function (zoneId, seconds) {
+      return new Promise(function (done, fail) {
+        var cfg = ZONE_MUSIC[zoneId];
+        if (!cfg) { fail(new Error("그런 구역이 없다: " + zoneId)); return; }
+        var OAC = global.OfflineAudioContext || global.webkitOfflineAudioContext;
+        if (!OAC) { fail(new Error("OfflineAudioContext 가 없다")); return; }
+        var sec = seconds || 6;
+        var a = new OAC(2, Math.ceil(44100 * sec), 44100);
+        var b = makeBus(a);
+        var g = a.createGain();
+        g.gain.value = 1;
+        g.connect(b.dry);
+        var lp = a.createBiquadFilter();
+        lp.type = "lowpass"; lp.frequency.value = cfg.cut; lp.connect(g);
+        for (var i = 0; i < 2; i++) {
+          var o = a.createOscillator();
+          o.type = cfg.drone;
+          o.frequency.value = cfg.root * (i === 0 ? 1 : 2);
+          o.detune.value = (i === 0 ? -1 : 1) * cfg.det;
+          var og = a.createGain();
+          og.gain.value = i === 0 ? cfg.vol : cfg.vol * 0.45;
+          o.connect(og); og.connect(lp);
+          o.start(0);
+        }
+        /* 음을 고르게 깔아 둔다 — 재는 것이므로 난수를 안 쓴다(매번 같은 값이어야 비교가 된다) */
+        var t = 0.4, k = 0;
+        while (t < sec - 0.5) {
+          var deg = cfg.scale[k % cfg.scale.length];
+          var f = cfg.root * 4 * Math.pow(2, deg / 12);
+          musicNote(a, g, f, t, 1.8, cfg.voice, cfg.vol * 0.9, cfg.cut * 2.2);
+          t += cfg.every[0]; k++;
+        }
+        a.startRendering().then(function (buf) {
+          var peak = 0, sum = 0, n = 0, zc = 0;
+          for (var c = 0; c < buf.numberOfChannels; c++) {
+            var d = buf.getChannelData(c), prev = 0;
+            for (var i2 = 0; i2 < d.length; i2++) {
+              var x = Math.abs(d[i2]);
+              if (x > peak) peak = x;
+              sum += d[i2] * d[i2]; n++;
+              if (x > 0.0008) {
+                if (prev < 0 && d[i2] > 0) zc++;
+                else if (prev > 0 && d[i2] < 0) zc++;
+                prev = d[i2];
+              }
+            }
+          }
+          done({
+            peak: Math.round(peak * 1000) / 1000,
+            rms: Math.round(Math.sqrt(sum / Math.max(1, n)) * 10000) / 10000,
+            zc: zc, root: cfg.root
+          });
+        }, fail);
+      });
+    }
+  };
+
   global.SFX = {
     play: function (name) { return play(name); },
     names: function () { return Object.keys(VOICE); },
@@ -342,6 +567,9 @@
     toggle: function () {
       on = !on;
       try { localStorage.setItem("rl_sound", on ? "1" : "0"); } catch (e) {}
+      /* ⚠ 「소리 끔」인데 음악이 계속 나면 고장으로 느낀다 — 함께 멈춘다.
+       *   다시 켤 때 음악을 되살리는 것은 부르는 쪽 몫이다(지금 구역을 알아야 한다). */
+      if (!on && global.MUSIC) global.MUSIC.stop();
       if (on) play("pickup");        /* 켠 순간 들려 줘야 켜졌는지 안다 */
       return on;
     },
