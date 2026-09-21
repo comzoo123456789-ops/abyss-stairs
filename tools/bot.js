@@ -235,18 +235,6 @@
     var aim = this.aimAt(e);
     pl.ax = aim.x; pl.ay = aim.y;
 
-    /* **다가가는데 가까워지지 않으면** 그 적은 포기한다.
-     * ⚠ 이게 없으면 길이 막힌 자리의 적 하나 때문에 판이 통째로 날아간다
-     *   (실측: 전사가 2,069칸을 걷고 세 번 휘둘렀다). */
-    if (d < this.lastD - 0.2) { this.stuck = 0; this.lastD = d; }
-    else {
-      this.stuck += this.o.react;
-      if (this.stuck > 6 && d > 2) {
-        this.unreachable[e.uid] = 1;
-        this.held = null; this.stuck = 0; this.lastD = 1e9;
-        return;
-      }
-    }
 
     /* 체력이 바닥이면 붙지 않는다 */
     if (p.hp / p.maxHp < o.fleeAt) {
@@ -279,10 +267,36 @@
      *   쏘아 댄다 — 실측: 마법사·도적이 15칸만 걷고 **353번** 휘둘렀다.
      *   근접은 사거리가 짧아 저절로 붙으므로 이 문제가 없다. */
     var ranged = !!(p.swing && p.swing.ranged);
+    /* ⚠ **최대 사거리에서 싸우려 들지 말 것.** 지팡이 7.5칸에서 멈추면 던전
+     *   복도에서는 시야가 거의 안 뚫려 걷기만 하다 판이 끝난다(실측: 마법사가
+     *   1,180칸을 걷고 12번 쏘았다). 사람은 **쏠 수 있는 거리**까지 붙는다.
+     *   4.5칸이면 방 안에서도 복도에서도 대개 뚫린다. */
+    var want = ranged ? Math.min(reach * 0.85, 4.5) : reach * 0.85;
     var seen = !ranged || global.AI.clearLine(w, p, e.x, e.y);
-    if (d > reach * 0.85 || !seen) {
+    if (d > want || !seen) {
+      /* **다가가는데 가까워지지 않으면** 그 적은 포기한다 — 길이 막힌 자리의
+       * 적 하나 때문에 판이 통째로 날아가는 것을 막는다(전사가 2,069칸을 걷고
+       * 세 번 휘두른 이유).
+       * ⚠ **걸어갈 때만** 센다. 공격 판단보다 앞에서 세면, 사거리 안에서
+       *   가만히 쏘는 동안에도 "가까워지지 않는다" 로 읽혀 **잡고 있던 적을
+       *   포기한다**(마법사가 6칸에서 쏘면 거리가 안 변한다). 실측: 경력당
+       *   죽음 0.4 → 9.8회 · 30층을 Lv+10 에도 못 깸.
+       * ⚠ 피하는 중에도 세지 않는다 — 비키는 동안 거리가 안 주는 것은 정상이다. */
+      if (!t) {
+        if (d < this.lastD - 0.2) { this.stuck = 0; this.lastD = d; }
+        else {
+          this.stuck += this.o.react;
+          if (this.stuck > 8 && d > 2.5) {
+            this.unreachable[e.uid] = 1;
+            this.held = null; this.stuck = 0; this.lastD = 1e9;
+            return;
+          }
+        }
+      }
       this.walkTo(e.x, e.y);
     } else {
+      /* 때리고 있으면 막힌 게 아니다 */
+      this.stuck = 0; this.lastD = d;
       pl.swing = true;
       /* 너무 붙으면 살짝 뒤로 — 겹쳐 서면 서로 밀려 조준이 흔들린다 */
       if (d < reach * 0.45) {
