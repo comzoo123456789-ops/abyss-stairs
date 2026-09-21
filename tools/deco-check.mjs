@@ -3,7 +3,13 @@ import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
 import { CHROME } from "./chrome.mjs";   /* 경로는 한 곳에서만 정한다 */
 
-const ROOT = "E:/소스/abyss-stairs/public";
+/* ⚠ 여기에 컴퓨터 경로를 박으면 안 된다. "E:/소스/abyss-stairs/public" 이 박혀 있어서
+ *   다른 컴퓨터에서는 모든 파일이 404 가 되고, 페이지가 텅 빈 채로 떠서
+ *   `window.DATA` 가 undefined → 검사가 `JSON.parse(undefined)` 로 죽었다.
+ *   화면에 보이는 것은 "종료코드 1 · 출력 없음" 뿐이라 원인이 안 드러난다.
+ *   나머지 검사 8개는 전부 저장소 기준으로 잡는다 — 여기만 빠져 있었다. */
+import { fileURLToPath } from "node:url";
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
 const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
 const srv = http.createServer((q, r) => {
   let p = decodeURIComponent(q.url.split("?")[0]); if (p === "/") p = "/index.html";
