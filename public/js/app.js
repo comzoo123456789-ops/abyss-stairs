@@ -13,6 +13,9 @@
   var keys = Object.create(null);
   var last = 0, raf = 0;
   var fps = { t: 0, n: 0, v: 0 };
+  /* 마우스 — **PC 에서 조준은 마우스다.** 이것이 손가락 조작과 가장 크게 다른 점이고
+   * PC 부터 만들기로 한 이유다(엄지 두 개로는 이동과 조준을 동시에 못 한다). */
+  var mouse = { cx: 0, cy: 0, down: false, has: false };
 
   /* 키 → 방향. e.code 로 읽는다 —
    * ⚠ e.key 로 읽으면 한글 입력 상태에서 "ㅏ" 같은 값이 와서 조작이 통째로 죽는다.
@@ -46,6 +49,13 @@
     world.player.mx = i.x;
     world.player.my = i.y;
 
+    /* 누르고 있으면 계속 휘두른다 — 공격속도는 COMBAT 이 지킨다.
+     * ⚠ 여기서 주기를 다시 세지 말 것. 두 곳이 되면 한쪽만 고쳐져 어긋난다. */
+    if (mouse.down && !world.player.dead) {
+      var a = aim();
+      world.swing(a.x, a.y);
+    }
+
     var r = world.advance(dt);
     view.draw(world, r.alpha);
 
@@ -53,12 +63,23 @@
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
   }
 
+  /* 마우스가 가리키는 **월드 좌표**. 아직 움직인 적이 없으면 바라보는 쪽으로. */
+  function aim() {
+    var p = world.player;
+    if (!mouse.has) return { x: p.x + p.face, y: p.y };
+    return view.toWorld(mouse.cx, mouse.cy);
+  }
+
   function diag() {
     var el = document.getElementById("diag");
     if (!el) return;
     var p = world.player;
-    el.textContent = fps.v + "fps · " + p.x.toFixed(2) + ", " + p.y.toFixed(2) +
-      " · 걸음 " + world.steps + " · " + world.time.toFixed(1) + "초";
+    var alive = 0;
+    for (var i = 0; i < world.ents.length; i++)
+      if (!world.ents[i].dead && world.ents[i].team !== 0) alive++;
+    el.textContent = fps.v + "fps · 체력 " + p.hp + "/" + p.maxHp +
+      " · 적 " + alive + "마리 · " + world.time.toFixed(1) + "초" +
+      (p.dead ? " · 죽었다(R 로 다시)" : "");
   }
 
   function start(opt) {
@@ -78,8 +99,22 @@
     global.addEventListener("keydown", function (e) {
       if (MOVE[e.code]) { keys[e.code] = 1; e.preventDefault(); }
       if (e.code === "KeyR") start({});
+      /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
+      if (e.code === "Space") { var a = aim(); world.swing(a.x, a.y); e.preventDefault(); }
     });
     global.addEventListener("keyup", function (e) { keys[e.code] = 0; });
+
+    canvas.addEventListener("mousemove", function (e) {
+      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
+    });
+    canvas.addEventListener("mousedown", function (e) {
+      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
+      mouse.down = true; e.preventDefault();
+    });
+    /* ⚠ mouseup 을 캔버스에만 걸면, 캔버스 밖에서 손을 떼었을 때 **계속 눌린
+     *   상태로 굳는다.** 창 전체에서 받는다. */
+    global.addEventListener("mouseup", function () { mouse.down = false; });
+    canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
     /* ⚠ 창에서 초점이 나가면 keyup 이 안 온다 — 누른 채로 굳어 혼자 걸어간다. */
     global.addEventListener("blur", function () { keys = Object.create(null); });
 
@@ -94,7 +129,16 @@
     };
     global.__peek = function () {
       var p = world.player;
-      return { x: p.x, y: p.y, steps: world.steps, time: world.time, fps: fps.v };
+      var foes = world.ents.filter(function (e) { return e.team !== 0 && !e.dead; });
+      return { x: p.x, y: p.y, hp: p.hp, maxHp: p.maxHp, dead: p.dead,
+               steps: world.steps, time: world.time, fps: fps.v,
+               foes: foes.length, atk: !!p.atk, rest: p.atkRest };
+    };
+    /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
+    global.__swing = function (wx, wy) { return world.swing(wx, wy); };
+    global.__aimAt = function (wx, wy) {
+      mouse.has = false;                 /* 화면 좌표 대신 월드 좌표를 바로 쓴다 */
+      return world.swing(wx, wy);
     };
   }
 

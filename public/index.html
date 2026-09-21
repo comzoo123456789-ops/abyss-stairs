@@ -13,19 +13,26 @@
 <link rel="stylesheet" href="css/rpg.css?v=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
+<script>
+  /* 캔버스 안의 숫자는 CSS 를 못 읽는다 — 여기서 준다.
+     ⚠ rpg.css 의 글꼴과 **같은 값**이어야 한다. 두 벌이 되면 화면 안팎이 달라진다. */
+  window.NUM_FONT = "\"Galmuri11\", \"Pretendard Variable\", monospace";
+</script>
 <body>
 
 <div class="app">
   <div class="viewport"><canvas id="view"></canvas></div>
   <!-- 뼈대를 세우는 동안 **재는 자리**. 눈으로는 60Hz 규칙이 맞는지 모른다. -->
   <div id="diag" class="diag">…</div>
-  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; R 새 층</div>
+  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; 마우스 조준 · 클릭/스페이스 공격 &nbsp;·&nbsp; R 새 층</div>
 </div>
 
 <script src="js/sprites.js?v=1"></script>
 <script src="js/sprites-art.js?v=1"></script>
 <script src="js/dungeon.js?v=1"></script>
+<script src="js/combat.js?v=1"></script>
 <script src="js/world.js?v=1"></script>
+<script src="js/ai.js?v=1"></script>
 <script src="js/view.js?v=1"></script>
 <script src="js/app.js?v=1"></script>
 </body>

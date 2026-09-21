@@ -144,7 +144,21 @@
     }
     ctx.globalAlpha = 1;
 
-    /* 3) 개체 — 발이 아래에 있는 것을 나중에 그린다(앞뒤가 맞아야 한다) */
+    /* 3) 휘두르는 부채꼴 — **개체보다 먼저, 한 벌로** 깐다.
+     *
+     * ⚠ 개체마다 자기 부채꼴을 그리게 두었더니, 주인공보다 **아래에 선 몬스터**의
+     *   빨간 예고가 y 정렬 때문에 주인공 위에 덮였다(실측: 몸이 통째로 빨개져
+     *   맞은 줄 알았다). 예고는 바닥에 그린 표시지 서 있는 물건이 아니다. */
+    for (var ai = 0; ai < world.ents.length; ai++) {
+      var ae = world.ents[ai];
+      if (!ae.atk || ae.dead) continue;
+      var aex = lerp(ae.px, ae.x, alpha), aey = lerp(ae.py, ae.y, alpha);
+      var atx = Math.floor(aex), aty = Math.floor(aey);
+      if (ae.kind !== "player" && !lv.visible[aty * lv.w + atx]) continue;
+      this.swingArc(ctx, ae, aex, aey, ox, oy);
+    }
+
+    /* 4) 개체 — 발이 아래에 있는 것을 나중에 그린다(앞뒤가 맞아야 한다) */
     var list = world.ents.slice().sort(function (a, b) { return a.y - b.y; });
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
@@ -156,10 +170,73 @@
       sy = (ey - 0.5) * TILE + oy;
       /* ⚠ 그림이 정면을 보는 도트라 좌우 반전은 쓰지 않는다(뒤집어도 같아 보이고,
        *   무기 든 손만 반대로 간다). face 는 공격 방향에만 쓴다. */
-      placeAt(ctx, S.bake(e.sprite, this.frameOf(e)), e.sprite, sx, sy);
+      var fr = this.frameOf(e);
+      placeAt(ctx, S.bake(e.sprite, fr), e.sprite, sx, sy);
+      /* 맞은 티 — **덧칠**이다. 색을 통째로 바꾸면(실측) 몸이 빨간 실루엣이 되어
+       * 누가 누구인지 안 보인다. 원래 그림 위에 옅게 얹고 금방 뺀다. */
+      if (e.hurt > 0) {
+        ctx.globalAlpha = Math.min(1, e.hurt / 0.18) * 0.55;
+        placeAt(ctx, S.bake(e.sprite, fr, "#ff6a52"), e.sprite, sx, sy);
+        ctx.globalAlpha = 1;
+      }
+
+      /* 머리 위 체력 — **다친 적에게만.** 전부에게 띄우면 화면이 막대밭이 된다. */
+      if (e.kind !== "player" && e.hp < e.maxHp && !e.dead)
+        this.hpBar(ctx, ex, ey, ox, oy, e.hp / e.maxHp);
     }
 
+    /* 떠오르는 숫자 — 개체보다 **위에** 그린다(가려지면 없는 것과 같다) */
+    for (i = 0; i < world.floaters.length; i++) {
+      var f = world.floaters[i];
+      var k = f.t / f.life;
+      ctx.globalAlpha = 1 - k * k;                 /* 끝에 가서 훅 사라진다 */
+      ctx.font = "bold 11px " + (global.NUM_FONT || "monospace");
+      ctx.textAlign = "center";
+      ctx.fillStyle = f.foe ? "#ffe9a8" : "#ff8d7a";
+      ctx.strokeStyle = "rgba(0,0,0,.85)";
+      ctx.lineWidth = 3;
+      var fx2 = f.x * TILE + ox, fy2 = (f.y - k * 0.7) * TILE + oy;
+      ctx.strokeText(f.text, fx2, fy2);
+      ctx.fillText(f.text, fx2, fy2);
+    }
+    ctx.globalAlpha = 1;
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+
+  /* 부채꼴. 선딜 동안은 **엷게 예고**하고, 판정 순간 한 번 밝아진다. */
+  View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
+    var a = e.atk, m = a.m;
+    var k = a.t / m.windup;
+    var live = a.t >= m.windup;
+    var cx = ex * TILE + ox, cy = (ey - 0.35) * TILE + oy;
+    var half = m.arc * Math.PI / 360;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, m.reach * TILE, a.ang - half, a.ang + half);
+    ctx.closePath();
+    if (live) {
+      ctx.fillStyle = e.team === 0 ? "rgba(255,240,200,.30)" : "rgba(255,110,90,.30)";
+    } else {
+      /* 차오르는 예고 — 다 차면 나간다는 뜻이다 */
+      ctx.fillStyle = e.team === 0 ? "rgba(255,240,200,.09)" : "rgba(255,90,70,"
+        + (0.06 + 0.16 * Math.min(1, k)).toFixed(3) + ")";
+    }
+    ctx.fill();
+    ctx.restore();
+  };
+
+  View.prototype.hpBar = function (ctx, ex, ey, ox, oy, frac) {
+    var w = 22, h = 3;
+    var x = Math.round(ex * TILE + ox - w / 2);
+    var y = Math.round((ey - 1.35) * TILE + oy);
+    ctx.fillStyle = "rgba(0,0,0,.72)";
+    ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
+    ctx.fillStyle = "#3a2b2b";
+    ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = frac > 0.5 ? "#7bbd5a" : (frac > 0.22 ? "#d9a441" : "#c4463a");
+    ctx.fillRect(x, y, Math.max(1, Math.round(w * frac)), h);
   };
 
   /* 걸음 그림 — **시간이 아니라 걸은 거리**로 고른다. 시간으로 고르면

@@ -68,7 +68,7 @@ if (up) {
   const rate = await ev(`(function(){
     var W = window.WORLD, D = window.DUNGEON;
     function run(dt, n) {
-      var w = new W.World({ seed: 12345, w: 60, h: 40 });
+      var w = new W.World({ seed: 12345, w: 60, h: 40, mobs: 0 });
       /* 벽을 지운다 — 재려는 것은 **속도**지 벽이 아니다 */
       w.level.tiles = new Uint8Array(w.level.w * w.level.h).fill(D.FLOOR);
       w.player.x = 20.5; w.player.y = 20.5;
@@ -79,7 +79,7 @@ if (up) {
       return { d: w.player.x - x0, steps: w.steps, t: w.time };
     }
     return { a: run(1/240, 240), b: run(1/60, 60), c: run(1/30, 30),
-             spd: new W.World({ seed: 1 }).player.spd };
+             spd: new W.World({ seed: 1, mobs: 0 }).player.spd };
   })()`);
   const ds = [rate.a.d, rate.b.d, rate.c.d];
   const spread = (Math.max.apply(null, ds) - Math.min.apply(null, ds)) / Math.max.apply(null, ds);
@@ -94,7 +94,7 @@ if (up) {
   const diag = await ev(`(function(){
     var W = window.WORLD, D = window.DUNGEON;
     function run(mx, my) {
-      var w = new W.World({ seed: 12345, w: 60, h: 40 });
+      var w = new W.World({ seed: 12345, w: 60, h: 40, mobs: 0 });
       w.level.tiles = new Uint8Array(w.level.w * w.level.h).fill(D.FLOOR);
       w.player.x = 20.5; w.player.y = 20.5;
       w.player.px = w.player.x; w.player.py = w.player.y;
@@ -117,7 +117,7 @@ if (up) {
     var stuck = 0, tries = 0;
     for (var s = 1; s <= 6; s++) {
       for (var k = 0; k < dirs.length; k++) {
-        var w = new W.World({ seed: s, w: 50, h: 36 });
+        var w = new W.World({ seed: s, w: 50, h: 36, mobs: 0 });
         w.player.mx = dirs[k][0]; w.player.my = dirs[k][1];
         for (var i = 0; i < 300; i++) w.advance(1/60);
         tries++;
@@ -135,7 +135,7 @@ if (up) {
     var dirs = [[1,0],[-1,0],[0,1],[0,-1]];
     var bad = 0, n = 0;
     for (var s = 1; s <= 8; s++) {
-      var w = new W.World({ seed: s, w: 50, h: 36 });
+      var w = new W.World({ seed: s, w: 50, h: 36, mobs: 0 });
       w.player.spd = 40;                /* 나중에 붙을 돌진 스킬 정도 */
       for (var k = 0; k < dirs.length; k++) {
         w.player.mx = dirs[k][0]; w.player.my = dirs[k][1];
@@ -154,7 +154,7 @@ if (up) {
   const slide = await ev(`(function(){
     var W = window.WORLD, D = window.DUNGEON;
     /* 손으로 만든 복도: 위가 막힌 자리에서 오른쪽위로 밀면 **오른쪽으로는 가야** 한다 */
-    var w = new W.World({ seed: 7, w: 40, h: 30 });
+    var w = new W.World({ seed: 7, w: 40, h: 30, mobs: 0 });
     var lv = w.level;
     lv.tiles = new Uint8Array(lv.w * lv.h).fill(D.WALL);
     for (var x = 5; x < 30; x++) lv.tiles[10 * lv.w + x] = D.FLOOR;
