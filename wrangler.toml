@@ -11,7 +11,7 @@
 #   내려가고 저장소를 비공개로 둔 의미가 반쯤 사라진다. 올리는 것은 public/ 뿐이다.
 #   (공간잇다에서 directory="." 때문에 `wrangler dev` 가 무한 리로드했던 적도 있다)
 
-name = "abyss-stairs"
+name = "abyss-arpg"
 compatibility_date = "2026-09-18"
 
 [assets]
