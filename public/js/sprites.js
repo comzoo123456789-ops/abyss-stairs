@@ -17,17 +17,23 @@
 
   /* ── 그리는 판 ─────────────────────────────────────── */
 
-  function Board(size) {
-    this.n = size;
-    this.px = new Array(size * size).fill(null);   /* 색 문자열 또는 null(투명) */
+  /* ⚠ 판은 **직사각형**이다. 처음에는 정사각형(this.n)뿐이었는데, 사람을 32×32 에
+   *   넣으려니 머리 하나에 몸통 하나가 전부였다(2등신). 다리·팔·어깨보호구를
+   *   넣으려면 세로가 더 필요하다 — 40×64 같은 판을 받는다.
+   * ⚠ 옛 호출(new Board(32))도 그대로 돈다 — 높이를 안 주면 정사각형이다. */
+  function Board(w, h) {
+    this.w = w;
+    this.h = (h === undefined) ? w : h;
+    this.n = w;                                   /* 옛 이름 — 가로를 가리킨다 */
+    this.px = new Array(this.w * this.h).fill(null);   /* 색 문자열 또는 null(투명) */
   }
   Board.prototype.get = function (x, y) {
-    if (x < 0 || y < 0 || x >= this.n || y >= this.n) return null;
-    return this.px[y * this.n + x];
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return null;
+    return this.px[y * this.w + x];
   };
   Board.prototype.set = function (x, y, c) {
-    if (x < 0 || y < 0 || x >= this.n || y >= this.n) return;
-    this.px[y * this.n + x] = c;
+    if (x < 0 || y < 0 || x >= this.w || y >= this.h) return;
+    this.px[y * this.w + x] = c;
   };
   Board.prototype.rect = function (x, y, w, h, c) {
     for (var j = 0; j < h; j++) for (var i = 0; i < w; i++) this.set(x + i, y + j, c);
@@ -80,8 +86,10 @@
    * 윤곽선이 없으면 던전 색과 섞여 "뭔가 뭉개져 있다" 로 보인다. */
   function outline(b, c) {
     var add = [];
-    for (var y = 0; y < b.n; y++) {
-      for (var x = 0; x < b.n; x++) {
+    /* ⚠ b.n 은 **가로**다. 세로로 긴 판에서 b.n 을 높이로 쓰면 아래쪽이 통째로
+     *   빠져 다리에만 윤곽선이 안 붙는다. 반드시 b.w · b.h 를 쓴다. */
+    for (var y = 0; y < b.h; y++) {
+      for (var x = 0; x < b.w; x++) {
         if (b.get(x, y)) continue;
         if (b.get(x - 1, y) || b.get(x + 1, y) || b.get(x, y - 1) || b.get(x, y + 1)) add.push([x, y]);
       }
@@ -94,11 +102,11 @@
   function rim(b, pair) {
     var snap = b.px.slice();
     function at(x, y) {
-      if (x < 0 || y < 0 || x >= b.n || y >= b.n) return null;
-      return snap[y * b.n + x];
+      if (x < 0 || y < 0 || x >= b.w || y >= b.h) return null;
+      return snap[y * b.w + x];
     }
-    for (var y = 0; y < b.n; y++) {
-      for (var x = 0; x < b.n; x++) {
+    for (var y = 0; y < b.h; y++) {
+      for (var x = 0; x < b.w; x++) {
         var c = at(x, y);
         if (!c || !pair[c]) continue;
         var up = at(x, y - 1), dn = at(x, y + 1);
@@ -129,9 +137,17 @@
    *   ["f", 1]  → 프레임 1 에서만(왼발)   ["f", 2] → 프레임 2 에서만(오른발)
    *   ["f", null] → 다시 모든 프레임에서
    * 몸통은 필터 밖에 두고 다리만 갈라 적으면 된다. */
+  /* 이 스프라이트의 판 크기. opt.w / opt.h 를 안 주면 32×32 다. */
+  function sizeOf(name) {
+    var s = SPR[name];
+    if (!s) return { w: SIZE, h: SIZE };
+    return { w: s.opt.w || SIZE, h: s.opt.h || SIZE };
+  }
+
   function draw(name, frame) {
     var s = SPR[name];
-    var b = new Board(SIZE);
+    var sz = sizeOf(name);
+    var b = new Board(sz.w, sz.h);
     var P = s.pal;
     var only = null;
     for (var i = 0; i < s.ops.length; i++) {
@@ -171,24 +187,25 @@
       if (s.baked[key]) return s.baked[key];
       var base = bake(name, f);
       if (!base) return null;
+      var tz = sizeOf(name);
       var tc = document.createElement("canvas");
-      tc.width = SIZE; tc.height = SIZE;
+      tc.width = tz.w; tc.height = tz.h;
       var tx = tc.getContext("2d");
       tx.imageSmoothingEnabled = false;
       tx.drawImage(base, 0, 0);
       tx.globalCompositeOperation = "source-atop";   /* 그려진 픽셀 위에만 */
       tx.fillStyle = tint;
-      tx.fillRect(0, 0, SIZE, SIZE);
+      tx.fillRect(0, 0, tz.w, tz.h);
       s.baked[key] = tc;
       return tc;
     }
     if (s.baked[f]) return s.baked[f];
     var b = draw(name, f);
     var c = document.createElement("canvas");
-    c.width = SIZE; c.height = SIZE;
+    c.width = b.w; c.height = b.h;
     var x = c.getContext("2d");
-    for (var y = 0; y < SIZE; y++) {
-      for (var i = 0; i < SIZE; i++) {
+    for (var y = 0; y < b.h; y++) {
+      for (var i = 0; i < b.w; i++) {
         var col = b.get(i, y);
         if (!col) continue;
         x.fillStyle = col;
@@ -581,6 +598,7 @@
       return { total: total, worst: worst, name: worstName };
     },
     hasFrames: hasFrames,
+    sizeOf: sizeOf,          /* 그리는 쪽이 바닥을 맞추려면 크기를 알아야 한다 */
     terrain: terrain,
     data: SPR
   };

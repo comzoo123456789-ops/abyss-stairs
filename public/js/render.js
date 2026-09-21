@@ -286,15 +286,28 @@
 
   /* 몸 → 갑옷 → 무기. 세 자리(지도·상단 초상·사이드바 초상)가 **같은 순서**로
    * 그려야 한다. 한 곳만 순서가 다르면 거기서만 무기가 어깨에 가린다. */
+  /* 몸 → 갑옷 → 무기를 겹쳐 그린다.
+   *
+   * ⚠ **칸(32px)보다 큰 그림은 위로 넘치게 그린다.** 사람을 32×32 에 넣으면
+   *   2등신이 되어 다리도 자세도 안 들어간다. 40×64 로 그리고 **발을 칸 바닥에
+   *   맞춘다** — 이 약속이 깨지면 캐릭터가 공중에 뜨거나 바닥을 뚫는다.
+   *     가로: 칸 가운데에 몸의 중심선을 맞춘다
+   *     세로: 그림의 맨 아랫줄이 칸의 맨 아랫줄
+   * ⚠ 갑옷·무기는 아직 32×32 다. 같은 규칙으로 각자 제 크기만큼 맞춘다 —
+   *   한 값으로 몰아서 밀면 큰 몸에 작은 무기가 어긋난다.
+   * ⚠ bake 는 이름이 틀리면 **null 을 준다.** 그대로 drawImage 에 넘기면
+   *   그리기가 통째로 터져 화면이 안 뜬다 — 하나씩 확인하고 넘긴다. */
+  function placeAt(ctx, img, name, x, y) {
+    if (!img) return;
+    var sz = S.sizeOf ? S.sizeOf(name) : { w: TILE, h: TILE };
+    ctx.drawImage(img, Math.round(x - (sz.w - TILE) / 2), y - (sz.h - TILE));
+  }
   function drawFigure(ctx, p, sprite, frame, tint, x, y) {
-    /* ⚠ bake 는 이름이 틀리면 **null 을 준다.** 그대로 drawImage 에 넘기면
-     *   그리기가 통째로 터져 화면이 안 뜬다 — 하나씩 확인하고 넘긴다. */
-    var body = S.bake(sprite, frame, tint);
-    if (body) ctx.drawImage(body, x, y);
-    var a = armorArt(p) && S.bake(armorArt(p), 0, tint);
-    if (a) ctx.drawImage(a, x, y);
-    var w = S.bake(weaponArt(p), 0, tint);
-    if (w) ctx.drawImage(w, x, y);
+    placeAt(ctx, S.bake(sprite, frame, tint), sprite, x, y);
+    var an = armorArt(p);
+    if (an) placeAt(ctx, S.bake(an, 0, tint), an, x, y);
+    var wn = weaponArt(p);
+    if (wn) placeAt(ctx, S.bake(wn, 0, tint), wn, x, y);
   }
 
   Renderer.prototype.tintOf = function (e) {
@@ -1348,11 +1361,35 @@
       x.imageSmoothingEnabled = false;
       x.clearRect(0, 0, 32, 32);
       /* 몸 → 갑옷 → 무기. 지도와 **같은 순서**여야 한다 */
-      drawFigure(x, g.player, art.getAttribute("data-sprite"), 0, null, 0, 0);
+      drawPortrait(x, g.player, art.getAttribute("data-sprite"), 32);
     }
   };
 
   /* 유물 목록. full=true 면 설명까지 편다(장비 창용). */
+  /* 작은 초상 자리(HUD · 사이드바 · 직업 카드)에 넣는다.
+   * ⚠ 이 캔버스들은 정사각형이다. 40×64 를 그대로 그리면 **다리가 잘린다** —
+   *   비율을 지켜 줄이고 가운데 아래에 놓는다. */
+  function drawPortrait(ctx, p, sprite, box) {
+    var sz = S.sizeOf ? S.sizeOf(sprite) : { w: 32, h: 32 };
+    var k = Math.min(box / sz.w, box / sz.h);
+    var w = Math.round(sz.w * k), h = Math.round(sz.h * k);
+    var ox = Math.round((box - w) / 2), oy = box - h;
+    ctx.imageSmoothingEnabled = false;
+    function put(name, frame) {
+      if (!name) return;
+      var img = S.bake(name, frame || 0);
+      if (!img) return;
+      var s2 = S.sizeOf ? S.sizeOf(name) : { w: 32, h: 32 };
+      /* 갑옷·무기는 몸과 크기가 다를 수 있다 — 몸과 **같은 배율**로 두고
+       * 바닥을 맞춘다(각자 제 배율로 줄이면 어긋난다). */
+      var ww = Math.round(s2.w * k), hh = Math.round(s2.h * k);
+      ctx.drawImage(img, ox + Math.round((w - ww) / 2), box - hh, ww, hh);
+    }
+    put(sprite, 0);
+    put(armorArt(p), 0);
+    put(weaponArt(p), 0);
+  }
+
   function relicHtml(g, full) {
     var ids = g.player.relics || [];
     if (!ids.length) return full ? '<div class="empty">아직 유물이 없다.</div>' : "";
@@ -1465,7 +1502,7 @@
       var x = art.getContext("2d");
       x.imageSmoothingEnabled = false;
       /* 몸 → 갑옷 → 무기. 지도와 **같은 순서**여야 한다 */
-      drawFigure(x, g.player, art.getAttribute("data-sprite"), 0, null, 0, 0);
+      drawPortrait(x, g.player, art.getAttribute("data-sprite"), 32);
     }
   };
 

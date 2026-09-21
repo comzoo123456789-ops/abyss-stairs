@@ -694,14 +694,21 @@
     els.classes.innerHTML = html;
 
     /* 직업 카드에 실제 도트 그림을 넣는다 — 글자만 있으면 누구를 고르는지 안 와닿는다.
-     * ⚠ 32px 스프라이트를 96px 로 키우므로 정수배(3배)여야 한다. 3.5배 같은 값을 쓰면
-     *   픽셀이 뭉개져 도트가 아니게 된다. */
+     * ⚠ **정수배로만 키운다.** 3.5배 같은 값을 쓰면 픽셀이 뭉개져 도트가 아니게 된다.
+     * ⚠ 스프라이트마다 크기가 다르다(전사는 40×64, 나머지는 32×32). 한 값으로
+     *   몰아서 키우면 세로로 긴 그림이 찌그러진다 — **제 크기에 맞는 정수배**를
+     *   골라 카드 바닥에 발을 맞춘다. */
     var arts = els.classes.querySelectorAll(".cls-art");
     for (var a = 0; a < arts.length; a++) {
       var cv = arts[a];
       var x = cv.getContext("2d");
       x.imageSmoothingEnabled = false;
-      x.drawImage(window.SPRITES.bake(cv.getAttribute("data-sprite")), 0, 0, 32, 32, 0, 0, 96, 96);
+      var sname = cv.getAttribute("data-sprite");
+      var ssz = window.SPRITES.sizeOf ? window.SPRITES.sizeOf(sname) : { w: 32, h: 32 };
+      var zoom = Math.max(1, Math.floor(Math.min(96 / ssz.w, 96 / ssz.h)));
+      var dw = ssz.w * zoom, dh = ssz.h * zoom;
+      var dx = Math.round((96 - dw) / 2), dy = 96 - dh;
+      x.drawImage(window.SPRITES.bake(sname), 0, 0, ssz.w, ssz.h, dx, dy, dw, dh);
       /* ⚠ 몸에서 주 무기를 뗐으므로 카드에도 **시작 무기**를 얹어야 한다.
        *   안 얹으면 고르기 화면에서만 셋이 빈손이라 어떤 직업인지 덜 읽힌다. */
       /* ⚠ startWeapon 은 {kind, tier} **객체**다. 통째로 넣으면
@@ -709,7 +716,12 @@
        *   (문법은 멀쩡하고 화면만 통째로 안 뜬다 — 실제로 그렇게 죽였다). */
       var wk = cv.getAttribute("data-weapon");
       var wb = wk ? window.SPRITES.bake("w_" + wk) : null;
-      if (wb) x.drawImage(wb, 0, 0, 32, 32, 0, 0, 96, 96);
+      if (wb) {
+        /* 무기는 몸과 **같은 배율**로, 바닥을 맞춘다(제 배율로 키우면 어긋난다) */
+        var wsz = window.SPRITES.sizeOf ? window.SPRITES.sizeOf("w_" + wk) : { w: 32, h: 32 };
+        var ww = wsz.w * zoom, wh = wsz.h * zoom;
+        x.drawImage(wb, 0, 0, wsz.w, wsz.h, Math.round((96 - ww) / 2), 96 - wh, ww, wh);
+      }
     }
   }
 
