@@ -114,7 +114,11 @@
     var x1 = Math.min(lv.w - 1, Math.ceil((this.viewW - ox) / TILE) + 1);
     var y1 = Math.min(lv.h - 1, Math.ceil((this.viewH - oy) / TILE) + 1);
 
-    var zone = this.zone, x, y, id, t, sx, sy;
+    /* 구역 팔레트 — **깊이에서 바로 구한다.** 바깥에서 넣어 주게 두면
+     * 층을 옮길 때 한 곳을 빠뜨려 옛 색으로 남는다(마을은 구역이 없다). */
+    var zone = world.inTown ? null
+      : (global.DATA ? global.DATA.zoneAt(world.depth) : this.zone);
+    var x, y, id, t, sx, sy;
 
     /* 1) 지형 */
     for (y = y0; y <= y1; y++) {
@@ -180,6 +184,26 @@
       ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.fill();
     }
 
+    /* 2-a3) 날아가는 것. **바닥보다 위 · 개체보다 아래**에 둔다 —
+     *       개체 위에 그리면 화살이 사람 얼굴을 가린다. */
+    for (var si = 0; si < world.shots.length; si++) {
+      var sh = world.shots[si];
+      var stx = Math.floor(sh.x), sty = Math.floor(sh.y);
+      if (stx < 0 || sty < 0 || stx >= lv.w || sty >= lv.h) continue;
+      if (!lv.visible[sty * lv.w + stx]) continue;
+      var sxp = sh.x * TILE + ox, syp = sh.y * TILE + oy;
+      /* 꼬리를 남긴다 — 점 하나만 그리면 **어디서 오는지** 못 읽는다 */
+      var tl = Math.hypot(sh.vx, sh.vy) || 1;
+      ctx.strokeStyle = "rgba(255,210,140,.55)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sxp - sh.vx / tl * 9, syp - sh.vy / tl * 9);
+      ctx.lineTo(sxp, syp);
+      ctx.stroke();
+      ctx.fillStyle = "#ffe9a8";
+      ctx.beginPath(); ctx.arc(sxp, syp, 2.6, 0, Math.PI * 2); ctx.fill();
+    }
+
     /* 2-b) 바닥의 전리품. **개체보다 먼저** — 사람이 그 위에 서야 한다.
      * ⚠ 등급 빛을 **아래에 깐다**(위에 얹으면 그림을 덮어 뭔지 안 보인다).
      * ⚠ 위아래로 살짝 떠 있게 한다. 바닥 무늬에 섞이면 못 보고 지나친다 —
@@ -212,6 +236,32 @@
      *   맞은 줄 알았다). 예고는 바닥에 그린 표시지 서 있는 물건이 아니다. */
     /* 시전 예고 — **차오르는 고리.** 이걸 안 보여 주면 상대도 나도
      * 무엇이 오는지 모르고, 그럼 시전 시간이 아무 뜻이 없어진다. */
+    /* 몬스터 시전 예고 — **이게 없으면 원거리 공격을 피할 수가 없다.**
+     * ⚠ 사람 것과 색을 갈라 둔다(붉은색 = 나에게 오는 것). */
+    for (var ci = 0; ci < world.ents.length; ci++) {
+      var ce = world.ents[ci];
+      if (!ce.cast || ce.dead || ce.team === 0) continue;
+      var ctx0 = Math.floor(ce.x), cty0 = Math.floor(ce.y);
+      if (!lv.visible[cty0 * lv.w + ctx0]) continue;
+      var ck = Math.min(1, ce.cast.t / Math.max(0.01, ce.cast.sk.cast));
+      var mx0 = lerp(ce.px, ce.x, alpha) * TILE + ox;
+      var my0 = (lerp(ce.py, ce.y, alpha) - 0.5) * TILE + oy;
+      ctx.strokeStyle = "rgba(255,110,90,.75)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(mx0, my0, 13, -Math.PI / 2, -Math.PI / 2 + ck * Math.PI * 2);
+      ctx.stroke();
+      /* 겨눈 자리도 보여 준다 — 술사의 장판이 어디 깔릴지 */
+      if (ce.cast.what === "field") {
+        var fr2 = (ce.mob && ce.mob.field ? ce.mob.field.r : 2) * TILE;
+        ctx.strokeStyle = "rgba(255,140,60," + (0.25 + 0.4 * ck).toFixed(2) + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(ce.cast.x * TILE + ox, ce.cast.y * TILE + oy, fr2, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
     var pc = world.player.cast;
     if (pc && pc.sk.cast > 0) {
       var k2 = Math.min(1, pc.t / pc.sk.cast);
@@ -256,8 +306,10 @@
       }
 
       /* 머리 위 체력 — **다친 적에게만.** 전부에게 띄우면 화면이 막대밭이 된다. */
-      if (e.kind !== "player" && e.hp < e.maxHp && !e.dead)
-        this.hpBar(ctx, ex, ey, ox, oy, e.hp / e.maxHp);
+      /* ⚠ 보스는 **멀쩡할 때도** 체력을 보여 준다. 안 보여 주면 얼마나 남았는지
+       *   몰라 언제 물러설지 못 정한다. */
+      if (e.kind !== "player" && !e.dead && (e.boss || e.hp < e.maxHp))
+        this.hpBar(ctx, ex, ey, ox, oy, e.hp / e.maxHp, e.boss);
     }
 
     /* 떠오르는 숫자 — 개체보다 **위에** 그린다(가려지면 없는 것과 같다) */
@@ -304,8 +356,8 @@
     ctx.restore();
   };
 
-  View.prototype.hpBar = function (ctx, ex, ey, ox, oy, frac) {
-    var w = 22, h = 3;
+  View.prototype.hpBar = function (ctx, ex, ey, ox, oy, frac, big) {
+    var w = big ? 40 : 22, h = big ? 5 : 3;
     var x = Math.round(ex * TILE + ox - w / 2);
     var y = Math.round((ey - 1.35) * TILE + oy);
     ctx.fillStyle = "rgba(0,0,0,.72)";

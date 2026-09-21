@@ -165,11 +165,14 @@
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
     this.drops = [];        /* 바닥에 떨어진 것 */
     this._dropId = 0;
+    this.boss = null;       /* 이 층의 보스(있으면) */
     this.gear = null;       /* 입은 것의 합 — applyHero 가 채운다 */
     this.equipped = {};
     /* 스킬 — **시계는 world.time 하나뿐이다.** Date.now 를 쓰면 창을 감췄다
      * 돌아올 때 쿨다운이 통째로 어긋난다. */
     this.cds = {};
+    this.shots = [];        /* 날아가는 것 */
+    this._shotId = 0;
     this.fields = [];
     this.buffs = [];
     this._fieldId = 0;
@@ -199,28 +202,92 @@
     if (opt.hp !== undefined) this.player.hp = Math.max(1, Math.min(this.player.maxHp, opt.hp));
     if (this.inTown) this.player.hp = this.player.maxHp;
     this.refreshFov();
-    if (!this.inTown && opt.mobs !== 0) this.spawn(opt.mobs === undefined ? 10 : opt.mobs);
+    /* ⚠ 마릿수를 여기서 정하지 않는다 — DATA.countAt 이 정한다.
+     *   두 곳이 되면 표를 고쳐도 안 바뀐다. */
+    if (!this.inTown && opt.mobs !== 0) this.spawn(opt.mobs);
   }
 
   /* 몬스터를 뿌린다.
    * ⚠ 주인공 근처에 놓지 말 것 — 들어서자마자 맞으면 조작을 배울 틈이 없다. */
+  /* 표에서 하나 뽑는다(가중치) */
+  function pickMob(rng, pool) {
+    var total = 0, i;
+    for (i = 0; i < pool.length; i++) total += pool[i].w;
+    var r = rng() * total;
+    for (i = 0; i < pool.length; i++) { r -= pool[i].w; if (r <= 0) return pool[i]; }
+    return pool[pool.length - 1];
+  }
+
+  /* 표의 한 줄 → 살아 있는 개체.
+   * ⚠ 층 배수는 **DATA.statsAt 한 곳**에서만 곱한다. 여기서 또 곱하면 두 배가
+   *   되고, 그건 눈으로 절대 못 잡는다(30층 몬스터가 조용히 두 배 세진다). */
+  function makeMob(def, depth, x, y, isBoss) {
+    var DT = global.DATA;
+    var st = isBoss
+      ? { hp: def.hp, dmg: def.dmg, xp: def.xp, gold: def.gold }   /* 보스는 표 그대로 */
+      : DT.statsAt(def, depth);
+    var sw = def.swing ? {
+      aps: def.swing.aps, windup: def.swing.windup, recover: def.swing.recover,
+      reach: def.swing.reach, arc: def.swing.arc, push: def.swing.push, dmg: st.dmg
+    } : null;
+    var e = new Entity({
+      x: x, y: y, sprite: def.sprite || def.id, team: 1,
+      brain: def.brain, hp: st.hp, spd: def.spd, name: def.name,
+      xp: st.xp, gold: st.gold, r: def.r, swing: sw
+    });
+    /* 표를 개체에 붙여 둔다 — 행동(AI)이 자기 수치를 여기서 읽는다.
+     * ⚠ 이름을 **mob** 으로 둔다. `def` 는 이미 **방어력**이다 — 거기에 객체를
+     *   넣으면 damage() 의 `amount - to.def` 가 NaN 이 되어 **아무도 안 죽는다.**
+     *   짧고 흔한 이름을 두 뜻으로 쓰면 반드시 이렇게 부딪힌다.
+     * ⚠ 사본을 뜨지 말 것. 표를 고쳤을 때 이미 나온 몬스터만 옛 값으로 남는다. */
+    e.mob = def;
+    e.dmgOut = st.dmg;
+    e.boss = !!isBoss;
+    return e;
+  }
+
   World.prototype.spawn = function (count) {
+    var DT = global.DATA;
+    if (!DT) return 0;
+    var depth = this.depth;
     var rng = D.makeRng(this.seed ^ 0x5bf03635);
     var lv = this.level, placed = 0, guard = 0;
+    var pool = DT.poolAt(depth);
+    if (count === undefined) count = DT.countAt(depth);
+
+    /* 보스가 먼저다 — **가장 먼 방**에 세운다. 들어서는 자리에 두면
+     * 문을 여는 순간 끝나고, 준비할 틈이 없다. */
+    var boss = DT.bossAt(depth);
+    if (boss && count > 0) {
+      var far = null, fd = -1;
+      for (var ri = 0; ri < lv.rooms.length; ri++) {
+        var rr = lv.rooms[ri];
+        var cx = rr.x + rr.w / 2, cy = rr.y + rr.h / 2;
+        var dd = Math.hypot(cx - this.player.x, cy - this.player.y);
+        if (dd > fd) { fd = dd; far = rr; }
+      }
+      if (far) {
+        var bx = Math.floor(far.x + far.w / 2) + 0.5;
+        var by = Math.floor(far.y + far.h / 2) + 0.5;
+        if (boxFree(lv, bx, by, boss.def.r || 0.34)) {
+          var bdef = {};
+          for (var bk in boss.def) bdef[bk] = boss.def[bk];
+          bdef.id = boss.id; bdef.sprite = boss.id;
+          this.boss = makeMob(bdef, depth, bx, by, true);
+          this.ents.push(this.boss);
+        }
+      }
+    }
+
     while (placed < count && guard++ < count * 60) {
       var r = lv.rooms[Math.floor(rng() * lv.rooms.length)];
       if (!r) break;
       var x = r.x + Math.floor(rng() * r.w) + 0.5;
       var y = r.y + Math.floor(rng() * r.h) + 0.5;
       if (Math.hypot(x - this.player.x, y - this.player.y) < 9) continue;
-      if (!boxFree(lv, x, y, 0.34)) continue;
-      this.ents.push(new Entity({
-        x: x, y: y, sprite: "rat", brain: "melee", team: 1,
-        hp: 14 + (this.depth - 1) * 4, spd: 3.0, name: "쥐",
-        xp: 8 + (this.depth - 1) * 3, gold: 2 + this.depth,
-        swing: { aps: 0.85, windup: 0.32, recover: 0.30, reach: 0.95,
-                 arc: 120, dmg: 4, push: 0.15 }
-      }));
+      var def = pickMob(rng, pool);
+      if (!boxFree(lv, x, y, def.r || 0.34)) continue;
+      this.ents.push(makeMob(def, depth, x, y, false));
       placed++;
     }
     return placed;
@@ -241,6 +308,10 @@
     this.dropFrom(who);
     if (who.xp) this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + Math.round(who.xp * xpMult) + "xp",
                                      t: 0, life: 1.0, foe: true });
+    if (who.boss) {
+      this.log.push({ t: this.time, what: "boss", who: who.name });
+      if (global.SFX) global.SFX.play("win");
+    }
     if (ups > 0) {
       this.log.push({ t: this.time, what: "levelup", level: this.hero.level });
       /* **레벨업은 재주 점수를 준다.** 턴제 시절의 3지선다를 대신하는 자리다 —
@@ -404,6 +475,7 @@
       if (global.COMBAT) global.COMBAT.tick(this, e, SIM_DT);
     }
     if (global.SKILLS) global.SKILLS.tick(this, SIM_DT);
+    if (global.AI) global.AI.tickShots(this, SIM_DT);
 
     /* ③ 움직인다. */
     for (i = 0; i < this.ents.length; i++) {
@@ -478,7 +550,10 @@
     for (i = this.drops.length - 1; i >= 0; i--) {
       var dr = this.drops[i];
       if (!dr.gold) continue;
-      if (Math.hypot(dr.x - this.player.x, dr.y - this.player.y) > 0.85) continue;
+      /* 줍는 반경. ⚠ 0.85칸으로 뒀더니 **밀려난 거리(1.8칸)보다 좁아** 보스를
+       * 잡고도 금화를 못 주웠다(실측). 근접 사거리만큼 넓힌다 — "때려서 잡았으면
+       * 손이 닿는다" 가 자연스럽다. 더 넓히면 안 지나간 방의 것까지 빨려 온다. */
+      if (Math.hypot(dr.x - this.player.x, dr.y - this.player.y) > 1.35) continue;
       if (this.hero) this.hero.gold += dr.gold;
       this.floaters.push({ x: dr.x, y: dr.y - 0.5, text: "+" + dr.gold + "금",
                            t: 0, life: 0.8, foe: true });
