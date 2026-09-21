@@ -93,6 +93,9 @@
       var rawSk = (raw.skills && typeof raw.skills === "object") ? raw.skills : {};
       for (var ki = 0; ki < SK.LIST.length; ki++) {
         var def = SK.LIST[ki];
+        /* ⚠ 남의 직업 재주에 찍힌 점수는 버린다 — 안 버리면 직업을 바꿔도
+         *   옛 시너지가 따라다니며 재주책에 ✔ 로 남는다. */
+        if (global.CLASSES && !global.CLASSES.canUse(out.cls, def.id)) continue;
         var want = rawSk[def.id];
         if (!Array.isArray(want) || !want.length) continue;
         var ok = null;
@@ -102,9 +105,14 @@
         out.skills[def.id] = ok ? [ok] : [];
       }
       var rawBar = Array.isArray(raw.bar) ? raw.bar : [];
+      var CL = global.CLASSES;
       for (var bi2 = 0; bi2 < 4; bi2++) {
         var want2 = rawBar[bi2];
-        out.bar[bi2] = SK.byId(want2) ? want2 : null;
+        /* ⚠ **그 직업이 쓸 수 있는 재주만** 손잡이에 남긴다. 직업을 바꿔 새로
+         *   시작하거나 저장을 손으로 고치면 남의 재주가 들어올 수 있고, 그러면
+         *   눌러도 "이 직업은 못 쓴다" 만 뜨는 죽은 칸이 된다. */
+        var okSkill = SK.byId(want2) && (!CL || CL.canUse(out.cls, want2));
+        out.bar[bi2] = okSkill ? want2 : null;
       }
       /* ⚠ 같은 스킬이 두 칸에 있으면 하나가 죽은 칸이 된다 — 뒤엣것을 비운다 */
       for (var a = 0; a < 4; a++)
@@ -112,10 +120,15 @@
           if (out.bar[a] && out.bar[a] === out.bar[b2]) out.bar[b2] = null;
       /* 새 캐릭터는 첫 두 개를 쥐고 시작한다 — 빈 손잡이로 시작하면
        * 실시간 전투를 배울 수가 없다(평타만으로는 아무것도 못 한다). */
-      if (out.bar.every(function (x) { return !x; })) {
-        out.bar[0] = SK.LIST[0].id;
-        out.bar[1] = SK.LIST[1].id;
-      }
+      /* 빈 칸을 **그 직업이 쓸 수 있는 것**으로 메운다.
+       * ⚠ "전부 비었을 때만" 메우면 안 된다 — 한 칸만 걸러졌을 때 그 칸이
+       *   영영 빈 채로 남는다(직업을 바꿔 시작할 때 실제로 그랬다).
+       * ⚠ 이미 손잡이에 있는 것을 또 넣지 않는다 — 같은 재주가 두 칸이면
+       *   한 칸이 죽은 칸이 된다. */
+      var mine = CL ? CL.skillsOf(out.cls) : [SK.LIST[0].id, SK.LIST[1].id];
+      var free = mine.filter(function (x) { return out.bar.indexOf(x) < 0; });
+      for (var mi = 0; mi < 4; mi++)
+        if (!out.bar[mi] && free.length) out.bar[mi] = free.shift();
     }
     if (I) {
       var raw_e = (raw.equip && typeof raw.equip === "object") ? raw.equip : {};
@@ -168,8 +181,13 @@
   function liveStash(s) { return liveList(s && s.stash); }
 
   function blank(cls, name) {
-    var s = sanitize({});
-    if (cls) s.cls = FIELDS.cls.oneOf.indexOf(cls) >= 0 ? cls : s.cls;
+    /* ⚠ 직업을 **sanitize 에 함께 넘긴다.** 전에는 먼저 정리하고 나서 cls 를
+     *   바꿨는데, 그러면 손잡이가 **기본 직업(전사) 것으로 채워진 뒤** 직업만
+     *   마법사가 되어, 다음 정리에서 전사 재주가 걸러지고 **빈 칸 둘**이 남았다
+     *   (실측: 마법사로 시작했는데 손잡이가 [—,—,돌진,결의]).
+     *   순서 하나로 새 캐릭터가 반쯤 빈 채 시작하는 종류의 버그다. */
+    var want = FIELDS.cls.oneOf.indexOf(cls) >= 0 ? cls : FIELDS.cls.def;
+    var s = sanitize({ cls: want });
     if (name) s.name = String(name).slice(0, FIELDS.name.str);
     s.born = Date.now();
     return s;

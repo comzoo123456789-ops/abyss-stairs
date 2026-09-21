@@ -84,6 +84,42 @@
         { id: "wide",  name: "넓게",    text: "반경 2.4 → 3.4칸", s: { reach: 1.0 } }
       ] },
 
+    /* ── 전사 전용 ── */
+    { id: "whirl", name: "회전베기", kind: "nova", icon: "s_whirl",
+      cd: 7.0, cast: 0.30, after: 0.30, stam: 26,
+      mult: 1.6, reach: 2.2, push: 0.5,
+      text: "제자리에서 사방을 쓸어 벤다",
+      syn: [
+        { id: "big",   name: "더 넓게", text: "반경 2.2 → 3.0칸", s: { reach: 0.8 } },
+        { id: "twice", name: "두 번",   text: "위력 1.6 → 2.6배 · 시전 +0.2초",
+          s: { mult: 1.0, cast: 0.2 } },
+        { id: "hold",  name: "버티기",  text: "쓴 뒤 3초간 방어 +6", s: { guard: 6 } }
+      ] },
+
+    /* ── 도적 전용 ──
+     * ⚠ 급소찌르기는 **뒤에서 찔러야** 값어치가 있다. 앞에서도 같은 피해면
+     *   "그냥 센 평타" 라 도적이 붙었다 빠질 이유가 없어진다. */
+    { id: "backstab", name: "급소찌르기", kind: "swing", icon: "s_backstab",
+      cd: 5.0, cast: 0.12, after: 0.18, stam: 20,
+      mult: 2.2, reach: 1.3, arc: 60, push: 0.2, behind: 2.0,
+      text: "한 명을 깊이 찌른다 — 등 뒤면 두 배",
+      syn: [
+        { id: "deep",  name: "더 깊이", text: "위력 2.2 → 3.2배", s: { mult: 1.0 } },
+        { id: "quick", name: "빠르게",  text: "재사용 5.0 → 3.0초", s: { cd: -2.0 } },
+        { id: "bleed", name: "출혈",    text: "맞은 것이 4초간 계속 아프다", s: { bleed: 4 } }
+      ] },
+
+    { id: "venom", name: "독날", kind: "buff", icon: "s_venom",
+      cd: 14.0, cast: 0.0, after: 0.10, stam: 28,
+      dur: 8.0, apsPct: 15, lifeOnHit: 3, dmgPct: 20,
+      text: "8초간 공격속도 +15% · 피해 +20% · 때릴 때마다 회복",
+      syn: [
+        { id: "long",  name: "오래",   text: "지속 8 → 13초", s: { dur: 5 } },
+        { id: "thick", name: "짙게",   text: "타격 회복 3 → 8", s: { lifeOnHit: 5 } },
+        { id: "swift", name: "날래게", text: "공격속도 +15% → +35%", s: { apsPct: 20 } }
+      ] },
+
+    /* ── 공용 ── */
     { id: "ward", name: "결의", kind: "buff", icon: "s_ward",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 25,
       dur: 6.0, armor: 8, apsPct: 25,
@@ -123,11 +159,15 @@
   }
 
   /* 쓸 수 있는가. **왜 못 쓰는지**를 돌려준다 — 아무 일도 안 일어나면 고장으로 느낀다. */
-  function why(world, id, taken) {
+  function why(world, id, taken, cls) {
     var p = world.player;
     if (p.dead) return "쓰러졌다";
     var sk = resolve(id, taken);
     if (!sk) return "없는 재주";
+    /* ⚠ 직업이 못 쓰는 재주는 **애초에 손잡이에 안 들어가지만**, 저장을 손으로
+     *   고치면 들어올 수 있다. 여기서 한 번 더 막는다(관문은 한 곳에 걸면 샌다). */
+    if (cls && global.CLASSES && !global.CLASSES.canUse(cls, id))
+      return "이 직업은 못 쓴다";
     var left = cdLeft(world, id, taken);
     if (left > 0) return left.toFixed(1) + "초 남았다";
     if (p.stam < sk.stam) return "기력이 모자라다";
@@ -150,8 +190,8 @@
   /* ── 쓰기 ───────────────────────────────────────────────
    * ⚠ 규칙이 나는 자리는 **여기 하나**다. app.js 가 효과를 따로 만들면
    *   화면과 규칙이 갈린다. app.js 는 use() 를 부르기만 한다. */
-  function use(world, id, aimX, aimY, taken) {
-    var no = why(world, id, taken);
+  function use(world, id, aimX, aimY, taken, cls) {
+    var no = why(world, id, taken, cls);
     if (no) return no;
     var sk = resolve(id, taken);
     var p = world.player;
@@ -193,6 +233,26 @@
       /* windup 0 이라 다음 걸음에 바로 판정된다 */
       var hits = C_().tick(world, p, 0);
       if (hits && sk.slow) markSlow(world, hits, sk.slow);
+      /* 등 뒤 배수 — **맞은 쪽이 나를 등지고 있었나.**
+       * ⚠ 내 방향이 아니라 **상대의 방향**을 본다. 내 방향으로 재면 옆에서
+       *   찔러도 늘 등 뒤가 되어 조건이 없는 것과 같다. */
+      if (hits && sk.behind) {
+        for (var bi = 0; bi < hits.length; bi++) {
+          var t2 = hits[bi];
+          var away = (t2.x - p.x) * t2.face;
+          if (away > 0) C_().damage(world, p, t2, dmg * (sk.behind - 1), { canCrit: false });
+        }
+      }
+      if (hits && sk.bleed) {
+        for (var bj = 0; bj < hits.length; bj++)
+          world.bleeds.push({ who: hits[bj], until: world.time + sk.bleed,
+                              next: world.time + 0.5, dmg: Math.max(1, Math.round(dmg * 0.12)),
+                              from: p });
+      }
+      /* 쓴 뒤 잠깐 단단해진다(회전베기 시너지) */
+      if (sk.guard) world.buffs.push({ until: world.time + 3, armor: sk.guard,
+                                       apsPct: 0, dmgPct: 0, id: cast.id });
+      if (sk.guard) world.refreshBuffs();
       p.atkRest = sk.after;
     } else if (sk.kind === "dash") {
       p.dash = { dx: Math.cos(cast.ang), dy: Math.sin(cast.ang),
@@ -227,9 +287,13 @@
   /* 한 걸음. world.step 이 부른다. */
   function tick(world, dt) {
     var p = world.player;
-    if (p.stam === undefined) p.stam = STAM_MAX;
+    /* ⚠ 상한·회복은 **직업마다 다르다**(classes.js). 여기 상수를 쓰면
+     *   마법사의 넉넉한 기력이 조용히 사라진다. */
+    var smax = p.stamMax || STAM_MAX;
+    var sreg = p.stamRegen || STAM_REGEN;
+    if (p.stam === undefined) p.stam = smax;
     /* 기력은 늘 차오른다 — 쿨다운과 **두 겹**으로 막아야 스킬을 쉬지 않고 돌리지 못한다 */
-    p.stam = Math.min(STAM_MAX, p.stam + STAM_REGEN * dt);
+    p.stam = Math.min(smax, p.stam + sreg * dt);
 
     /* 시전 */
     var c = p.cast;
@@ -280,6 +344,16 @@
       }
     }
 
+    /* 출혈 — 시간이 지나며 계속 아프다.
+     * ⚠ 죽은 것·사라진 것을 붙들고 있으면 목록이 끝없이 길어진다. 함께 걷어낸다. */
+    for (var bl = world.bleeds.length - 1; bl >= 0; bl--) {
+      var bd = world.bleeds[bl];
+      if (bd.who.dead || world.time >= bd.until) { world.bleeds.splice(bl, 1); continue; }
+      if (world.time < bd.next) continue;
+      bd.next = world.time + 0.5;
+      C_().damage(world, bd.from, bd.who, bd.dmg, { canCrit: false });
+    }
+
     /* 버프 만료 */
     var changed = false;
     for (var b = world.buffs.length - 1; b >= 0; b--)
@@ -310,6 +384,8 @@
         if (s.cast === 0 && s.kind !== "buff" && s.kind !== "dash")
           bad.push(s.id + " 이 시전 0 인데 남을 때린다 — 피할 방법이 없다");
         if (s.kind !== "buff" && !(s.mult > 0)) bad.push(s.id + " 에 위력(배수)이 없다");
+        /* ⚠ 아이콘이 없으면 손잡이가 빈 칸으로 보인다 — 이름만 있고 그림이 없는 재주 */
+        if (!s.icon) bad.push(s.id + " 에 아이콘이 없다");
       }
       return bad;
     }

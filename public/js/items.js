@@ -60,8 +60,15 @@
         swing: { aps: 0.88, windup: 0.24, recover: 0.28, reach: 1.15, arc: 90, push: 0.75 },
         note: "세게 밀어낸다" },
       { id: "staff", name: "지팡이", sprite: "w_staff", lvl: 2, dmg: 6, val: 24,
-        swing: { aps: 1.05, windup: 0.22, recover: 0.20, reach: 1.70, arc: 150, push: 0.25 },
-        note: "사방으로 휘두른다" }
+        /* ⚠ **원거리 무기다.** 평타가 날아간다 — reach 는 닿는 거리(칸)로 쓰인다.
+         *   arc 는 안 쓰지만 표 모양을 맞춰 둔다(빠뜨리면 읽는 쪽이 undefined 를 만난다). */
+        ranged: true, shotSpeed: 11,
+        swing: { aps: 1.05, windup: 0.22, recover: 0.20, reach: 7.5, arc: 0, push: 0.1 },
+        note: "마법이 날아간다 · 7.5칸" },
+      { id: "bow", name: "활", sprite: "w_bow", lvl: 3, dmg: 9, val: 30,
+        ranged: true, shotSpeed: 15,
+        swing: { aps: 0.85, windup: 0.28, recover: 0.22, reach: 9.0, arc: 0, push: 0.15 },
+        note: "화살이 멀리 날아간다 · 9칸" }
     ],
     head:   [{ id: "cap",   name: "가죽모자", sprite: "armor", lvl: 1, armor: 1, val: 10 },
              { id: "helm",  name: "쇠투구",   sprite: "armor", lvl: 3, armor: 3, hp: 6, val: 22, spdPct: -3 },
@@ -144,6 +151,20 @@
    *   열여섯 군데를 고쳐야 하고 반드시 하나를 빠뜨린다. */
   var ILVL_GROW = 0.14;
 
+  /* 베이스의 칸 중 **수치가 아닌 것**. ⚠ 여기 안 적으면 그대로 `it.s` 에
+   * 섞여 들어가 "읽는 이 없는 수치" 가 된다 — 화면에 "+1 ranged" 같은 줄이 뜨고
+   * totals 가 더하려 든다(실측으로 잡혔다: ranged · shotSpeed).
+   * ⚠ 베이스에 새 칸을 더할 때 **여기와 carryOver 를 함께** 고칠 것. */
+  var SKIP = { id: 1, name: 1, sprite: 1, lvl: 1, val: 1, swing: 1, note: 1,
+               ranged: 1, shotSpeed: 1 };
+
+  /* 수치가 아닌 채로 물건에 따라가야 하는 것들 */
+  function carryOver(it, base) {
+    if (base.swing) it.swing = base.swing;
+    if (base.note) it.note = base.note;
+    if (base.ranged) { it.ranged = true; it.shotSpeed = base.shotSpeed || 12; }
+  }
+
   function scaleStat(v, t, mult, ilvl) {
     var grow = 1 + Math.max(0, (ilvl || 1) - 1) * ILVL_GROW;
     /* 반올림은 **마지막에 한 번만** — 중간에 하면 작은 값이 계속 0 으로 깎인다. */
@@ -174,12 +195,10 @@
     /* 베이스 수치 */
     var k;
     for (k in base) {
-      if (k === "id" || k === "name" || k === "sprite" || k === "lvl" ||
-          k === "val" || k === "swing" || k === "note") continue;
+      if (SKIP[k]) continue;
       it.s[k] = base[k];
     }
-    if (base.swing) it.swing = base.swing;
-    if (base.note) it.note = base.note;
+    carryOver(it, base);
 
     /* 세트 조각인가 — 유물 등급에서만, 그리고 **딱 그 슬롯·베이스**일 때만 */
     if (tier.id === "relic") {
@@ -293,12 +312,10 @@
       tier: tier.id, ilvl: ilvl, affixes: affixes, set: null, s: {}
     };
     for (var k in base) {
-      if (k === "id" || k === "name" || k === "sprite" || k === "lvl" ||
-          k === "val" || k === "swing" || k === "note") continue;
+      if (SKIP[k]) continue;
       it.s[k] = base[k];
     }
-    if (base.swing) it.swing = base.swing;
-    if (base.note) it.note = base.note;
+    carryOver(it, base);
     if (tier.id === "relic") {
       for (var si = 0; si < SETS.length; si++) {
         var piece = SETS[si].pieces.filter(function (q) {

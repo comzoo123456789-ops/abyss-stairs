@@ -351,6 +351,8 @@
           var e = world.ents[j];
           if (e.dead || e.team === s.team) continue;
           if (Math.hypot(e.x - s.x, e.y - s.y) > e.r + s.r) continue;
+          /* ⚠ 치명타·흡혈이 **원거리에도 걸려야** 한다. damage() 한 곳을 쓰므로
+           *   저절로 걸린다 — 여기서 따로 계산하면 "활은 치명타가 안 뜬다" 가 된다. */
           global.COMBAT.damage(world, s.from, e, s.dmg);
           gone = true; break;
         }

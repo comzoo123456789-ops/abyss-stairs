@@ -167,3 +167,34 @@ html, body {
   width: 26px; height: 26px; image-rendering: pixelated;
   vertical-align: -7px; margin-right: 6px;
 }
+
+/* 캐릭터 만들기 — 세 칸을 나란히 두고 **숫자로** 견주게 한다. */
+.col.cls { text-align: center; }
+.col.cls .face {
+  width: 64px; height: 64px; image-rendering: pixelated; margin-bottom: 4px;
+}
+.col.cls h3 { font-size: 16px; color: var(--ink); }
+.col.cls .sub { min-height: 40px; }
+.col.cls .tot { text-align: left; }
+.clsk { text-align: left; margin: 10px 0; }
+.clsk .one {
+  display: flex; align-items: center; gap: 7px;
+  padding: 5px 7px; margin-bottom: 4px; border-radius: 5px;
+  background: #241f2e; border: 1px solid #3c3448;
+}
+.clsk .one.shared { opacity: .62; }
+.clsk .ico { width: 24px; height: 24px; image-rendering: pixelated; flex: none; }
+.clsk b { font-size: 13px; font-weight: normal; flex: none; }
+.clsk span { font-size: 11px; color: var(--ink-dim); min-width: 0; }
+.pick {
+  width: 100%; padding: 11px 0; cursor: pointer; font: inherit; font-size: 14px;
+  color: #fff; background: #6a4fc0; border: 1px solid #8f6bff; border-radius: 6px;
+}
+.pick:hover { background: #8f6bff; }
+.pick:focus-visible { outline: 2px solid #c9b4ff; outline-offset: 2px; }
+
+/* ⚠ 세 칸의 「이걸로 시작」 높이를 맞춘다. 설명 길이가 달라 버튼이 들쭉날쭉하면
+     "이게 덜 중요한가" 로 읽힌다 — 나란히 놓고 고르는 화면에서는 줄이 맞아야 한다. */
+.cols { align-items: stretch; }
+.col.cls { display: flex; flex-direction: column; }
+.col.cls .pick { margin-top: auto; }

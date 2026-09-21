@@ -319,6 +319,17 @@
 
     /* 합계 — 세트 보너스까지 한 자리에 */
     html += '<div class="col"><h3>지금 내 수치</h3><div class="tot">';
+    if (world.cls) {
+      html += '<div><b>' + esc(world.cls.name) + '</b> <span class="mt">' +
+        esc(world.cls.tag) + '</span></div>';
+      html += '<div class="mt">잘 쓰는 무기 ' + esc(world.cls.likesText) + '</div>';
+      /* ⚠ 적성이 **켜졌는지** 보여 준다. 안 보여 주면 +25% 가 붙었는지
+       *   알 길이 없어 "어떤 무기를 찾아야 하지" 가 안 생긴다. */
+      html += '<div>' + (world.player.adept
+        ? '<b style="color:#9fd29a">적성 무기 · 피해 +' + global.CLASSES.ADEPT_BONUS + '%</b>'
+        : '<span class="mt">적성 무기가 아니다</span>') + '</div>';
+      html += '<div class="hr"></div>';
+    }
     var order = ["dmg", "hp", "armor", "apsPct", "critPct", "critDmgPct",
                  "spdPct", "lifeOnHit", "goldPct", "xpPct"];
     for (var o = 0; o < order.length; o++) {
@@ -566,8 +577,12 @@
     var html = '<h2>재주</h2><p class="sub">남은 점수 <b>' + hero.points +
       '</b> · 손잡이는 1·2·3·4</p><div class="cols">';
 
+    var mine = global.CLASSES ? global.CLASSES.skillsOf(hero.cls) : null;
     for (var i = 0; i < SK.LIST.length; i++) {
       var def = SK.LIST[i];
+      /* ⚠ 못 쓰는 재주는 **아예 안 보여 준다.** 회색으로 늘어놓으면 화면이
+       *   세 배로 길어지고, 무엇이 내 것인지 한눈에 안 들어온다. */
+      if (mine && mine.indexOf(def.id) < 0) continue;
       var r = SK.resolve(def.id, hero.skills);
       var barAt = hero.bar.indexOf(def.id);
       html += '<div class="col skill">';
@@ -715,6 +730,75 @@
       global.SKILLS.STAM_MAX * 100) + "%";
   }
 
+  /* ── 캐릭터 만들기 ─────────────────────────────────────
+   * 처음 켜면 여기부터다. ⚠ 직업을 못 고르게 두면 도트 셋과 저장 검증이
+   *   있으나 마나다(실제로 그랬다 — 전사 하나로만 30층을 도는 게임이었다).
+   * ⚠ **무엇이 다른지 숫자로 보여 준다.** "빠르다/단단하다" 만 적으면 고를
+   *   근거가 없어 아무거나 누르고, 그러면 고른 뜻이 없다. */
+  function openCreate() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var CL = global.CLASSES, SK = global.SKILLS;
+    var html = '<h2>누구로 내려갈까</h2>' +
+      '<p class="sub">직업은 나중에 못 바꾼다 — 새로 만들어야 한다</p>' +
+      '<div class="cols">';
+    for (var i = 0; i < CL.LIST.length; i++) {
+      var c = CL.LIST[i];
+      html += '<div class="col cls">';
+      html += '<canvas class="face" data-ico="' + esc(c.sprite) + '"></canvas>';
+      html += '<h3>' + esc(c.name) + ' <span class="mt">' + esc(c.tag) + '</span></h3>';
+      html += '<p class="sub">' + esc(c.text) + '</p>';
+      html += '<div class="tot">' +
+        '<div>체력 ' + c.hp + ' (레벨마다 +' + c.hpPer + ')</div>' +
+        '<div>이동 ' + c.spd.toFixed(1) + '칸/초</div>' +
+        '<div>방어 +' + c.armor + ' · 치명타 +' + c.critPct + '%</div>' +
+        '<div>기력 ' + c.stam + ' (초당 +' + c.stamRegen + ')</div>' +
+        '<div class="hr"></div>' +
+        '<div>잘 쓰는 무기 <b>' + esc(c.likesText) + '</b> <span class="mt">피해 +' +
+          CL.ADEPT_BONUS + '%</span></div>' +
+        '</div>';
+      html += '<div class="clsk">';
+      for (var j = 0; j < c.skills.length; j++) {
+        var sk = SK.byId(c.skills[j]);
+        html += '<div class="one"><canvas class="ico" data-ico="' + esc(sk.icon) +
+          '"></canvas><b>' + esc(sk.name) + '</b><span>' + esc(sk.text) + '</span></div>';
+      }
+      for (var k = 0; k < CL.SHARED.length; k++) {
+        var sh = SK.byId(CL.SHARED[k]);
+        html += '<div class="one shared"><canvas class="ico" data-ico="' + esc(sh.icon) +
+          '"></canvas><b>' + esc(sh.name) + '</b><span>공용</span></div>';
+      }
+      html += '</div>';
+      html += '<button class="pick" data-cls="' + esc(c.id) + '">이걸로 시작</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
+      paintIcon(cv, cv.getAttribute("data-ico"),
+        cv.className.indexOf("face") >= 0 ? 64 : 26);
+    });
+    wire(box, "cls", function (v) { createHero(v); });
+  }
+
+  function createHero(cls) {
+    var CL = global.CLASSES, I = global.ITEMS, S = global.SAVE, D = global.DUNGEON;
+    var fresh = S.blank(cls);
+    /* 시작 장비 — **맨몸으로 내보내지 않는다.** 1층이라도 맨손이면 첫 5분이
+     * 지루하고, 무엇보다 "내 직업이 뭘 하는 직업인지" 를 못 느낀다. */
+    var c = CL.byId(cls);
+    var rng = D.makeRng(Date.now() & 0x7fffffff);
+    for (var slot in c.start)
+      fresh.equip[slot] = I.pack(I.roll(rng, { ilvl: 1, slot: slot,
+                                               base: c.start[slot], tier: "common" }));
+    hero = S.sanitize(fresh);      /* 손잡이·시너지를 직업에 맞춰 정리시킨다 */
+    S.save(hero);
+    closePanel();
+    start({ depth: 0 });
+  }
+
   function panelOpen() {
     var box = document.getElementById("panel");
     return !!box && !box.hidden;
@@ -729,6 +813,7 @@
       if (!world.ents[i].dead && world.ents[i].team !== 0) alive++;
     var need = global.SAVE.needFor(hero.level);
     el.textContent =
+      (world.cls ? world.cls.name + " " : "") +
       "Lv." + hero.level + " " + hero.xp + "/" + need + "xp" +
       " · 체력 " + p.hp + "/" + p.maxHp +
       " · 금화 " + hero.gold + " · 물약 " + hero.potions +
@@ -777,6 +862,10 @@
     /* **마을에서 시작한다.** 게임을 켜면 안전한 곳에 서 있어야 한다 —
      * 열자마자 몬스터에 둘러싸이면 조작을 배울 틈이 없다. */
     start({ depth: 0 });
+    /* 저장이 없으면(=처음 켠 사람) **직업부터 고른다.**
+     * ⚠ 세계를 먼저 만든 뒤에 연다 — 창 뒤에 마을이 보여야 "게임이 켜졌구나"
+     *   를 안다(빈 화면에 창만 뜨면 로딩 중으로 느낀다). */
+    if (loaded.fresh) openCreate();
 
     global.addEventListener("resize", function () { view.resize(); });
     global.addEventListener("keydown", function (e) {
@@ -849,6 +938,8 @@
     global.__town = toTown;
     global.__bag = openBag;
     global.__book = openBook;
+    global.__create = openCreate;
+    global.__pick = createHero;
     global.__cast = castSlot;
     global.__syn = takeSyn;
     global.__setbar = setBar;
@@ -898,7 +989,12 @@
                stam: Math.round(world.player.stam), points: hero.points,
                bar: hero.bar.slice(), casting: world.player.cast ? world.player.cast.id : null,
                dashing: !!world.player.dash, fields: world.fields.length,
-               buffs: world.buffs.length };
+               buffs: world.buffs.length,
+               cls: hero.cls, adept: !!world.player.adept,
+               ranged: !!(world.player.swing && world.player.swing.ranged),
+               reach: world.player.swing ? world.player.swing.reach : null,
+               spd: +world.player.spd.toFixed(2), stamMax: world.player.stamMax,
+               shots: world.shots.length };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };

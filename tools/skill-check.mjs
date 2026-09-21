@@ -63,11 +63,18 @@ const out = []; const add = (n, ok, note) => out.push([n, !!ok, note]);
 /* 연습장 — 벽 없는 방. ⚠ 던전에서 재면 벽·다른 몬스터가 섞여
  * 무엇을 쟀는지 알 수 없다. */
 await ev(`
+  /* ⚠ 연습장이 **직업을 받아야** 한다. 직업마다 쓸 수 있는 재주가 다르므로
+   *   전사로 충격파를 시험하면 "이 직업은 못 쓴다" 가 나온다 — 제품이 옳고
+   *   검사가 직업을 안 정한 것이다(실측으로 넷이 빨개졌다).
+   * ⚠ 기준값(baseDef 등)을 손으로 0 으로 덮지 말 것. 직업 방어가 지워져
+   *   "버프가 끝나니 방어가 3 이 아니라 0 이 된다" 로 오독한다. */
   window.__arena = function (opts) {
     opts = opts || {};
-    var W = window.WORLD, D = window.DUNGEON, SK = window.SKILLS;
+    var W = window.WORLD, D = window.DUNGEON, SK = window.SKILLS, CL = window.CLASSES;
     var h = window.__hero();
+    h.cls = opts.cls || "warrior";
     h.level = 30; h.points = 99; h.skills = {};
+    h.bar = CL.skillsOf(h.cls).slice(0, 4);
     var w = new W.World({ seed: 99, w: 44, h: 32, mobs: 0, hero: h });
     w.level.tiles = new Uint8Array(w.level.w * w.level.h).fill(D.FLOOR);
     w.level.visible.fill(1); w.level.seen.fill(1);
@@ -75,9 +82,12 @@ await ev(`
     w.player.x = 22.5; w.player.y = 16.5;
     w.player.px = w.player.x; w.player.py = w.player.y;
     w.player.stam = SK.STAM_MAX;
+    /* 무기를 고정한다 — 재려는 것은 스킬이지 무기가 아니다.
+     * ⚠ baseDef 는 **applyHero 가 넣은 직업 방어**다. 덮지 않는다. */
     w.player.swing = { aps: 1, windup: 0.16, recover: 0.2, reach: 1.3,
-                       arc: 100, dmg: 10, push: 0 };
-    w.player.baseAps = 1; w.player.baseDmg = 10; w.player.baseDef = 0;
+                       arc: 100, dmg: 10, push: 0, ranged: false, shotSpeed: 12 };
+    w.player.baseAps = 1; w.player.baseDmg = 10;
+    w.refreshBuffs();
     (opts.foes || []).forEach(function (f) {
       w.ents.push(new W.Entity({ x: f.x, y: f.y, sprite: "rat", team: 1,
         hp: f.hp === undefined ? 99999 : f.hp, brain: f.brain || null,
@@ -174,10 +184,12 @@ add("위력은 무기의 배수",
 const stam = await ev(`(function(){
   var SK = window.SKILLS;
   var w = window.__arena({ foes: [{ x: 23.6, y: 16.5 }] });
-  w.player.stam = 20;                       /* 베어넘기기 18 · 충격파 30 */
-  var ok = w.useSkill("cleave", 40, 16.5, {});
+  /* ⚠ 같은 직업 안에서 골라야 한다. 전에는 충격파(마법사 것)를 썼다가
+   *   "기력이 모자라다" 가 아니라 "이 직업은 못 쓴다" 가 나왔다. */
+  w.player.stam = 20;                       /* 베어넘기기 18 · 회전베기 26 */
+  var ok = w.useSkill("cleave", 40, 16.5, {}, "warrior");
   window.__run(w, 0.5);
-  var no = w.useSkill("nova", 40, 16.5, {});
+  var no = w.useSkill("whirl", 40, 16.5, {}, "warrior");
   /* 차오르는가 */
   window.__run(w, 8.0);
   return { ok: ok, no: no, after: Math.round(w.player.stam), max: SK.STAM_MAX };
@@ -274,7 +286,7 @@ add("무적 시너지", iframe.duringDash === 0 && iframe.after > 0 && iframe.hi
 /* ── ⑨ 장판 — 시간이 지나며 여러 번 때리고, 끝나면 멈추는가 ── */
 const field = await ev(`(function(){
   var SK = window.SKILLS;
-  var w = window.__arena({ foes: [{ x: 22.5, y: 14.5 }] });
+  var w = window.__arena({ cls: "mage", foes: [{ x: 22.5, y: 14.5 }] });
   var foe = w.ents[1], hp0 = foe.hp;
   w.useSkill("burn", 22.5, 14.5, {});
   window.__run(w, 3.0);
@@ -322,7 +334,7 @@ add("버프가 쌓이지 않는다",
 
 /* ── ⑪ 시전 중에는 평타가 안 섞이는가 ─────────────────── */
 const noMix = await ev(`(function(){
-  var w = window.__arena({ foes: [{ x: 23.4, y: 16.5 }] });
+  var w = window.__arena({ cls: "mage", foes: [{ x: 23.4, y: 16.5 }] });
   w.useSkill("nova", 40, 16.5, {});      /* 시전 0.40초 */
   var mixed = w.swing(40, 16.5);
   return { mixed: mixed };
@@ -380,12 +392,18 @@ await ev(`window.__book()`);
 await sleep(250);
 const book = await ev(`(function(){
   var b = document.getElementById("panel");
+  /* ⚠ 개수를 **못 박지 않는다.** 직업이 갈린 뒤로는 "내가 쓸 수 있는 것" 만
+   *   보이므로, 5 로 적어 두면 멀쩡한 제품이 빨개진다(실제로 그랬다).
+   *   목록(CLASSES.skillsOf)에서 세어 맞춘다. */
+  var want = window.CLASSES.skillsOf(window.__hero().cls).length;
   return { open: !b.hidden, skills: b.querySelectorAll(".col.skill").length,
            syn: b.querySelectorAll("[data-syn]").length,
-           bar: b.querySelectorAll("[data-bar]").length };
+           bar: b.querySelectorAll("[data-bar]").length, want: want };
 })()`);
-add("재주책", book.open && book.skills === 5 && book.syn === 15 && book.bar === 20,
-  "스킬 " + book.skills + "개 · 시너지 " + book.syn + "개 · 손잡이 단추 " + book.bar + "개");
+add("재주책", book.open && book.skills === book.want &&
+  book.syn === book.want * 3 && book.bar === book.want * 4,
+  "스킬 " + book.skills + "/" + book.want + "개 · 시너지 " + book.syn +
+  "개 · 손잡이 단추 " + book.bar + "개");
 
 /* 화면 밖으로 안 잘리는가 */
 const fit = await ev(`(function(){
@@ -402,16 +420,22 @@ add("창이 안 잘린다", fit.over === 0 && fit.right <= 0,
 /* ── ⑮ 저장을 넘어 살아남는가 · 손으로 고쳐도 안 무너지는가 ── */
 await ev(`(function(){
   var h = window.__hero();
-  h.points = 3; h.skills = { cleave: ["heavy"], nova: ["slow"] };
-  h.bar = ["nova", "cleave", null, "ward"];
+  /* ⚠ **그 직업의 재주**로 시험한다. 남의 것을 심으면 저장이 걸러 내는데,
+   *   그건 올바른 동작이지 버그가 아니다. */
+  h.cls = "warrior";
+  h.points = 3; h.skills = { cleave: ["heavy"], whirl: ["twice"] };
+  h.bar = ["whirl", "cleave", null, "ward"];
   window.__save();
 })()`);
 await reload();
 const kept = await ev(`(function(){ var h = window.__hero();
   return { skills: h.skills, bar: h.bar, points: h.points }; })()`);
+/* ⚠ 빈 칸은 이제 **그 직업 재주로 메워진다**(새 캐릭터가 반쯤 빈 손잡이로
+ *   시작하지 않게 한 변경이다). "3번 칸이 비어 있다" 는 낡은 기대다 —
+ *   남은 것은 **내가 넣은 둘이 그 자리에 있는가**다. */
 add("저장을 넘어 남는다",
   kept.skills.cleave && kept.skills.cleave[0] === "heavy" &&
-  kept.bar[0] === "nova" && kept.bar[2] === null && kept.points === 3,
+  kept.bar[0] === "whirl" && kept.bar[1] === "cleave" && kept.points === 3,
   "시너지 " + JSON.stringify(kept.skills) + " · 손잡이 [" +
   kept.bar.map(function (x) { return x || "—"; }).join(",") + "] · 점수 " + kept.points);
 
@@ -419,19 +443,28 @@ add("저장을 넘어 남는다",
 await ev(`(function(){
   window.SAVE.save = function () { return false; };
   var raw = JSON.parse(localStorage.getItem(window.SAVE.KEY));
-  raw.d.skills = { cleave: ["quick", "heavy", "wide"], nope: ["x"] };
-  raw.d.bar = ["cleave", "cleave", "없는것", "dash"];
+  raw.d.cls = "warrior";
+  /* 셋 다 켜기 · 없는 스킬 · **남의 직업 재주**(불바다는 마법사 것) · 겹친 칸 */
+  raw.d.skills = { cleave: ["quick", "heavy", "wide"], nope: ["x"], burn: ["long"] };
+  raw.d.bar = ["cleave", "cleave", "burn", "dash"];
   localStorage.setItem(window.SAVE.KEY, JSON.stringify(raw));
 })()`);
 await reload();
 const forged = await ev(`(function(){ var h = window.__hero();
-  return { cleave: h.skills.cleave, nope: !!h.skills.nope, bar: h.bar }; })()`);
+  return { cleave: h.skills.cleave, nope: !!h.skills.nope, other: !!h.skills.burn,
+           bar: h.bar }; })()`);
+/* 남의 것·없는 것이 지워지고, 빈 자리는 **내 직업 재주로** 메워졌는가 */
+const legalW = ["cleave", "whirl", "dash", "ward"];
+const wrongW = forged.bar.filter(x => x && legalW.indexOf(x) < 0);
+const dupW = forged.bar.filter((x, i) => x && forged.bar.indexOf(x) !== i);
 add("손으로 고쳐도 안 무너진다",
-  forged.cleave.length === 1 && !forged.nope &&
-  forged.bar[0] === "cleave" && forged.bar[1] === null && forged.bar[2] === null,
-  "시너지 셋을 심음 → " + forged.cleave.length + "개만 남음 · 없는 스킬 " +
-  (forged.nope ? "⚠남음" : "지워짐") + " · 손잡이 [" +
-  forged.bar.map(function (x) { return x || "—"; }).join(",") + "]");
+  forged.cleave.length === 1 && !forged.nope && !forged.other &&
+  wrongW.length === 0 && dupW.length === 0 && forged.bar[0] === "cleave",
+  "시너지 셋 → " + forged.cleave.length + "개만 · 없는 스킬 " +
+  (forged.nope ? "⚠남음" : "지워짐") + " · 남의 직업 재주 " +
+  (forged.other ? "⚠남음" : "지워짐") + " · 손잡이 [" +
+  forged.bar.map(function (x) { return x || "—"; }).join(",") +
+  "] · 남의 것 " + wrongW.length + " · 겹침 " + dupW.length);
 
 /* ── ⑯ 아이콘이 **정말 그려지는가** ─────────────────────
  * ⚠ "그림 이름이 표에 있다" 와 "화면에 보인다" 는 다른 얘기다. 이름이 틀리면

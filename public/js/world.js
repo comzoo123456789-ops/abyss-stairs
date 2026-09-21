@@ -175,6 +175,7 @@
     this._shotId = 0;
     this.fields = [];
     this.buffs = [];
+    this.bleeds = [];       /* 출혈 — 시간이 지나며 계속 아프다 */
     this._fieldId = 0;
     this.castBroke = null;
     this.log = [];          /* 무슨 일이 있었나(검사가 읽는다) */
@@ -341,32 +342,49 @@
     this.gear = t;
     this.equipped = eq;
 
+    /* 직업 — 수치가 **여기 한 곳**에서만 들어온다(classes.js 의 표).
+     * ⚠ 화면 쪽에서 다시 더하면 "표시는 60인데 실제는 50" 이 된다. */
+    var CL = global.CLASSES;
+    var cls = CL ? CL.byId(h.cls) : null;
+    this.cls = cls;
+
     var was = p.maxHp;
-    p.maxHp = 50 + (lv - 1) * 12 + (t.hp || 0);
+    p.maxHp = (cls ? cls.hp + (lv - 1) * cls.hpPer : 50 + (lv - 1) * 12) + (t.hp || 0);
     /* ⚠ 늘어난 **차이만큼만** 채운다. 새로 다 채우면 장비를 뺐다 끼는 것만으로
      *   무한 회복이 된다(장비 바꾸기 = 물약). */
     p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - was)));
-    p.def = t.armor || 0;
-    p.spd = 4.2 * (1 + (t.spdPct || 0) / 100);
     /* 버프가 얹히기 **전의** 값을 따로 둔다. 안 두면 버프가 끝날 때 무엇으로
      * 되돌릴지 몰라 방어가 계속 쌓인다(버프를 걸수록 세지는 고전 버그). */
-    p.baseDef = t.armor || 0;
-    p.critPct = t.critPct || 0;
+    p.baseDef = (cls ? cls.armor : 0) + (t.armor || 0);
+    p.def = p.baseDef;
+    p.spd = (cls ? cls.spd : 4.2) * (1 + (t.spdPct || 0) / 100);
+    p.critPct = (cls ? cls.critPct : 0) + (t.critPct || 0);
     p.critDmgPct = t.critDmgPct || 0;
     p.lifeOnHit = t.lifeOnHit || 0;
     /* 무기가 몸짓과 피해를 함께 정한다 — 없으면 맨손(COMBAT.SWING) */
     var sw = I ? I.swingOf(eq, t) : null;
     if (sw) {
       var baseDmg = (eq.weapon && eq.weapon.s && eq.weapon.s.dmg) ? 0 : global.COMBAT.SWING.dmg;
+      var raw = baseDmg + (t.dmg || 0);
+      /* 무기 적성 — **보너스만** 준다. 안 맞는 무기에 벌을 주면 전리품 절반이
+       * 쓰레기가 되어 줍는 재미가 사라진다. */
+      p.adept = !!(CL && eq.weapon && CL.adept(h.cls, eq.weapon));
+      if (p.adept) raw *= (1 + CL.ADEPT_BONUS / 100);
       p.swing = {
         aps: sw.aps, windup: sw.windup, recover: sw.recover,
         reach: sw.reach, arc: sw.arc, push: sw.push,
-        dmg: Math.max(1, Math.round(baseDmg + (t.dmg || 0)))
+        dmg: Math.max(1, Math.round(raw)),
+        /* 원거리 무기면 평타가 **날아간다** — 마법사가 다른 거리에서 노는 근거다 */
+        ranged: !!(eq.weapon && eq.weapon.ranged),
+        shotSpeed: (eq.weapon && eq.weapon.shotSpeed) || 12
       };
     }
     p.baseAps = p.swing ? p.swing.aps : null;
     p.baseDmg = p.swing ? p.swing.dmg : null;
-    if (p.stam === undefined) p.stam = global.SKILLS ? global.SKILLS.STAM_MAX : 100;
+    p.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
+    p.stamRegen = cls ? cls.stamRegen : 12;
+    if (p.stam === undefined) p.stam = p.stamMax;
+    if (p.stam > p.stamMax) p.stam = p.stamMax;
     this.refreshBuffs();
     p.name = h.name;
   };
@@ -472,7 +490,23 @@
       e = this.ents[i];
       if (e.dead) continue;
       if (e.hurt > 0) e.hurt = Math.max(0, e.hurt - SIM_DT);
+      /* 원거리 평타는 **판정이 아니라 발사**다. 선딜이 끝나는 걸음에 쏜다.
+       * ⚠ COMBAT.tick 이 먼저 판정을 돌려 버리면(arc 0 이라 아무도 안 맞지만)
+       *   atkRest 를 잡아 주므로 주기는 저절로 맞는다. */
+      var wasShot = e.atk && e.atk.shot && !e.atk.hit;
+      var shotAng = wasShot ? e.atk.ang : 0;
+      var shotDmg = wasShot ? e.atk.m.dmg : 0;
+      var fired = false;
       if (global.COMBAT) global.COMBAT.tick(this, e, SIM_DT);
+      if (wasShot && (!e.atk || e.atk.hit)) fired = true;
+      if (fired && e === this.player) {
+        var sm = e.swing;
+        this.shots.push({ id: ++this._shotId, x: e.x, y: e.y,
+          vx: Math.cos(shotAng) * sm.shotSpeed, vy: Math.sin(shotAng) * sm.shotSpeed,
+          dmg: shotDmg, from: e, team: e.team,
+          life: sm.reach / sm.shotSpeed, r: 0.22, mine: true });
+        if (global.SFX) global.SFX.play("ability");
+      }
     }
     if (global.SKILLS) global.SKILLS.tick(this, SIM_DT);
     if (global.AI) global.AI.tickShots(this, SIM_DT);
@@ -639,7 +673,7 @@
   /* 스킬을 쓴다. **왜 못 쓰는지**를 돌려준다 — null 이면 성공. */
   World.prototype.useSkill = function (id, aimX, aimY, taken) {
     if (!global.SKILLS) return "재주가 없다";
-    return global.SKILLS.use(this, id, aimX, aimY, taken);
+    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero && this.hero.cls);
   };
 
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */
@@ -649,7 +683,26 @@
     /* ⚠ 스킬을 쓰는 중에는 평타가 안 나간다. 안 막으면 시전 중에 마우스를
      *   누르고 있는 것만으로 평타가 섞여 나가 시전의 뜻이 없어진다. */
     if (p.cast || p.dash) return false;
+    /* 원거리 무기 — 부채꼴이 아니라 **날아가는 것**을 쏜다.
+     * ⚠ 같은 begin() 을 쓰되 arc 0 · reach 0 으로 두어 근접 판정이 안 나게 한다.
+     *   판정을 두 벌로 만들면 "원거리만 치명타가 안 터진다" 같은 어긋남이 생긴다. */
+    if (p.swing && p.swing.ranged) return this.shoot(aimX, aimY);
     return global.COMBAT.begin(p, aimX - p.x, aimY - p.y);
+  };
+
+  /* 원거리 평타. 공격 주기는 근접과 **같은 시계**(atkRest)를 쓴다. */
+  World.prototype.shoot = function (aimX, aimY) {
+    var p = this.player;
+    if (p.atk || p.atkRest > 0) return false;
+    var m = p.swing;
+    var dx = aimX - p.x, dy = aimY - p.y;
+    var len = Math.hypot(dx, dy) || 1;
+    /* 선딜 동안은 아직 안 나간다 — 근접과 같은 규칙이다 */
+    p.atk = { m: { aps: m.aps, windup: m.windup, recover: m.recover,
+                   reach: 0, arc: 0, dmg: m.dmg, push: 0 },
+              t: 0, ang: Math.atan2(dy / len, dx / len), hit: false, shot: true };
+    if (Math.abs(dx) > 0.05) p.face = dx > 0 ? 1 : -1;
+    return true;
   };
 
   /* 실제로 흐른 시간을 받아 규칙을 따라잡고, 그리기가 쓸 보간값을 돌려준다. */

@@ -78,19 +78,29 @@ window.__runFloor = function (cfg) {
   /* 표준 캐릭터 — 레벨에 맞는 장비를 입힌 "그쯤 플레이한 사람".
    * ⚠ 맨몸으로 재면 실제보다 어렵게 나오고, 최고 장비로 재면 쉽게 나온다.
    *   재는 것은 **보통 사람**이다. */
-  var hero = S.blank();
+  var hero = S.blank(cfg.cls || "warrior");
   hero.level = cfg.level;
   hero.potions = cfg.potions === undefined ? 3 : cfg.potions;
   hero.equip = {};
   hero.skills = cfg.skills || {};
-  hero.bar = cfg.bar || ["cleave", "dash", "nova", "ward"];
+  /* ⚠ 손잡이를 **그 직업 것**으로 둔다. 표의 앞 넷을 박아 두면 마법사가
+   *   전사 재주를 들고 나가 아무것도 못 쓴다(그리고 "마법사가 약하다" 로 읽힌다). */
+  hero.bar = cfg.bar || window.CLASSES.skillsOf(hero.cls).slice(0, 4);
   if (cfg.gear !== "none") {
     var grng = window.DUNGEON.makeRng(cfg.seed ^ 0x51ed270b);
     var ilvl = Math.max(1, Math.min(30, cfg.level));
     for (var si = 0; si < I.SLOTS.length; si++) {
       var slot = I.SLOTS[si];
       var tier = cfg.gear === "best" ? "rare" : (cfg.gear === "poor" ? "common" : null);
-      var it = I.roll(grng, { ilvl: ilvl, slot: slot, tier: tier });
+      /* ⚠ 무기는 **그 직업이 잘 쓰는 것**으로 굴린다. 아무 무기나 주면
+       *   마법사가 도끼를 들고 나가 적성 보너스도 원거리도 못 받는다 —
+       *   실제 사람은 자기 무기를 찾아 든다. */
+      var opt2 = { ilvl: ilvl, slot: slot, tier: tier };
+      if (slot === "weapon") {
+        var likes = window.CLASSES.byId(hero.cls).likes;
+        opt2.base = likes[Math.floor(grng() * likes.length)];
+      }
+      var it = I.roll(grng, opt2);
       /* ⚠ 못 쓰는 것은 안 입는다 — 레벨 제한이 있는데 무시하면 과대평가된다 */
       if (I.canEquip(it, hero.level)) hero.equip[slot] = I.pack(it);
     }
@@ -266,10 +276,9 @@ const skillGap = (slowest.r.time - fastest.r.time) / slowest.r.time * 100;
 
 /* ── ⑤ 성장 시간 ─────────────────────────────────────── */
 console.log("\n⑤ 성장 시간 — Lv.1 로 시작해 도달 층을 늘려 가며 계속 돈다\n");
-await ev(`window.__career = function (SEED) {
+await ev(`window.__career = function (SEED, CLS) {
   var W = window.WORLD, S = window.SAVE, DT = window.DATA, I = window.ITEMS;
-  var hero = S.blank();
-  hero.bar = ["cleave", "dash", "nova", "ward"];
+  var hero = S.blank(CLS || "warrior");
   var total = 0, runs = 0, deaths = 0, marks = [];
   var mark = { 5: 0, 10: 0, 15: 0, 20: 0, 25: 0, 30: 0 };
   var guard = 0;
@@ -384,6 +393,28 @@ console.log("  평균 " + (avgGap >= 0 ? "+" : "") + avgGap.toFixed(1) + "레벨
   (avgGap > 5 ? "  ⚠ 적정보다 한참 위 — 파밍할 이유가 없다"
    : avgGap < -3 ? "  ⚠ 적정보다 아래 — 벽에 부딪힌다" : ""));
 
+/* ── ⑤-b 직업 격차 — **셋이 고르게 센가** ──────────────
+ * ⚠ 이것이 직업을 넣은 값어치의 유일한 증거다. 하나가 압도적이면 나머지 둘은
+ *   있으나 마나고, 하나가 못 쓰면 고를 이유가 없다. */
+console.log("\n⑤-b 직업 격차 — 같은 층·같은 레벨을 셋이 돈다\n");
+const CLS_ROWS = [];
+for (const c of ["warrior", "rogue", "mage"]) {
+  const name = await ev(`window.CLASSES.byId("${c}").name`);
+  const r10 = await ev(`window.__trials({ depth: 10, level: 10, cls: "${c}", seed: 3131 }, ${N})`);
+  const r20 = await ev(`window.__trials({ depth: 20, level: 20, cls: "${c}", seed: 4141 }, ${N})`);
+  const r28 = await ev(`window.__trials({ depth: 28, level: 26, cls: "${c}", seed: 5151 }, ${N})`);
+  const avg = (r10.clear + r20.clear + r28.clear) / 3;
+  CLS_ROWS.push({ c, name, r10, r20, r28, avg });
+  console.log("  " + name.padEnd(5) +
+    " 10층 " + (r10.clear * 100).toFixed(0).padStart(3) + "%/" + String(r10.time).padStart(5) + "초" +
+    " · 20층 " + (r20.clear * 100).toFixed(0).padStart(3) + "%/" + String(r20.time).padStart(5) + "초" +
+    " · 28층 " + (r28.clear * 100).toFixed(0).padStart(3) + "%/" + String(r28.time).padStart(5) + "초" +
+    "  받은피해 " + String(r20.taken).padStart(4));
+}
+const clsBest = Math.max(...CLS_ROWS.map(r => r.avg));
+const clsWorst = Math.min(...CLS_ROWS.map(r => r.avg));
+const clsGap = (clsBest - clsWorst) * 100;
+
 /* ── ⑥ 봇 실력에 얼마나 기대고 있는가 ─────────────────
  * ⚠ 하네스가 스스로 경고한 것을 **실제로 재는** 자리다. 봇의 반응·조준을
  *   나쁘게 했을 때 결론이 뒤집히면, 그 수치는 "사람이 할 만하다" 의 근거가
@@ -464,6 +495,12 @@ V("봇 실력에 안 기대는가", swing < 0.5,
 V("피하는 것이 값어치를 하는가", dodgeWorth > 0.15,
   "안 피하면 " + blind.taken + " 피해 · 피하면 " + mid.taken + " 피해 (" +
   (dodgeWorth * 100).toFixed(0) + "% 덜 맞는다)");
+
+/* ⚠ 옛 턴제판에서 쓰던 잣대를 그대로 가져왔다 — **25%p 이하**.
+ *   그보다 벌어지면 "고를 수 있다" 가 아니라 "정답이 있다" 가 된다. */
+V("직업이 고르다", clsGap <= 25,
+  CLS_ROWS.map(r => r.name + " " + (r.avg * 100).toFixed(0) + "%").join(" · ") +
+  " · 격차 " + clsGap.toFixed(0) + "%p");
 
 V("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 2).join(" / ") : "0건");
 
