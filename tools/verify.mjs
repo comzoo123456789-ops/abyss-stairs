@@ -319,6 +319,61 @@ console.log("깊은 계단   :", ok(deepSealed === 0),
     noStorageOk ? "localStorage 없이도 예외 없음(시크릿 모드)" : "⚠ 예외가 난다");
 }
 
+// 2-b2) 스프라이트 이름 — 부르는 이름이 전부 실제로 있는가
+//    ⚠ 이름이 하나라도 없으면 bake 가 **null 을 돌려주고**, drawImage 가
+//      "이미지가 아닌 값" 으로 터져 **화면이 통째로 안 뜬다.** 그런데 오류 메시지는
+//      좌표만 말할 뿐 **무엇이 없어졌는지는 전혀 안 알려 준다.**
+//      실제로 캐릭터를 다시 그리며 구획을 잘못 잡아 구역 장식 11개를 통째로
+//      지웠고, 화면이 죽었는데 원인을 찾는 데 한참 걸렸다.
+{
+  /* ⚠ 그림은 **두 파일**에 있다. sprites-art.js 는 인물·몬스터·물건,
+   *   sprites.js 는 지형(문·계단·함정)이다. 한쪽만 읽으면 멀줦한 이름을 "없다" 고 한다. */
+  const art = fs.readFileSync(path.join(JS, "sprites-art.js"), "utf8") +
+              fs.readFileSync(path.join(JS, "sprites.js"), "utf8");
+  const have = new Set([...art.matchAll(/art\("([a-z0-9_]+)"/g)].map(m => m[1]));
+  /* 별칭(S.data.player = S.data.warrior) 도 이름이다 */
+  [...art.matchAll(/S\.data\.([a-z0-9_]+)\s*=/g)].forEach(m => have.add(m[1]));
+
+  const want = [];                       /* [이름, 어디서 부르는가] */
+  /* ⚠ `bake("p_" + pname)` 같은 **이어 붙이는 자리**는 이름을 알 수 없다.
+   *   앞 조각("p_")을 이름으로 세면 늘 "없다" 가 나온다 — 건너뛴다.
+   *   구역 장식은 아래에서 ZONES 를 돌며 제대로 센다. */
+  const add2 = (n, why) => { if (n && !/_$/.test(n)) want.push([n, why]); };
+  DATA.CLASSES.forEach(c => add2(c.sprite, "직업 " + c.name));
+  DATA.MONSTERS.forEach(m => add2(m.sprite, "몬스터 " + m.name));
+  DATA.CONSUMABLES.forEach(i => add2(i.sprite, "소모품 " + i.name));
+  DATA.ZONES.forEach(z => (z.props || []).forEach(p => add2("p_" + p, "구역 " + z.name + " 장식")));
+  DATA.WEAPON_KINDS.forEach(w => add2("w_" + w.id, "무기 " + w.id));
+  /* 아이템이 굴려서 쓰는 이름 — 실제로 굴려 본다 */
+  {
+    const rng = (function (s) { return function () { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; })(7);
+    for (let i = 0; i < 300; i++) {
+      for (const slot of ["weapon", "armor", "offhand"]) {
+        const it = ITEMS.makeGear(slot, 1 + (i % 10), rng);
+        if (it && it.sprite) add2(it.sprite, "굴린 장비 " + slot);
+      }
+    }
+  }
+  /* render.js 가 문자열로 직접 부르는 이름들 */
+  const rend = fs.readFileSync(path.join(JS, "render.js"), "utf8");
+  [...rend.matchAll(/bake\("([a-z0-9_]+)"/g)].forEach(m => add2(m[1], "render.js"));
+  [...rend.matchAll(/"(a_[a-z0-9_]+)"/g)].forEach(m => add2(m[1], "render.js 갑옷"));
+  [...rend.matchAll(/"(eq_[a-z0-9_]+)"/g)].forEach(m => add2(m[1], "render.js 등급"));
+
+  const seen = new Set(), missing = [];
+  for (const [n, why] of want) {
+    const key = n + "|" + why;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (!have.has(n)) missing.push(n + " (" + why + ")");
+  }
+  const uniq = [...new Set(missing)];
+  console.log("스프라이트  :", ok(uniq.length === 0),
+    have.size + "개 있음 · 부르는 이름 " + seen.size + "가지 · " +
+    (uniq.length ? "⚠ 없는 것 " + uniq.length + "개" : "전부 있음"));
+  uniq.slice(0, 10).forEach(m => console.log("              ✘ " + m));
+}
+
 // 2-c2) 구역 — 층마다 어디에 있는지가 갈리는가
 //    ⚠ 구역은 **색·장식·문구만** 바꾼다. 여기서 몬스터나 난이도를 함께 건드리면
 //      손잡이 하나에 두 가지가 달려 균형 조정이 불가능해진다(보스 배수에서 겪었다).
