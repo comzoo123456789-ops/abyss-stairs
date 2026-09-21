@@ -46,8 +46,13 @@
     for (var k in DEFAULTS) this.o[k] = (opt[k] === undefined) ? DEFAULTS[k] : opt[k];
     this.rng = rngFrom(opt.seed || 12345);
     this.think = 0;                  /* 다음에 생각할 때까지 남은 초 */
+    this.held = null;                /* 붙들고 있는 목표 */
+    this.unreachable = {};           /* 길이 막혀 포기한 것 */
+    this.stuck = 0;                  /* 목표를 바꾸지 않고 흐른 시간 */
+    this.lastD = 1e9;
     this.plan = { mx: 0, my: 0, ax: 0, ay: 0, swing: false, skill: null,
                   drink: false, take: null };
+    /* ⚠ 포기 목록은 **그 판 동안만**이다. 세계마다 새 봇을 만드니 저절로 비워진다. */
     this.stats = {
       time: 0, kills: 0, taken: 0, dealt: 0, potions: 0,
       swings: 0, skills: 0, dodges: 0, deaths: 0, picked: 0,
@@ -56,17 +61,39 @@
     this._lastHp = world.player.hp;
   }
 
-  /* 가장 가까운 살아 있는 적 */
-  Bot.prototype.nearest = function () {
-    var w = this.w, p = w.player, best = null, bd = 1e9;
+  /* 노릴 적 하나.
+   *
+   * ⚠ **가장 가까운 것을 매번 새로 고르면 안 된다.** 거의 같은 거리에 둘이 있으면
+   *   0.22초마다 목표가 뒤바뀌어 그 사이를 오간다 — 실측: 전사가 300초 동안
+   *   2,069칸을 걷고 **세 번** 휘둘렀다. 한 번 고른 것을 죽거나 멀어질 때까지 붙든다.
+   * ⚠ **못 닿는 적은 건너뛴다.** 길이 막힌 자리의 적을 노리면 영영 걸어만 다닌다.
+   * ⚠ 벽 너머 적도 노릴 수는 있다(다가가면 되니까). 다만 **쏘는 판단**은 따로 본다. */
+  Bot.prototype.target = function () {
+    var w = this.w, p = w.player;
+    /* 붙들고 있던 것이 아직 쓸 만하면 그대로 */
+    var t = this.held;
+    if (t && !t.dead && t.team !== p.team) {
+      var hd = Math.hypot(t.x - p.x, t.y - p.y);
+      if (hd < 16) return { e: t, d: hd };
+    }
+    var best = null, bd = 1e9;
     for (var i = 0; i < w.ents.length; i++) {
       var e = w.ents[i];
       if (e.dead || e.team === p.team) continue;
+      if (this.unreachable[e.uid]) continue;
       var d = Math.hypot(e.x - p.x, e.y - p.y);
       if (d < bd) { bd = d; best = e; }
     }
+    /* ⚠ 목표가 바뀌면 **거리 기록을 되돌린다.** 안 되돌리면 옛 목표까지의
+     *   짧은 거리가 남아 새(먼) 목표가 곧바로 "가까워지지 않는다" 로 읽히고,
+     *   6초 뒤 포기된다 — 그렇게 **적을 차례로 다 포기**했다(실측: 휘두름
+     *   353번 → 9번, 전원 실패). 포기는 목표마다 따로 세야 한다. */
+    if (best !== this.held) { this.stuck = 0; this.lastD = 1e9; }
+    this.held = best;
     return best ? { e: best, d: bd } : null;
   };
+  /* 옛 이름 — 다른 검사가 쓸 수 있으니 남겨 둔다 */
+  Bot.prototype.nearest = function () { return this.target(); };
 
   /* **지금 나에게 오고 있는 것**이 있는가. 있으면 피할 방향을 돌려준다.
    * ⚠ 이것이 봇이 "실시간을 플레이한다" 고 말할 수 있는 유일한 근거다.
@@ -208,6 +235,19 @@
     var aim = this.aimAt(e);
     pl.ax = aim.x; pl.ay = aim.y;
 
+    /* **다가가는데 가까워지지 않으면** 그 적은 포기한다.
+     * ⚠ 이게 없으면 길이 막힌 자리의 적 하나 때문에 판이 통째로 날아간다
+     *   (실측: 전사가 2,069칸을 걷고 세 번 휘둘렀다). */
+    if (d < this.lastD - 0.2) { this.stuck = 0; this.lastD = d; }
+    else {
+      this.stuck += this.o.react;
+      if (this.stuck > 6 && d > 2) {
+        this.unreachable[e.uid] = 1;
+        this.held = null; this.stuck = 0; this.lastD = 1e9;
+        return;
+      }
+    }
+
     /* 체력이 바닥이면 붙지 않는다 */
     if (p.hp / p.maxHp < o.fleeAt) {
       var fx = p.x - e.x, fy = p.y - e.y, fl2 = Math.hypot(fx, fy) || 1;
@@ -235,7 +275,12 @@
 
     /* 붙어서 때린다 */
     var reach = (p.swing ? p.swing.reach : 1.25) + e.r;
-    if (d > reach * 0.85) {
+    /* ⚠ **원거리는 시야가 뚫려야 쏜다.** 안 보면 벽 너머 적에게 서서 허공에
+     *   쏘아 댄다 — 실측: 마법사·도적이 15칸만 걷고 **353번** 휘둘렀다.
+     *   근접은 사거리가 짧아 저절로 붙으므로 이 문제가 없다. */
+    var ranged = !!(p.swing && p.swing.ranged);
+    var seen = !ranged || global.AI.clearLine(w, p, e.x, e.y);
+    if (d > reach * 0.85 || !seen) {
       this.walkTo(e.x, e.y);
     } else {
       pl.swing = true;

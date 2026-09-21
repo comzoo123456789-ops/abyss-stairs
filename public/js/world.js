@@ -376,7 +376,8 @@
         dmg: Math.max(1, Math.round(raw)),
         /* 원거리 무기면 평타가 **날아간다** — 마법사가 다른 거리에서 노는 근거다 */
         ranged: !!(eq.weapon && eq.weapon.ranged),
-        shotSpeed: (eq.weapon && eq.weapon.shotSpeed) || 12
+        shotSpeed: (eq.weapon && eq.weapon.shotSpeed) || 12,
+        pierce: (eq.weapon && eq.weapon.pierce) || 1
       };
     }
     p.baseAps = p.swing ? p.swing.aps : null;
@@ -504,7 +505,8 @@
         this.shots.push({ id: ++this._shotId, x: e.x, y: e.y,
           vx: Math.cos(shotAng) * sm.shotSpeed, vy: Math.sin(shotAng) * sm.shotSpeed,
           dmg: shotDmg, from: e, team: e.team,
-          life: sm.reach / sm.shotSpeed, r: 0.22, mine: true });
+          life: sm.reach / sm.shotSpeed, r: 0.22, mine: true,
+          pierce: sm.pierce || 1, hitSet: {} });
         if (global.SFX) global.SFX.play("ability");
       }
     }

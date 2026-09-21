@@ -351,10 +351,18 @@
           var e = world.ents[j];
           if (e.dead || e.team === s.team) continue;
           if (Math.hypot(e.x - s.x, e.y - s.y) > e.r + s.r) continue;
+          /* ⚠ **같은 것을 두 번 때리지 않는다.** 관통하는 것은 상대를 지나가는
+           *   동안 여러 걸음을 그 안에서 보내므로, 표시를 안 남기면 한 명에게
+           *   수십 번 들어간다(관통이 아니라 즉사기가 된다). */
+          if (s.hitSet && s.hitSet[e.uid]) continue;
           /* ⚠ 치명타·흡혈이 **원거리에도 걸려야** 한다. damage() 한 곳을 쓰므로
            *   저절로 걸린다 — 여기서 따로 계산하면 "활은 치명타가 안 뜬다" 가 된다. */
           global.COMBAT.damage(world, s.from, e, s.dmg);
-          gone = true; break;
+          if (s.hitSet) s.hitSet[e.uid] = 1;
+          var left = (s.pierce || 1) - 1;
+          s.pierce = left;
+          if (left <= 0) { gone = true; }
+          break;
         }
       }
       if (gone) world.shots.splice(i, 1);

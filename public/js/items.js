@@ -61,14 +61,22 @@
         note: "세게 밀어낸다" },
       { id: "staff", name: "지팡이", sprite: "w_staff", lvl: 2, dmg: 6, val: 24,
         /* ⚠ **원거리 무기다.** 평타가 날아간다 — reach 는 닿는 거리(칸)로 쓰인다.
-         *   arc 는 안 쓰지만 표 모양을 맞춰 둔다(빠뜨리면 읽는 쪽이 undefined 를 만난다). */
-        ranged: true, shotSpeed: 11,
+         *   arc 는 안 쓰지만 표 모양을 맞춰 둔다(빠뜨리면 읽는 쪽이 undefined 를 만난다).
+         * ⚠ **관통**이 없으면 원거리가 근접의 1/5 밖에 못 잡는다(실측: 뭉친 다섯을
+         *   상대로 근접 5,700 · 원거리 1,081). 한 명당 피해는 거의 같은데 **맞히는
+         *   수**가 다른 것이 전부였다. 안전한 대가로는 너무 크다(받는 피해는 절반).
+         *   마법은 꿰뚫고, 화살은 덜 꿰뚫되 한 발이 무겁다. */
+        ranged: true, shotSpeed: 11, pierce: 3,
         swing: { aps: 1.05, windup: 0.22, recover: 0.20, reach: 7.5, arc: 0, push: 0.1 },
         note: "마법이 날아간다 · 7.5칸" },
-      { id: "bow", name: "활", sprite: "w_bow", lvl: 3, dmg: 9, val: 30,
-        ranged: true, shotSpeed: 15,
+      { id: "bow", name: "활", sprite: "w_bow", lvl: 3, dmg: 14, val: 30,
+        /* ⚠ 관통 2 로는 근접의 절반밖에 안 됐다(실측 1,950 vs 근접 3,600~5,700).
+         *   활은 **도적·마법사가 둘 다 쓰는** 무기라, 나쁜 선택이 남아 있으면
+         *   무기를 굴릴 때마다 그 직업이 통째로 약해진다. 셋으로 올린다 —
+         *   지팡이(3발·가까이)와는 **사거리 9칸**으로 갈린다. */
+        ranged: true, shotSpeed: 15, pierce: 3,
         swing: { aps: 0.85, windup: 0.28, recover: 0.22, reach: 9.0, arc: 0, push: 0.15 },
-        note: "화살이 멀리 날아간다 · 9칸" }
+        note: "화살이 셋을 꿰뚫는다 · 9칸" }
     ],
     head:   [{ id: "cap",   name: "가죽모자", sprite: "armor", lvl: 1, armor: 1, val: 10 },
              { id: "helm",  name: "쇠투구",   sprite: "armor", lvl: 3, armor: 3, hp: 6, val: 22, spdPct: -3 },
@@ -156,13 +164,17 @@
    * totals 가 더하려 든다(실측으로 잡혔다: ranged · shotSpeed).
    * ⚠ 베이스에 새 칸을 더할 때 **여기와 carryOver 를 함께** 고칠 것. */
   var SKIP = { id: 1, name: 1, sprite: 1, lvl: 1, val: 1, swing: 1, note: 1,
-               ranged: 1, shotSpeed: 1 };
+               ranged: 1, shotSpeed: 1, pierce: 1 };
 
   /* 수치가 아닌 채로 물건에 따라가야 하는 것들 */
   function carryOver(it, base) {
     if (base.swing) it.swing = base.swing;
     if (base.note) it.note = base.note;
-    if (base.ranged) { it.ranged = true; it.shotSpeed = base.shotSpeed || 12; }
+    if (base.ranged) {
+      it.ranged = true;
+      it.shotSpeed = base.shotSpeed || 12;
+      it.pierce = base.pierce || 1;
+    }
   }
 
   function scaleStat(v, t, mult, ilvl) {
