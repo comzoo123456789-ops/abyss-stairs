@@ -588,6 +588,47 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
              bars, text: h.textContent.replace(/s+/g," ").trim().slice(0, 70) };
   })()`);
 
+  // ── 4-c) 체력·경험 막대 ──
+  //    ⚠ 셋을 함께 본다. 하나라도 어긋나면 **화면에서는 멀쩡해 보인다**:
+  //      ① 칸 눈금이 없는가 — 장부 느낌을 내려고 세로줄을 얹었다가 막대가
+  //         칸으로 쪼개져 "피가 닳는 느낌" 이 사라졌다(사용자 지적).
+  //      ② 숫자가 퍼센트인가 — 0~100 으로 읽혀야 한다(사용자 지시).
+  //      ③ 정확한 값이 닿는가 — 퍼센트만 남으면 "12 남았다" 를 알 수 없다.
+  //         손을 얹거나 누르면 44 / 62 가 나와야 하고 title 에도 있어야 한다.
+  const bars = await ev(`(()=>{
+    const out = [];
+    document.querySelectorAll(".hud .meter").forEach(m => {
+      const fill = m.querySelector("i");
+      const num  = m.querySelector("b");
+      const det  = m.querySelector(".meter-detail");
+      /* 눈금은 ::after 로 깔렸었다 — 그 가짜 요소의 배경을 직접 본다 */
+      const after = getComputedStyle(m, "::after").backgroundImage;
+      const detHidden = det ? parseFloat(getComputedStyle(det).opacity) < 0.5 : null;
+      /* ⚠ opacity 에 .12s 전환이 걸려 있다. 켜자마자 읽으면 **옛 값**이 나온다
+       *   (실제로 "상세값 안 뜸" 으로 잘못 나왔다). 전환을 끄고 잰다. */
+      if (det) det.style.transition = "none";
+      m.classList.add("show");
+      const detShown = det ? parseFloat(getComputedStyle(det).opacity) > 0.5 : null;
+      m.classList.remove("show");
+      if (det) det.style.transition = "";
+      out.push({
+        cls: m.className.replace("meter ", "").replace(" show", ""),
+        ticks: /repeating-linear-gradient/.test(after),
+        width: fill ? fill.style.width : "",
+        num: num ? num.textContent.trim() : "",
+        /* \d 가 두 겹인 이유: 이 문자열은 템플릿 리터럴을 거쳐 브라우저로 간다 */
+        pct: num ? /^\\d+%$/.test(num.textContent.replace(/\\s+/g, "")) : false,
+        title: m.getAttribute("title") || "",
+        detail: det ? det.textContent.trim() : "",
+        detHidden: detHidden, detShown: detShown
+      });
+    });
+    return out;
+  })()`);
+  const barsOk = bars.length >= 2 &&
+    bars.every(b => !b.ticks && b.pct && /\d+ \/ \d+/.test(b.detail) &&
+                    b.detHidden === true && b.detShown === true && /\d/.test(b.title));
+
   // ── 5) 가로 넘침 ──
   const overflow = await ev(`(()=>{
     let bad=[];
@@ -625,6 +666,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         (hud.aboveCanvas ? " · 캔버스 위(정상)" : " · ⚠캔버스보다 아래") +
         (hud.inView ? "" : " · ⚠화면 밖"));
   console.log("  상태줄 내용:", hud.text || "(빈칸)");
+  console.log("체력·경험 막대:", ok(barsOk),
+    bars.length ? bars.map(b => b.cls + " " + b.num + "(" + b.width + ")" +
+      (b.ticks ? " ⚠칸 눈금 있음" : "") +
+      (b.pct ? "" : " ⚠퍼센트 아님") +
+      (b.detShown ? "" : " ⚠상세값 안 뜸")).join(" · ") : "⚠ 막대가 없다");
+  if (bars.length) console.log("  상세값     :", bars.map(b => b.detail).join(" · "));
   console.log("가로 넘침    :", ok(!overflow.docScroll && overflow.count === 0),
               overflow.count + " 개" + (overflow.docScroll ? " · 문서 가로 스크롤 있음" : ""));
   overflow.sample.forEach(s => console.log("               " + s));
@@ -1296,7 +1343,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
                 *   실제로 탭 이동 실패가 통과로 나왔다 — 판정에 없었기 때문이다. */
                !hud.missing && hud.shown && hud.inView && hud.aboveCanvas &&
                hud.bars.length >= 2 && hud.bars.every(b => b.w > 60) &&
-               (!tapCheck || tapPass) && padPass && toastOk &&
+               (!tapCheck || tapPass) && padPass && toastOk && barsOk &&
                (!endCheck || (endCheck.over && endCheck.shown));
   ws.close(); ch.kill(); srv.close();
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}

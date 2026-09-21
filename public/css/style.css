@@ -23,7 +23,10 @@
   --panel-2: #241b14;
   --line: #4a3826;
   --ink: #ded6c2;
-  --ink-dim: #9d8f77;
+  /* ⚠ #9d8f77 이었다. 어두운 상자 위에서 대비가 3.75:1 이라 WCAG 본문 기준(4.5:1)에
+   *   못 미쳤다 — 빈 스킬칸의 W·E·R 이 특히 안 보였다. 한 칸 올린다.
+   *   이 값 하나가 화면 전체의 "부연 글자" 를 결정한다. */
+  --ink-dim: #b5a88e;
 
   /* 종이결 — 바깥 파일 없이 SVG 난류로 만든다(요청 0건) */
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.82' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.34'/%3E%3C/svg%3E");
@@ -43,9 +46,23 @@
    * ⚠ Galmuri11 은 **11px 격자**로 그려진 비트맵이다. 글자 크기를 11 의 배수
    *   (11 · 22)로 두면 픽셀이 딱 떨어지고, 어중간한 값(12.5px)이면 뭉갠다.
    * ⚠ 대체 글꼴을 끝까지 적어 둔다. CDN 이 죽거나 오프라인이어도 게임은 돈다. */
-  --sans: "Galmuri11", "Pretendard Variable", Pretendard, -apple-system,
+  /* ⚠ **한글을 픽셀 비트맵으로 읽히려 하면 안 된다.** Galmuri11 을 기본 글꼴로
+   *   두었더니 화면 글자 70개 중 39개가 11px 격자를 벗어나 뭉갰고(실측 크기
+   *   10·10.5·11.5·12·13·13.5·17px), 한글 29개가 12px 미만이라 아예 안 읽혔다
+   *   (사용자 신고: "너무 보기 힘들고 잘 안보여").
+   *   격자를 지키는 길은 **모든 글자 크기를 11 의 배수로 묶는 것**뿐인데,
+   *   반응형 UI 에서 40여 개 크기를 11·22 둘로 줄이는 것은 불가능하다.
+   *   그래서 **읽는 글은 Pretendard**, 도트 서체는 아래 --pixel 로 따로 뺐다.
+   * ⚠ 도트 느낌은 글꼴이 아니라 **캔버스 도트·픽셀 프레임·팔레트**가 낸다.
+   *   그쪽은 그대로다 — 글자만 읽히게 바꾼 것이다. */
+  --sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
           "Segoe UI", "Malgun Gothic", sans-serif;
-  --mono: "GalmuriMono11", "Galmuri11", ui-monospace, Consolas, "D2Coding", monospace;
+  /* 숫자·정렬 칸. 라틴/숫자는 고정폭이 집고 한글은 뒤의 Pretendard 로 떨어진다 —
+   * 한 상자 안에서 자릿수는 안 흔들리고 한글은 읽힌다. */
+  --mono: ui-monospace, "Cascadia Mono", Consolas, "Pretendard Variable",
+          Pretendard, "Malgun Gothic", monospace;
+  /* 도트 서체 — **11 의 배수에서만** 쓴다(11 · 22 · 33). 지금은 제목 한 곳뿐이다. */
+  --pixel: "Galmuri11", var(--sans);
 
   /* ── 라틴 글자와 숫자는 제안서가 지정한 레트로 서체로 ───────
    * ⚠ 처음에 "Press Start 2P 와 VT323 은 한글이 없다" 를 이유로 둘 다 안 썼는데,
@@ -56,8 +73,10 @@
    * ⚠ --title 은 **짧은 라틴 라벨 전용**이다(Q·W·E·R·Lv). 긴 문장에 쓰면
    *   Press Start 2P 가 너무 넓어 줄이 터진다 — 제안서도 그렇게 적었다.
    * ⚠ --num 은 숫자가 든 칸에 쓴다. VT323 은 고정폭이라 자릿수가 흔들리지 않는다. */
-  --title: "Press Start 2P", "Galmuri11", var(--sans);
-  --num: "VT323", "GalmuriMono11", "Galmuri11", ui-monospace, monospace;
+  /* ⚠ 이 둘은 **외곽선 글꼴**이라 아무 크기에서나 깨끗하다(Galmuri 와 다르다).
+   *   격자 문제가 없으므로 그대로 쓴다 — 레트로 느낌은 여기가 낸다. */
+  --title: "Press Start 2P", var(--sans);
+  --num: "VT323", ui-monospace, Consolas, monospace;
 
   /* ── 픽셀 프레임 (9-슬라이스) ─────────────────────────
    * 제안서 원칙 1. 둥근 모서리·그림자 대신 **각진 2px 테두리 + 코너 장식**으로
@@ -115,6 +134,11 @@ html, body {
 
 button { font-family: inherit; cursor: pointer; }
 
+/* ⚠ 브라우저 기본 <small> 은 0.8em 이다 — 12.5px 문장 안에서 10.4px 이 되어 한글이
+ *   안 읽혔다(도움말 규칙 줄). 비율로 줄이면 부모 크기에 따라 또 바닥을 뚫으므로
+ *   **크기는 물려받고 색으로만** 힘을 뺀다. 크기를 따로 준 <small> 은 그대로다. */
+small { font-size: 1em; color: var(--ink-dim); }
+
 .app {
   height: 100%;
   display: flex;
@@ -134,9 +158,15 @@ button { font-family: inherit; cursor: pointer; }
   border-bottom: 1px solid var(--line);
 }
 
+/* ⚠ 도트 서체는 **여기 한 곳**이다. 22px 는 Galmuri 의 11px 격자에 딱 맞아
+ *   픽셀이 안 뭉갠다. 다른 곳에 --pixel 을 퍼뜨리지 말 것 — 크기가 11 의 배수가
+ *   아닌 순간 다시 읽기 힘들어진다. */
 .top h1 {
+  font-family: var(--pixel);
   margin: 0;
-  font-size: 17px;
+  /* ⚠ **22px 여야 한다.** Galmuri11 은 11px 격자라 17px 에서는 뭉갠다.
+   *   11 의 배수가 아닌 값을 넣으면 그 순간 제목만 흐려진다. */
+  font-size: 22px;
   letter-spacing: .06em;
   color: var(--gold);
   font-weight: 700;
@@ -160,7 +190,7 @@ button { font-family: inherit; cursor: pointer; }
   line-height: 1.5;
 }
 .top-meta b { color: var(--ink); font-family: var(--num); font-weight: 400; font-size: 15px; }
-.seedline { font-size: 11px; color: var(--ink-dim); }
+.seedline { font-size: 12.5px; color: var(--ink-dim); }
 .seedline b { color: var(--gold); }
 
 .ghost {
@@ -246,7 +276,7 @@ button { font-family: inherit; cursor: pointer; }
   margin-left: auto;          /* 막대에 상한이 생겼으므로 오른쪽 끝으로 민다 */
   display: flex;
   gap: 18px;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--ink-dim);
   font-family: var(--mono);
 }
@@ -259,14 +289,17 @@ button { font-family: inherit; cursor: pointer; }
 .hud-num em { font-style: normal; }
 .hud-num b { color: var(--ink); font-weight: 400; font-size: 26px; font-family: var(--num); line-height: 1; }
 /* Lv · 층 · 금 같은 짧은 라벨은 도트 서체로. ⚠ 긴 문장에는 쓰지 않는다. */
-.hud-num em { font-family: var(--title); font-size: 11px; letter-spacing: 0; color: var(--ink-dim); }
+.hud-num em { font-family: var(--title); font-size: 12.5px; letter-spacing: 0; color: var(--ink-dim); }
 .hud-num .g b { color: var(--gold); }
-.hud-num .d b { color: var(--hp); }
+/* ⚠ 막대에 쓰는 --hp(#c0392b)를 **글자에 그대로 쓰면 안 된다.** 어두운 바탕에서
+ *   대비가 3.11:1 이라 층 숫자가 안 읽혔다. 글자용으로 한 단계 밝은 빨강을 쓴다
+ *   (막대는 넓은 면이라 어두워도 보이지만, 글자는 획이 가늘어 다르다). */
+.hud-num .d b { color: #e2705c; }
 
 /* 상태이상 — 맨 위에서도 보여야 한다(나를 갉아먹는 중이다) */
 .hud-ail { flex: 0 0 auto; display: flex; gap: 4px; }
 .hud-ail span {
-  font-size: 10px;
+  font-size: 12px;
   padding: 1px 5px;
   border: 1px solid;
   border-radius: 0;
@@ -324,7 +357,7 @@ button { font-family: inherit; cursor: pointer; }
 
 .panel h2 {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12.5px;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--ink-dim);
@@ -333,7 +366,7 @@ button { font-family: inherit; cursor: pointer; }
   justify-content: space-between;
   align-items: baseline;
 }
-.panel h2 small { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .65; }
+.panel h2 small { font-size: 12px; letter-spacing: 0; text-transform: none; opacity: .65; }
 
 /* ── 정보창: 누구인가 ─────────────────────────────────────
  * 제일 위에 초상화와 이름을 둔다. 「지워지는 이름」 이 이 게임의 주제이므로
@@ -371,7 +404,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .who-txt em {
   font-style: normal;
-  font-size: 11px;
+  font-size: 12.5px;
   color: var(--gold);
   font-family: var(--mono);
 }
@@ -394,8 +427,19 @@ button { font-family: inherit; cursor: pointer; }
 .meter i {
   position: absolute;
   inset: 0 auto 0 0;
-  transition: width .2s ease-out;
+  transition: width .22s ease-out;
 }
+/* 채워진 끝에 밝은 선 — 어디까지 남았는지가 한눈에 잡힌다.
+ * ⚠ 0% 일 때는 안 보이게 한다(빈 막대 왼쪽에 선 하나만 남으면 고장으로 보인다). */
+.meter i::after {
+  content: "";
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: rgba(255,255,255,.55);
+}
+.meter i[style*="width:0.00%"]::after,
+.meter i[style*="width:0%"]::after { display: none; }
 .meter.hp i { background: linear-gradient(180deg, #d4574f 0%, #b03f38 55%, #8c2b26 100%); }
 /* 방금 깎인 만큼 — 현재 값 뒤에 깔려 뒤따라 줄어든다(render.js 가 민다) */
 .meter em.ghost {
@@ -410,7 +454,7 @@ button { font-family: inherit; cursor: pointer; }
   left: 8px; top: 0; bottom: 0;
   display: flex; align-items: center;
   text-decoration: none;
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: .08em;
   color: rgba(255,255,255,.82);
   text-shadow: 0 1px 2px rgba(0,0,0,.85);
@@ -426,7 +470,34 @@ button { font-family: inherit; cursor: pointer; }
   color: #fff;
   text-shadow: 0 1px 2px rgba(0,0,0,.9);
 }
-.meter b s { text-decoration: none; font-size: 10px; opacity: .72; font-weight: 500; }
+.meter b s { text-decoration: none; font-size: 12px; opacity: .72; font-weight: 500; }
+
+/* 정확한 값 — 평소엔 감춰 두고 손을 얹거나 누르면 나온다.
+ * ⚠ 퍼센트만 두면 "12 남았다" 를 알 수 없다. 로그라이크에서 그건 중요한 정보라
+ *   버리지 않고 **덧댄다**. title 도 함께 달려 있다(render.js).
+ * ⚠ 휴대폰에는 hover 가 없다 — 눌렀을 때 붙는 .show 로도 뜬다(main.js). */
+.meter-detail {
+  position: absolute;
+  right: 8px; top: 0; bottom: 0;
+  display: flex; align-items: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.95);
+  background: rgba(10,9,14,.82);
+  padding: 0 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .12s;
+}
+.meter:hover .meter-detail,
+.meter:focus-visible .meter-detail,
+.meter.show .meter-detail { opacity: 1; }
+.meter:hover b,
+.meter:focus-visible b,
+.meter.show b { opacity: 0; }
+.meter { cursor: default; outline: none; }
+.meter:focus-visible { border-color: var(--gold); }
 
 .stat-grid {
   display: grid;
@@ -446,7 +517,7 @@ button { font-family: inherit; cursor: pointer; }
   justify-content: space-between;
   align-items: baseline;
 }
-.stat-grid em { font-style: normal; font-size: 10.5px; letter-spacing: .06em; color: var(--ink-dim); }
+.stat-grid em { font-style: normal; font-size: 12px; letter-spacing: .06em; color: var(--ink-dim); }
 .stat-grid b { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--ink); }
 
 /* 장비 — 칸마다 아이콘 상자. **빈 칸도 그린다**(비어 있다는 것이 정보다). */
@@ -475,7 +546,7 @@ button { font-family: inherit; cursor: pointer; }
 .eq-row .eq-slot .ic { width: 20px; height: 20px; }
 .eq-row em {
   grid-area: slot; font-style: normal;
-  font-size: 10.5px; color: var(--ink-dim); letter-spacing: 1px;
+  font-size: 12px; color: var(--ink-dim); letter-spacing: 1px;
 }
 .eq-row b {
   grid-area: name; font-size: 13.5px; font-weight: 600;
@@ -522,7 +593,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .ability .k {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: center;
   border: 1px solid var(--line);
   border-radius: 0;
@@ -530,7 +601,7 @@ button { font-family: inherit; cursor: pointer; }
   background: rgba(0,0,0,.35);
 }
 .ability .n { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ability .cd { font-size: 10.5px; font-family: var(--mono); white-space: nowrap; }
+.ability .cd { font-size: 12px; font-family: var(--mono); white-space: nowrap; }
 .ability.ready { color: var(--ink); border-color: #4e6a3c; cursor: pointer; }
 .ability.ready i { background: linear-gradient(180deg, #3a5a2c, #26401c); }
 .ability.ready .k { color: var(--good); border-color: #4e6a3c; }
@@ -555,7 +626,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .inv-free span {
   margin-left: auto;
-  font-size: 10px; color: var(--ink-dim);
+  font-size: 12px; color: var(--ink-dim);
 }
 .inv .empty { font-size: 12px; color: var(--ink-dim); padding: 6px 0; }
 
@@ -585,8 +656,8 @@ button { font-family: inherit; cursor: pointer; }
   text-align: center;
 }
 .inv-item .nm { grid-area: nm; font-size: 13.5px; font-weight: 600; }
-.inv-item .nm i { font-style: normal; font-size: 10px; color: var(--good); margin-left: 4px; }
-.inv-item .ds { grid-area: ds; font-size: 11.5px; color: var(--ink-dim); }
+.inv-item .nm i { font-style: normal; font-size: 12px; color: var(--good); margin-left: 4px; }
+.inv-item .ds { grid-area: ds; font-size: 13px; color: var(--ink-dim); }
 .inv-item.unknown { border-style: dashed; border-color: #4a4356; }
 /* 미식별 물약의 색 점 — 바닥에 놓인 병과 가방 속 병을 눈으로 짝지으려면 색이 있어야 한다 */
 .inv-item .dot {
@@ -623,10 +694,10 @@ button { font-family: inherit; cursor: pointer; }
 /* 오늘의 변이 — 고르기 **전에** 보인다. 좋은 것은 초록, 나쁜 것은 빨강. */
 .mut-list { display: flex; flex-direction: column; gap: 3px; margin-top: 7px; }
 .mut {
-  display: block; font-size: 10.5px; line-height: 1.45; color: var(--ink-dim);
+  display: block; font-size: 12px; line-height: 1.45; color: var(--ink-dim);
   border-left: 3px solid var(--line); padding: 1px 0 1px 7px;
 }
-.mut b { display: inline-block; margin-right: 5px; font-size: 11.5px; }
+.mut b { display: inline-block; margin-right: 5px; font-size: 13px; }
 .mut.bad { border-left-color: var(--hp); }
 .mut.bad b { color: #e08a82; }
 .mut.good { border-left-color: var(--good); }
@@ -634,11 +705,11 @@ button { font-family: inherit; cursor: pointer; }
 
 /* 도전 과제 — 끝난 뒤에만 보인다. 규칙을 안 바꾸므로 조용하게 둔다. */
 .feats { margin-top: 14px; border-top: 2px solid var(--line); padding-top: 10px; text-align: left; }
-.feats-head { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; }
+.feats-head { font-size: 12.5px; color: var(--ink-dim); letter-spacing: .1em; }
 .feats-head b { color: var(--gold); font-family: var(--num); font-size: 18px; }
 .feats-new { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .feats-new span {
-  display: block; font-size: 11px; color: var(--ink-dim);
+  display: block; font-size: 12.5px; color: var(--ink-dim);
   border: 3px solid var(--gold); border-image: var(--frame-on);
   background: var(--panel-2); padding: 5px 8px;
 }
@@ -650,7 +721,7 @@ button { font-family: inherit; cursor: pointer; }
   min-width: 30px;
   margin-right: 6px;
   padding: 0 3px;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--ink-dim);
   border: 1px solid var(--line);
   text-align: center;
@@ -792,11 +863,11 @@ body.is-touch .pad { display: flex; }
   border-bottom: 1px solid rgba(120, 160, 220, .5);
 }
 .rs .k {
-  font-family: var(--title); font-size: 11px; line-height: 1;
+  font-family: var(--title); font-size: 12.5px; line-height: 1;
   color: var(--gold);
 }
 .rs .n {
-  font-size: 9px; line-height: 1.1; text-align: center; max-width: 46px;
+  font-size: 12px; line-height: 1.1; text-align: center; max-width: 46px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .rs .cd { font-family: var(--num); font-size: 15px; line-height: 1; color: #9fd0ff; }
@@ -933,7 +1004,7 @@ body.pad-folded .side { max-height: 24vh; }
   justify-content: space-between;
   align-items: baseline;
 }
-.card dt { font-size: 11px; color: var(--ink-dim); }
+.card dt { font-size: 12.5px; color: var(--ink-dim); }
 .card dd { margin: 0; font-family: var(--mono); font-size: 13px; }
 
 .hint { font-size: 12px; color: var(--ink-dim); margin: 0; }
@@ -943,7 +1014,7 @@ body.pad-folded .side { max-height: 24vh; }
 
 .card h3 {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12.5px;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: var(--gold);
@@ -1004,7 +1075,7 @@ body.pad-folded .side { max-height: 24vh; }
   position: absolute;
   top: 7px; left: 8px;
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--gold);
   border: 1px solid var(--line);
   border-radius: 0;
@@ -1017,12 +1088,12 @@ body.pad-folded .side { max-height: 24vh; }
   border-radius: 0;
 }
 .cls-name { font-size: 16px; font-weight: 700; }
-.cls-title { font-size: 10.5px; letter-spacing: .04em; color: var(--gold); }
-.cls-story { font-size: 10.5px; line-height: 1.6; color: var(--ink-dim); }
-.cls-stats { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); }
+.cls-title { font-size: 12px; letter-spacing: .04em; color: var(--gold); }
+.cls-story { font-size: 12px; line-height: 1.6; color: var(--ink-dim); }
+.cls-stats { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
 .cls-stats b { color: var(--ink); }
-.cls-ability { font-size: 11px; color: #c9b98a; line-height: 1.45; }
-.cls-blurb { font-size: 10.5px; color: var(--ink-dim); line-height: 1.5; }
+.cls-ability { font-size: 12.5px; color: #c9b98a; line-height: 1.45; }
+.cls-blurb { font-size: 12px; color: var(--ink-dim); line-height: 1.5; }
 
 .guide { display: flex; flex-direction: column; gap: 5px; margin-bottom: 18px; }
 .guide-row {
@@ -1039,7 +1110,7 @@ body.pad-folded .side { max-height: 24vh; }
 kbd {
   flex: 0 0 auto;
   font-family: var(--mono);
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--ink);
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -1113,10 +1184,12 @@ kbd {
  *   최고 점수·씨앗은 종료 화면에 그대로 나오므로 여기서는 감춘다. */
 @media (max-width: 620px) {
   .top { padding: 7px 10px; gap: 8px; }
-  .top h1 { font-size: 14px; white-space: nowrap; letter-spacing: .02em; }
+  /* 좁은 화면에서도 격자를 지킨다 — 11px 은 제목으로 너무 작으니 22px 를 두고
+   * 줄바꿈만 막는다(헤더 한 줄 검사가 잡아 준다). */
+  .top h1 { font-size: 22px; white-space: nowrap; letter-spacing: 0; }
   .top-meta { gap: 6px; flex-shrink: 0; }
   .top-meta > span { display: none; }
-  .ghost { padding: 6px 9px; font-size: 11.5px; white-space: nowrap; }
+  .ghost { padding: 6px 9px; font-size: 13px; white-space: nowrap; }
 }
 
 /* 터치 기기에서 방향 패드를 띄운다(위 .pad 항목의 세 조건 중 하나). */
@@ -1133,7 +1206,7 @@ kbd {
 
 @media (max-width: 420px) {
   .top { padding: 8px 12px; }
-  .top h1 { font-size: 14px; }
+  .top h1 { font-size: 22px; }
   .seedline { display: none; }
   .card { padding: 22px 18px; }
 }
@@ -1153,7 +1226,7 @@ kbd {
   font-weight: 700;
   color: var(--gold);
 }
-.who-gold i { font-style: normal; font-size: 10px; margin-left: 2px; opacity: .7; }
+.who-gold i { font-style: normal; font-size: 12px; margin-left: 2px; opacity: .7; }
 .who-gold { display: inline-flex; align-items: center; gap: 3px; }
 .who-gold .ic { opacity: 1; }
 
@@ -1163,7 +1236,7 @@ kbd {
 .ails { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
 .ails > * { min-width: 0; }
 .ail {
-  font-size: 10.5px;
+  font-size: 12px;
   font-family: var(--mono);
   padding: 2px 6px;
   border: 1px solid;
@@ -1210,19 +1283,19 @@ kbd {
 .qs .k {
   position: absolute; top: 0; left: 0; z-index: 2;
   width: 21px; height: 18px; line-height: 18px; text-align: center;
-  font-family: var(--title); font-size: 10px; font-weight: 400;
+  font-family: var(--title); font-size: 12px; font-weight: 400;
   background: var(--gold); color: #1a1508;
 }
 .qs .rk {
   position: absolute; top: 2px; right: 4px; z-index: 2;
-  font-family: var(--mono); font-size: 10px; color: var(--gold);
+  font-family: var(--mono); font-size: 12px; color: var(--gold);
 }
 .qs .n {
-  margin-top: 12px; font-size: 11.5px; font-weight: 600; line-height: 1.2;
+  margin-top: 12px; font-size: 13px; font-weight: 600; line-height: 1.2;
   text-align: center; max-width: 68px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.qs .cd { font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim); }
+.qs .cd { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
 .qs.ready { border-color: #5b7fa8; }
 .qs.ready .cd { color: #9fd0ff; }
 .qs.ready:hover { background: #262230; }
@@ -1234,7 +1307,7 @@ kbd {
 .qs.empty .n { color: var(--ink-dim); font-weight: 400; }
 
 /* 핵심 수치에 치명타 배수를 작게 붙인다 */
-.stat-grid b s { text-decoration: none; font-size: 10px; opacity: .7; margin-left: 3px; font-weight: 500; }
+.stat-grid b s { text-decoration: none; font-size: 12px; opacity: .7; margin-left: 3px; font-weight: 500; }
 
 /* 쌓인 옵션 = 내 빌드. 0 인 것은 안 보여 준다(줄만 늘어난다) */
 .build {
@@ -1248,8 +1321,8 @@ kbd {
   display: flex; justify-content: space-between; align-items: baseline;
   background: #191621; padding: 4px 8px;
 }
-.build em { font-style: normal; font-size: 10px; color: var(--ink-dim); }
-.build b { font-family: var(--mono); font-size: 11px; color: #8fb8d8; }
+.build em { font-style: normal; font-size: 12px; color: var(--ink-dim); }
+.build b { font-family: var(--mono); font-size: 12.5px; color: #8fb8d8; }
 
 
 /* 가방 — 사이드바에서는 `.side-scroll > .bagpanel .inv` 가 남는 세로를 먹으므로
@@ -1277,12 +1350,12 @@ kbd {
 .perk:hover { border-color: var(--gold); background: #23202b; transform: translateY(-2px); }
 .perk-key {
   position: absolute; top: 7px; right: 8px;
-  font-family: var(--title); font-size: 8px; color: var(--gold);
+  font-family: var(--title); font-size: 10px; color: var(--gold);
   border: 1px solid var(--line); border-radius: 0; padding: 0 4px;
 }
-.perk-tag { font-size: 9.5px; letter-spacing: .1em; color: var(--ink-dim); }
+.perk-tag { font-size: 12px; letter-spacing: .08em; color: var(--ink-dim); }
 .perk-title { font-size: 15px; font-weight: 700; line-height: 1.3; }
-.perk-note { font-size: 11px; line-height: 1.55; color: var(--ink-dim); }
+.perk-note { font-size: 12.5px; line-height: 1.55; color: var(--ink-dim); }
 .perk.stat .perk-tag { color: #8fb8d8; }
 .perk.new  .perk-tag { color: var(--good); }
 .perk.new  { border-color: #3d5a3d; }
@@ -1323,7 +1396,7 @@ kbd {
 /* 등급 색 상자 — 글자보다 색이 먼저 읽힌다 */
 .shop-kind {
   grid-area: kind; align-self: center;
-  font-size: 9px; letter-spacing: .06em; color: var(--ink-dim);
+  font-size: 12px; letter-spacing: .06em; color: var(--ink-dim);
   border: 2px solid var(--line); border-radius: 0; padding: 3px 0; text-align: center;
   background: var(--panel);
 }
@@ -1332,7 +1405,7 @@ kbd {
 .shop-row.rar-relic  .shop-kind { border-color: #94491c; color: #e0742a; }
 .shop-nm { grid-area: nm; font-size: 12.5px; font-weight: 600; }
 .shop-ds {
-  grid-area: ds; font-size: 10.5px; color: var(--ink-dim); line-height: 1.4;
+  grid-area: ds; font-size: 12px; color: var(--ink-dim); line-height: 1.4;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .shop-cost {
@@ -1360,7 +1433,7 @@ kbd {
 .log .m.crit { color: #ffb347; font-weight: 700; }
 
 /* 시작 화면 — 시작 무기 한 줄 */
-.cls-gear { font-size: 10px; color: var(--gold); font-family: var(--mono); }
+.cls-gear { font-size: 12px; color: var(--gold); font-family: var(--mono); }
 
 @media (max-width: 900px) {
   .perks { grid-template-columns: 1fr; gap: 8px; }
@@ -1528,17 +1601,17 @@ kbd {
 @media (max-width: 420px) {
   .quick { gap: 5px; bottom: 6px; }
   .qs { width: 66px; height: 62px; }
-  .qs .n { font-size: 10.5px; max-width: 58px; margin-top: 11px; }
+  .qs .n { font-size: 12px; max-width: 58px; margin-top: 11px; }
 }
 
 /* 상단 상태줄도 좁은 화면에서는 납작하게 — 캔버스가 주인공이다 */
 @media (max-width: 620px) {
   .hud { padding: 5px 9px; gap: 7px; }
   .hud-art { width: 22px; height: 22px; }
-  .hud-name b { font-size: 11.5px; }
+  .hud-name b { font-size: 13px; }
   .hud-name em { display: none; }        /* 긴 직함은 접는다 — 이름만으로 충분하다 */
   .hud .meter { height: 14px; }
-  .hud-num { gap: 7px; font-size: 10px; }
+  .hud-num { gap: 7px; font-size: 12px; }
   .hud-num b { font-size: 12px; }
 }
 
@@ -1668,18 +1741,12 @@ kbd {
     rgba(146, 135, 114, .11) 17px, rgba(146, 135, 114, .11) 18px);
 }
 
-/* 막대 — 잉크로 칠한 칸. 눈금을 얹어 장부처럼 보이게 한다 */
+/* 막대 — 한 줄로 쭉 이어진다.
+ * ⚠ 장부처럼 보이라고 20px 마다 세로 눈금을 얹었었다. 그러면 막대가 **칸으로
+ *   쪼개져** 줄어드는 것이 안 보인다 — "피가 닳는 느낌" 이 사라진다(사용자 지적).
+ *   눈금을 지웠다. 되살리지 말 것. 장부 느낌은 테두리와 종이결이 이미 낸다. */
 .meter {
   box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 1px 0 rgba(222,214,194,.05);
-}
-.meter::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: repeating-linear-gradient(90deg,
-    transparent 0, transparent 19px,
-    rgba(0, 0, 0, .17) 19px, rgba(0, 0, 0, .17) 20px);
 }
 
 /* 스킬 칸 · 가방 칸 — 종이에 찍은 도장 자리 */
@@ -1720,7 +1787,7 @@ kbd {
   transition: .12s;
 }
 .mode-card b { font-size: 14px; color: var(--ink); font-weight: 700; }
-.mode-card em { font-style: normal; font-size: 11px; line-height: 1.45; }
+.mode-card em { font-style: normal; font-size: 12.5px; line-height: 1.45; }
 .mode-card:hover { border-color: var(--gold); }
 .mode-card.is-on {
   border-color: var(--gold);
@@ -1743,10 +1810,10 @@ kbd {
  *   좁으면 두 줄로 쌓는다 — 한 줄에 우겨 넣을 폭이 아니다. */
 @media (max-width: 620px) {
   .dd-head { flex-direction: column; align-items: flex-start; gap: 2px; }
-  .dd-head span { font-size: 10.5px; }
+  .dd-head span { font-size: 12px; }
 }
 .dd-head b { font-size: 13px; color: var(--gold); }
-.dd-head span { font-size: 11px; color: var(--ink-dim); font-family: var(--mono); }
+.dd-head span { font-size: 12.5px; color: var(--ink-dim); font-family: var(--mono); }
 
 /* 장부 한 줄 */
 .ledger {
@@ -1759,7 +1826,7 @@ kbd {
 }
 .ledger[hidden] { display: none; }
 .ledger-label {
-  font-size: 10.5px;
+  font-size: 12px;
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--gold);
@@ -1791,7 +1858,7 @@ kbd {
   .mode-card { flex-direction: row; align-items: baseline; flex-wrap: wrap; }
   .mode-card b { flex: 0 0 auto; margin-right: 7px; }
   .mode-card em { flex: 1 1 100%; }
-  .ledger-text { font-size: 11.5px; }
+  .ledger-text { font-size: 13px; }
   .ledger-acts button { flex: 1 1 0; min-height: 42px; }
 }
 
@@ -1824,7 +1891,7 @@ kbd {
 .stat-line > * { min-width: 0; }
 .stat-line span { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .stat-line .ic { margin-right: 1px; }
-.stat-line em { font-style: normal; color: var(--ink-dim); font-size: 10px; letter-spacing: 0; }
+.stat-line em { font-style: normal; color: var(--ink-dim); font-size: 12px; letter-spacing: 0; }
 .stat-line b { font-family: var(--num); font-size: 17px; font-weight: 400; color: var(--ink); line-height: 1; }
 .stat-line s { text-decoration: none; font-family: var(--num); font-size: 13px; color: var(--gold); }
 .stat-line.wide { font-size: 13px; gap: 4px 16px; padding: 9px 11px; }
@@ -1834,7 +1901,7 @@ kbd {
 .relics { margin-top: 8px; display: flex; flex-direction: column; gap: 3px; }
 .relics u {
   text-decoration: none;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: .1em;
   color: #e0742a;
   text-transform: uppercase;
@@ -1850,7 +1917,7 @@ kbd {
   background: rgba(224,116,42,.05);
 }
 .relic-row b { font-size: 12px; color: #e0a054; font-weight: 600; }
-.relic-row em { font-style: normal; font-size: 11px; color: var(--ink-dim); line-height: 1.45; }
+.relic-row em { font-style: normal; font-size: 12.5px; color: var(--ink-dim); line-height: 1.45; }
 .relics.full { gap: 5px; }
 .relics.full .relic-row { padding: 7px 9px; }
 
@@ -1861,7 +1928,7 @@ kbd {
 .gear-head h2 { margin: 0; }
 .gear-sec { margin-top: 14px; }
 .gear-sec h3 { margin: 0 0 7px; }
-.gear-sec h3 small { font-size: 10px; letter-spacing: 0; text-transform: none; opacity: .65; margin-left: 5px; }
+.gear-sec h3 small { font-size: 12px; letter-spacing: 0; text-transform: none; opacity: .65; margin-left: 5px; }
 .gear-slots { display: flex; flex-direction: column; gap: 6px; }
 .gear-slot {
   display: grid;
@@ -1877,7 +1944,7 @@ kbd {
 .gear-slot > * { min-width: 0; }
 .gs-kind {
   grid-area: kind;
-  font-size: 10px;
+  font-size: 12px;
   color: var(--ink-dim);
   border: 1px solid var(--line);
   border-radius: 0;
@@ -1887,7 +1954,7 @@ kbd {
 .gs-art { grid-area: art; width: 32px; height: 32px; image-rendering: pixelated; }
 .gs-nm { grid-area: nm; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gs-pw { grid-area: pw; font-family: var(--mono); font-size: 12px; color: var(--gold); }
-.gs-ds { grid-area: ds; font-size: 11px; color: var(--ink-dim); line-height: 1.4; }
+.gs-ds { grid-area: ds; font-size: 12.5px; color: var(--ink-dim); line-height: 1.4; }
 .gear-slot.none { opacity: .5; grid-template-columns: 38px 1fr; grid-template-areas: "kind nm"; }
 .gear-card .inv { max-height: 42vh; }
 

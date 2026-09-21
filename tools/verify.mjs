@@ -1192,6 +1192,30 @@ for (const [label, args] of SCREENS) {
     .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
 }
 
+// 글씨 — 크기·대비·픽셀 격자.
+// ⚠ "글씨가 잘 안 보인다" 는 원인이 셋이고 눈으로는 구분이 안 된다:
+//   너무 작다 · 대비가 낮다 · 픽셀 서체가 격자를 벗어나 뭉갠다.
+//   실제로 화면 글자 70개 중 29개가 12px 미만, 39개가 격자 이탈이었다.
+//   네 화면 × 두 크기를 재서 하나라도 어긋나면 잡는다.
+{
+  let bad = 0, ran = 0;
+  for (const [w, h] of [["1440", "900"], ["390", "844"]]) {
+    for (const scr of ["play", "start", "help", "gear"]) {
+      const rf = spawnSync(process.execPath,
+        [path.join(ROOT, "tools", "font-check.mjs"), "--w", w, "--h", h, "--screen", scr],
+        { encoding: "utf8", cwd: ROOT });
+      ran++;
+      if (rf.status !== 0) {
+        bad++;
+        console.log("   ✘ " + w + "x" + h + " " + scr + " — " +
+          (rf.stdout.split(String.fromCharCode(10)).filter(l => /^(너무 작음|대비 모자람|격자 벗어남)/.test(l) && l.includes("✘")).join(" / ") || "돌지 않음"));
+      }
+    }
+  }
+  if (bad) fails++;
+  console.log("글씨".padEnd(20), ok(bad === 0), ran + "개 화면 · 문제 " + bad + "개");
+}
+
 // 장비 창 · 유물 표시 — 휴대폰에서 장비를 볼 수 있는가, 그리고 턴을 안 쓰는가
 {
   const rg = spawnSync(process.execPath, [path.join(ROOT, "tools", "gear-check.mjs")],

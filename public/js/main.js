@@ -877,6 +877,20 @@
     /* 캔버스 우클릭은 브라우저 메뉴만 띄운다 — 막아 둔다(가방 우클릭과 헷갈린다) */
     canvas.addEventListener("contextmenu", function (e) { e.preventDefault(); });
 
+    /* 체력·경험 막대를 누르면 정확한 값이 뜬다.
+     * ⚠ 휴대폰에는 hover 가 없다 — 퍼센트만 보이고 "몇 남았는지" 를 볼 방법이
+     *   없어진다. 누르면 2.5초 동안 보여 주고 저절로 닫힌다(닫는 법을 또
+     *   배우게 하지 않는다). 턴은 쓰지 않는다 — 보는 것은 행동이 아니다. */
+    var meterTimer = 0;
+    document.addEventListener("click", function (e) {
+      var m = e.target.closest(".meter");
+      document.querySelectorAll(".meter.show").forEach(function (x) { x.classList.remove("show"); });
+      if (meterTimer) { clearTimeout(meterTimer); meterTimer = 0; }
+      if (!m) return;
+      m.classList.add("show");
+      meterTimer = setTimeout(function () { m.classList.remove("show"); }, 2500);
+    });
+
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", function (e) { if (e.key === heldKey) stopHold(); });
     /* 창을 떠나면 keyup 을 못 받는다 — 그대로 두면 돌아왔을 때 혼자 걷고 있다 */

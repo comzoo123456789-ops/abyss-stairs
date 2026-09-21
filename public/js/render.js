@@ -1268,14 +1268,26 @@
   /* ghost 를 주면 그만큼 어두운 띠를 **뒤에** 깔고 그 위에 현재 값을 그린다.
    * ⚠ drawHud 는 innerHTML 로 통째로 다시 그린다 — 그래서 CSS transition 이
    *   안 먹는다(새 요소는 처음부터 최종 너비다). 줄어드는 것은 그림 고리가 민다. */
-  function meter(cur, max, cls, label, ghost) {
+  /* 체력·경험 막대.
+   *
+   * ⚠ 눈금(칸)을 **긋지 않는다.** 장부처럼 보이라고 20px 마다 세로줄을 얹었더니
+   *   막대가 칸으로 쪼개져 "피가 닳는" 느낌이 사라졌다(사용자 지적). 한 줄로
+   *   쭉 이어져야 줄어드는 것이 보인다 — css 의 .meter::after 를 지운 이유다.
+   * ⚠ 숫자는 **퍼센트**다(사용자 지시). 다만 로그라이크에서 "12 남았다" 는
+   *   "19%" 보다 중요한 정보라, 정확한 값을 버리지 않고 **덧대어** 둔다:
+   *   막대에 손을 얹으면(휴대폰에서는 누르면) 44 / 62 가 나온다.
+   *   title 도 함께 단다 — 키보드로 도는 사람에게도 닿아야 한다. */
+  function meter(cur, max, cls, label, ghost, extra) {
     var pct = max > 0 ? Math.max(0, Math.min(100, (cur / max) * 100)) : 0;
     var gp = (ghost !== undefined && ghost > pct) ? Math.min(100, ghost) : 0;
-    return '<div class="meter ' + cls + '">' +
+    var detail = cur + " / " + max + (extra ? " " + extra : "");
+    return '<div class="meter ' + cls + '" tabindex="0" title="' +
+             esc(label + " " + detail + " (" + Math.round(pct) + "%)") + '">' +
              (gp ? '<em class="ghost" style="width:' + gp.toFixed(1) + '%"></em>' : "") +
-             '<i style="width:' + pct.toFixed(1) + '%"></i>' +
+             '<i style="width:' + pct.toFixed(2) + '%"></i>' +
              '<u>' + label + "</u>" +
-             '<b>' + cur + '<s>/' + max + "</s></b>" +
+             '<b>' + Math.round(pct) + '<s>%</s></b>' +
+             '<span class="meter-detail">' + esc(detail) + "</span>" +
            "</div>";
   }
 
@@ -1294,7 +1306,8 @@
     var prev = t[p.level - 1] || 0;
     var mx = g.maxhp();
 
-    var hpLabel = "체력" + (p.ward > 0 ? " +" + p.ward : "");
+    /* ⚠ 방벽은 라벨("체력 +7")이 아니라 **상세값**으로 옮겼다 — 라벨이 길어지면
+     *   막대 안에서 퍼센트와 자리를 다툰다. 방벽은 막대 색으로도 따로 뜬다. */
     var ails = [];
     for (var k in p.ail) {
       var a = DATA.AILMENTS[k];
@@ -1312,8 +1325,10 @@
           (p.specName ? " · " + esc(p.specName) : "") + "</em></div>" +
       "</div>" +
       '<div class="hud-bars">' +
-        meter(p.hp, mx, "hp", hpLabel, this.hudGhost) +
-        meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험") +
+        meter(p.hp, mx, "hp", "체력", this.hudGhost,
+              p.ward > 0 ? "· 방벽 " + p.ward : "") +
+        meter(Math.max(0, p.xp - prev), Math.max(1, need - prev), "xp", "경험", undefined,
+              "· 다음 Lv." + (p.level + 1)) +
       "</div>" +
       (ails.length ? '<div class="hud-ail">' + ails.join("") + "</div>" : "") +
       '<div class="hud-num">' +
