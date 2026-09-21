@@ -63,20 +63,29 @@ const key = async (code) => {
   await sleep(40);
 };
 
-await S("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
-/* 앞선 검사가 남긴 저장이 있으면 결과가 흔들린다 — 깨끗하게 시작한다 */
+const reload = async () => { await S("Page.navigate", { url: URL0 }); await sleep(1100); };
 
-await sleep(1100);
-await ev(`localStorage.clear(); window.SAVE.save = window.SAVE.save;`);
-await S("Page.navigate", { url: URL0 }); await sleep(1100);
+await S("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
+/* ⚠ 앞선 검사가 남긴 저장이 있으면 결과가 흔들린다. 지우려면 **먼저 그 주소를
+ *   열어야** 한다 — about:blank 에서 지우면 다른 저장소를 지운 것이다. */
+await reload();
+await ev(`localStorage.clear()`);
+await reload();
 
 const out = []; const add = (n, ok, note) => out.push([n, !!ok, note]);
 
 /* ── ① 마을에서 시작하는가 · 안전한가 ─────────────────── */
-const start = await ev(`window.__peek()`);
-add("마을에서 시작", start.inTown && start.foes === 0 && start.props === 2,
+const start = await ev(`(function(){
+  var p = window.__peek();
+  /* ⚠ 개수를 **못 박지 않는다.** 전에 2 로 적어 뒀다가 상인·창고를 놓자마자
+   *   멀쩡한 제품이 빨개졌다 — 검사는 목록(TOWN.PROPS)에서 세어야 한다. */
+  p.want = Object.keys(window.TOWN.PROPS).length;
+  p.ids = window.__w().props.map(function (o) { return o.id; }).sort();
+  return p;
+})()`);
+add("마을에서 시작", start.inTown && start.foes === 0 && start.props === start.want,
   "0층 " + (start.inTown ? "✔" : "⚠아니다") + " · 몬스터 " + start.foes +
-  "마리 · 말 걸 것 " + start.props + "개");
+  "마리 · 말 걸 것 " + start.props + "/" + start.want + "개 [" + start.ids.join(",") + "]");
 
 /* ── ② 손으로 만든 지도에 **못 가는 칸**이 없는가 ───────
  * ⚠ 벽으로 둘러싸인 구멍은 눈으로는 안 보인다. 시작 자리에서 걸어서 닿는
@@ -250,7 +259,99 @@ add("죽으면 마을에서", died.inTown && died.deaths === deaths0 + 1 && died
   "마을 " + (died.inTown ? "✔" : "⚠") + " · 죽음 " + deaths0 + "→" + died.deaths +
   " · 체력 " + died.hp + "/" + died.maxHp + "(가득 차야 한다)");
 
-/* ── ⑫ 마을에서는 귀환이 안 걸리는가 ─────────────────── */
+/* ── ⑫ 상인 — 팔고 되산다 ─────────────────────────────
+ * ⚠ **되사기가 없으면 실수로 판 것이 영구 손실**이다. 그 순간 게임을 끈다. */
+await ev(`window.__town()`); await sleep(400);
+const shop = await ev(`(function(){
+  var I = window.ITEMS, D = window.DUNGEON, h = window.__hero(), w = window.__w();
+  var rng = D.makeRng(1234);
+  h.bag = []; h.gold = 500; h.potions = 0;
+  h.bag.push(I.pack(I.roll(rng, { ilvl: 10, slot: "weapon", base: "sword", tier: "common" })));
+  h.bag.push(I.pack(I.roll(rng, { ilvl: 10, slot: "body", base: "mail", tier: "relic" })));
+  var o = w.props.filter(function (x) { return x.id === "shop"; })[0];
+  var p = w.player;
+  p.x = o.x; p.y = o.y + 1.0; p.px = p.x; p.py = p.y;
+  w.advance(1/60);
+  return { near: window.__near(), gold: h.gold, bag: h.bag.length };
+})()`);
+await key("KeyE");
+const shopUI = await ev(`(function(){
+  var b = document.getElementById("panel");
+  return { open: !b.hidden, sell: b.querySelectorAll("[data-sell]").length,
+           buy: b.querySelectorAll("[data-buy]").length };
+})()`);
+add("상인 창", shop.near === "shop" && shopUI.open && shopUI.sell === 2 && shopUI.buy === 1,
+  "창 " + (shopUI.open ? "열림" : "⚠안 열림") + " · 팔 것 " + shopUI.sell +
+  "개 · 살 것 " + shopUI.buy + "개");
+
+await ev(`document.querySelector("[data-sell=\\"0\\"]").click()`);
+await sleep(200);
+const sold = await ev(`(function(){
+  var h = window.__hero();
+  return { gold: h.gold, bag: h.bag.length, buyback: window.__buyback(),
+           can: document.querySelectorAll("[data-buyback]").length };
+})()`);
+add("팔면 되살 수 있다", sold.gold > shop.gold && sold.bag === 1 && sold.can === 1,
+  "금화 " + shop.gold + "→" + sold.gold + " · 가방 " + shop.bag + "→" + sold.bag +
+  " · 되사기 목록 " + sold.can + "개");
+
+await ev(`document.querySelector("[data-buyback=\\"0\\"]").click()`);
+await sleep(200);
+const rebought = await ev(`(function(){ var h = window.__hero();
+  return { gold: h.gold, bag: h.bag.length }; })()`);
+add("되사기", rebought.bag === 2 && rebought.gold === shop.gold,
+  "가방 " + sold.bag + "→" + rebought.bag + " · 금화 " + sold.gold + "→" + rebought.gold +
+  "(판 값 그대로 돌아와야 한다)");
+
+/* ⚠ 쓸어 팔기가 **희귀·유물까지 쓸어 가면** 한 번의 실수로 다 잃는다 */
+await ev(`document.querySelector("[data-selljunk]").click()`);
+await sleep(200);
+const junk = await ev(`(function(){
+  var S = window.SAVE, h = window.__hero();
+  var left = S.liveBag(h);
+  return { n: left.length, tiers: left.map(function(x){ return x.tier; }) };
+})()`);
+add("쓸어 팔기는 일반만", junk.n === 1 && junk.tiers[0] === "relic",
+  "일반 1 + 유물 1 에서 쓸어 팔기 → 남은 " + junk.n + "개 [" + junk.tiers.join(",") + "]");
+
+/* ── ⑬ 창고 — 넣고 꺼낸다 ───────────────────────────────
+ * ⚠ 앞 시험이 상인 창을 **열어 둔 채**였다. 창이 열려 있으면 키가 잠기므로
+ *   E 를 눌러도 아무 일이 없다(그게 맞는 동작이다 — 제품이 아니라 검사가
+ *   순서를 빠뜨린 것이다). 먼저 닫는다. */
+await key("Escape");
+const stash = await ev(`(function(){
+  var w = window.__w(), h = window.__hero();
+  var o = w.props.filter(function (x) { return x.id === "stash"; })[0];
+  var p = w.player;
+  p.x = o.x; p.y = o.y + 1.0; p.px = p.x; p.py = p.y;
+  w.advance(1/60);
+  return { near: window.__near(), bag: h.bag.length, st: h.stash.length };
+})()`);
+await key("KeyE");
+await sleep(150);
+await ev(`document.querySelector("[data-put=\\"0\\"]").click()`);
+await sleep(200);
+const put = await ev(`(function(){ var h = window.__hero();
+  return { bag: h.bag.length, st: h.stash.length,
+           get: document.querySelectorAll("[data-get]").length }; })()`);
+await ev(`document.querySelector("[data-get=\\"0\\"]").click()`);
+await sleep(200);
+const got = await ev(`(function(){ var h = window.__hero();
+  return { bag: h.bag.length, st: h.stash.length }; })()`);
+add("창고", stash.near === "stash" && put.st === 1 && put.bag === 0 &&
+  got.bag === 1 && got.st === 0,
+  "가방→창고 " + stash.bag + "/" + stash.st + " → " + put.bag + "/" + put.st +
+  " → 꺼내서 " + got.bag + "/" + got.st);
+
+/* 창고는 **새로고침해도** 남아야 한다 — 그게 창고의 뜻이다 */
+await ev(`(function(){ var h = window.__hero();
+  h.stash = h.bag.slice(); h.bag = []; window.__save(); })()`);
+await reload();
+const kept2 = await ev(`(function(){ var h = window.__hero();
+  return { st: h.stash.length, bag: h.bag.length }; })()`);
+add("창고는 남는다", kept2.st === 1, "새로고침 뒤 창고 " + kept2.st + "개 · 가방 " + kept2.bag + "개");
+
+/* ── ⑭ 마을에서는 귀환이 안 걸리는가 ─────────────────── */
 const inTownRecall = await ev(`(function(){ var w = window.__w(); return w.recallStart(); })()`);
 add("마을선 귀환 없음", inTownRecall === false, "마을에서 T → " + inTownRecall);
 

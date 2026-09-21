@@ -49,6 +49,9 @@
   /* 가방 크기. ⚠ 무제한으로 두면 회원이 정리를 안 하고, 저장이 끝없이 커진다.
    *   차면 마을에 다녀오게 만드는 것이 이 숫자의 목적이다. */
   var BAG = 24;
+  /* 창고는 가방보다 **한참 커야** 한다. 비슷하면 창고에 넣는 것이 정리가 아니라
+   * 또 한 번의 가방 정리가 된다(그러면 아무도 안 쓴다). */
+  var STASH = 60;
 
   function clampNum(v, f) {
     var n = Number(v);
@@ -77,6 +80,7 @@
     var I = global.ITEMS;
     out.equip = {};
     out.bag = [];
+    out.stash = [];
     if (I) {
       var raw_e = (raw.equip && typeof raw.equip === "object") ? raw.equip : {};
       for (var si = 0; si < I.SLOTS.length; si++) {
@@ -90,6 +94,11 @@
       for (var bi = 0; bi < raw_b.length && out.bag.length < BAG; bi++) {
         var bit = I.rebuild(raw_b[bi]);
         if (bit) out.bag.push(I.pack(bit));
+      }
+      var raw_s = Array.isArray(raw.stash) ? raw.stash : [];
+      for (var xi = 0; xi < raw_s.length && out.stash.length < STASH; xi++) {
+        var xit = I.rebuild(raw_s[xi]);
+        if (xit) out.stash.push(I.pack(xit));
       }
     }
 
@@ -110,15 +119,17 @@
     }
     return out;
   }
-  function liveBag(s) {
+  function liveList(arr) {
     var I = global.ITEMS, out = [];
-    if (!I || !s || !Array.isArray(s.bag)) return out;
-    for (var i = 0; i < s.bag.length; i++) {
-      var it = I.rebuild(s.bag[i]);
+    if (!I || !Array.isArray(arr)) return out;
+    for (var i = 0; i < arr.length; i++) {
+      var it = I.rebuild(arr[i]);
       if (it) out.push(it);
     }
     return out;
   }
+  function liveBag(s) { return liveList(s && s.bag); }
+  function liveStash(s) { return liveList(s && s.stash); }
 
   function blank(cls, name) {
     var s = sanitize({});
@@ -215,7 +226,8 @@
     KEY: KEY, VERSION: VERSION, FIELDS: FIELDS, AUTO_EVERY: AUTO_EVERY,
     load: load, save: save, wipe: wipe, blank: blank, sanitize: sanitize,
     needFor: needFor, gainXp: gainXp,
-    BAG: BAG, liveEquip: liveEquip, liveBag: liveBag,
+    BAG: BAG, STASH: STASH,
+    liveEquip: liveEquip, liveBag: liveBag, liveStash: liveStash,
     blocked: function () { return !store(); }
   };
 })(window);

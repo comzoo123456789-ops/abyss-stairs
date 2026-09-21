@@ -101,6 +101,8 @@
   /* 던전으로. **도달한 층까지만** 갈 수 있다 — 안 그러면 1레벨이 30층에 간다. */
   function toDepth(d) {
     closePanel();
+    /* ⚠ 되사기는 **이번 방문 동안만**이다. 계속 쌓아 두면 무한 보관함이 된다. */
+    buyback.length = 0;
     d = Math.max(1, Math.min(hero.maxDepth, Math.floor(d) || 1));
     start({ depth: d });
     global.SAVE.save(hero);
@@ -185,6 +187,8 @@
     var pr = world.nearProp();
     if (pr) {
       if (pr.id === "portal") return openPortal();
+      if (pr.id === "shop") return openShop();
+      if (pr.id === "stash") return openStash();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -368,6 +372,177 @@
     openBag();
   }
 
+  /* ── 상인 ───────────────────────────────────────────────
+   * 파는 값은 **산 값의 절반**이다. 같으면 사고팔기를 반복해 돈이 안 줄고,
+   * 너무 낮으면 아무도 안 판다.
+   * ⚠ 되사기(buyback)를 둔다. 실수로 판 것을 못 되찾으면 그 순간 게임을 끈다. */
+  var SELL_RATE = 0.5;
+  var POTION_PRICE = 40;
+  var buyback = [];                    /* 이번 방문에 판 것 — 마을을 나가면 잊는다 */
+
+  function priceSell(it) { return Math.max(1, Math.round(it.val * SELL_RATE)); }
+
+  function openShop() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero);
+    var html = '<h2>떠돌이 상인</h2><p class="sub">금화 ' + hero.gold +
+      ' · 물약 ' + hero.potions + '</p><div class="cols">';
+
+    html += '<div class="col"><h3>산다</h3>' +
+      '<button class="itm" data-buy="potion">' +
+      '<span class="nm">회복 물약</span>' +
+      '<span class="mt">' + POTION_PRICE + '금 · 체력 절반을 채운다</span></button>' +
+      '<p class="sub">Q 로 마신다 · 8초에 한 번</p></div>';
+
+    html += '<div class="col"><h3>판다 <span class="mt">값의 절반</span></h3>';
+    if (!bag.length) html += '<p class="sub">가방이 비었다.</p>';
+    for (var b = 0; b < bag.length; b++) {
+      var ti = I.tierOf(bag[b].tier);
+      html += '<button class="itm" data-sell="' + b + '">' +
+        '<span class="nm" style="color:' + ti.color + '">' + esc(bag[b].name) + '</span>' +
+        '<span class="mt">' + I.SLOT_NAME[bag[b].slot] + ' · Lv.' + bag[b].req +
+        ' → <b>' + priceSell(bag[b]) + '금</b></span>' +
+        '<span class="st">' + esc(statsOf(bag[b])) + '</span></button>';
+    }
+    if (bag.length > 1)
+      html += '<button class="itm" data-selljunk="1"><span class="nm">일반 등급 전부 팔기</span>' +
+        '<span class="mt">희귀·유물·세트는 안 판다</span></button>';
+    html += '</div>';
+
+    /* 되사기 — **실수로 판 것을 되찾는 자리.** 없으면 한 번의 오조작이 영구 손실이다. */
+    html += '<div class="col"><h3>되산다 <span class="mt">판 값 그대로</span></h3>';
+    if (!buyback.length) html += '<p class="sub">이번에 판 것이 없다.</p>';
+    for (var k = 0; k < buyback.length; k++) {
+      var bk = I.rebuild(buyback[k].p), tk = I.tierOf(bk.tier);
+      html += '<button class="itm" data-buyback="' + k + '">' +
+        '<span class="nm" style="color:' + tk.color + '">' + esc(bk.name) + '</span>' +
+        '<span class="mt">' + buyback[k].price + '금에 되산다</span></button>';
+    }
+    html += '</div></div><p class="sub">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    wire(box, "buy", function () { buyPotion(); });
+    wire(box, "sell", function (v) { sellOne(Number(v)); });
+    wire(box, "selljunk", function () { sellJunk(); });
+    wire(box, "buyback", function (v) { rebuy(Number(v)); });
+  }
+
+  function wire(box, attr, fn) {
+    box.querySelectorAll("[data-" + attr + "]").forEach(function (el) {
+      el.addEventListener("click", function () { fn(this.getAttribute("data-" + attr)); });
+    });
+  }
+
+  function buyPotion() {
+    if (hero.gold < POTION_PRICE) return toast("금화가 모자라다");
+    if (hero.potions >= global.SAVE.FIELDS.potions.max) return toast("더 못 든다");
+    hero.gold -= POTION_PRICE;
+    hero.potions++;
+    if (global.SFX) global.SFX.play("gold");
+    global.SAVE.save(hero);
+    openShop();
+  }
+
+  function sellOne(idx) {
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero);
+    var it = bag[idx];
+    if (!it) return;
+    var price = priceSell(it);
+    hero.gold += price;
+    /* ⚠ 판 물건을 **버리지 말고** 되사기 목록에 둔다. 실수로 판 것을 못 되찾으면
+     *   그 순간 게임을 끈다. 마을을 나가면 잊는다(무한 보관함이 되면 안 된다). */
+    buyback.unshift({ p: hero.bag[idx], price: price });
+    if (buyback.length > 8) buyback.pop();
+    hero.bag.splice(idx, 1);
+    if (global.SFX) global.SFX.play("gold");
+    S.save(hero);
+    openShop();
+  }
+
+  /* 일반 등급만 판다. ⚠ 희귀·유물·세트까지 쓸어 팔면 한 번의 실수로 다 잃는다. */
+  function sellJunk() {
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero), got = 0, sold = 0;
+    for (var i = bag.length - 1; i >= 0; i--) {
+      if (bag[i].tier !== "common" || bag[i].set) continue;
+      var price = priceSell(bag[i]);
+      got += price; sold++;
+      buyback.unshift({ p: hero.bag[i], price: price });
+      hero.bag.splice(i, 1);
+    }
+    if (buyback.length > 8) buyback.length = 8;
+    if (!sold) return toast("팔 일반 등급이 없다");
+    hero.gold += got;
+    if (global.SFX) global.SFX.play("gold");
+    S.save(hero);
+    toast(sold + "개를 " + got + "금에 팔았다");
+    openShop();
+  }
+
+  function rebuy(k) {
+    var S = global.SAVE, e = buyback[k];
+    if (!e) return;
+    if (hero.gold < e.price) return toast("금화가 모자라다");
+    if (hero.bag.length >= S.BAG) return toast("가방이 가득 찼다");
+    hero.gold -= e.price;
+    hero.bag.push(e.p);
+    buyback.splice(k, 1);
+    S.save(hero);
+    openShop();
+  }
+
+  /* ── 창고 ───────────────────────────────────────────────
+   * ⚠ 창고는 **마을에서만** 열린다. 던전에서 열리면 가방 크기가 뜻을 잃는다
+   *   (가방이 차면 마을에 다녀오게 만드는 것이 그 숫자의 목적이다). */
+  function openStash() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero), st = S.liveStash(hero);
+    var html = '<h2>창고</h2><p class="sub">여기 둔 것은 죽어도 남는다</p><div class="cols">';
+
+    html += '<div class="col"><h3>가방 <span class="mt">' + bag.length + ' / ' + S.BAG +
+            '</span></h3>';
+    if (!bag.length) html += '<p class="sub">비었다.</p>';
+    for (var b = 0; b < bag.length; b++) html += stashRow(bag[b], "put", b, "넣기 →");
+    html += '</div>';
+
+    html += '<div class="col"><h3>창고 <span class="mt">' + st.length + ' / ' + S.STASH +
+            '</span></h3>';
+    if (!st.length) html += '<p class="sub">비었다.</p>';
+    for (var k = 0; k < st.length; k++) html += stashRow(st[k], "get", k, "← 꺼내기");
+    html += '</div></div><p class="sub">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    wire(box, "put", function (v) { moveItem(hero.bag, hero.stash, Number(v), S.STASH, "창고가 가득 찼다"); });
+    wire(box, "get", function (v) { moveItem(hero.stash, hero.bag, Number(v), S.BAG, "가방이 가득 찼다"); });
+  }
+
+  function stashRow(it, attr, idx, verb) {
+    var ti = global.ITEMS.tierOf(it.tier);
+    return '<button class="itm" data-' + attr + '="' + idx + '">' +
+      '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
+      '<span class="mt">' + global.ITEMS.SLOT_NAME[it.slot] + ' · Lv.' + it.req +
+      ' · ' + verb + '</span>' +
+      '<span class="st">' + esc(statsOf(it)) + '</span></button>';
+  }
+
+  function moveItem(from, to, idx, cap, full) {
+    if (!from[idx]) return;
+    if (to.length >= cap) return toast(full);
+    to.push(from[idx]);
+    from.splice(idx, 1);
+    global.SAVE.save(hero);
+    openStash();
+  }
+
   function panelOpen() {
     var box = document.getElementById("panel");
     return !!box && !box.hidden;
@@ -494,6 +669,9 @@
     global.__hero = function () { return hero; };
     global.__town = toTown;
     global.__bag = openBag;
+    global.__shop = openShop;
+    global.__stash = openStash;
+    global.__buyback = function () { return buyback.length; };
     global.__drink = drink;
     global.__equip = equipFromBag;
     global.__unequip = unequip;
