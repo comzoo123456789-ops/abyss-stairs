@@ -142,8 +142,20 @@
     this.hero = opt.hero || (global.SAVE ? global.SAVE.blank() : null);
     var seed = opt.seed === undefined ? (Date.now() & 0x7fffffff) : opt.seed;
     this.seed = seed;
-    this.depth = opt.depth || 1;
-    this.level = D.generate(opt.w || 56, opt.h || 40, this.depth, seed);
+    /* **0층이 마을이다.** 따로 플래그를 두지 않는다 — 두 곳(깊이와 플래그)이
+     * 되면 반드시 어긋나 "마을인데 몬스터가 나온다" 가 된다. */
+    this.depth = opt.depth === undefined ? 1 : opt.depth;
+    this.inTown = this.depth === 0;
+    this.props = [];
+    var startAt = null;
+    if (this.inTown) {
+      var t = global.TOWN.build();
+      this.level = t.level;
+      this.props = t.props;
+      startAt = t.start;
+    } else {
+      this.level = D.generate(opt.w || 56, opt.h || 40, this.depth, seed);
+    }
     this.ents = [];
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
     this.log = [];          /* 무슨 일이 있었나(검사가 읽는다) */
@@ -151,16 +163,27 @@
     this.steps = 0;
     this._acc = 0;
     this._fovAt = null;
+    /* 귀환(마을로 돌아가기) — 밖에서 읽으므로 **없을 때도 이름이 있어야** 한다.
+     * undefined 로 두면 화면 쪽에서 typo 한 이름과 구별이 안 된다. */
+    this.recall = null;
+    this.recallDone = false;
+    this.recallBroke = "";
 
     var s = this.level.upAt || { x: 2, y: 2 };
+    var sx = startAt ? startAt.x : s.x + 0.5;
+    var sy = startAt ? startAt.y : s.y + 0.5;
     this.player = new Entity({
-      x: s.x + 0.5, y: s.y + 0.5, kind: "player", sprite: opt.sprite || "warrior",
+      x: sx, y: sy, kind: "player", sprite: opt.sprite || "warrior",
       team: 0, hp: 50, name: "주인공"
     });
     this.ents.push(this.player);
     this.applyHero();
+    /* 들어올 때 체력을 이어받는다 — 마을에서만 다 찬다(샘에서든, 죽어서 돌아왔든).
+     * ⚠ 층을 옮길 때마다 다 채우면 계단이 곧 회복이 되어 던전이 안 위험해진다. */
+    if (opt.hp !== undefined) this.player.hp = Math.max(1, Math.min(this.player.maxHp, opt.hp));
+    if (this.inTown) this.player.hp = this.player.maxHp;
     this.refreshFov();
-    if (opt.mobs !== 0) this.spawn(opt.mobs === undefined ? 10 : opt.mobs);
+    if (!this.inTown && opt.mobs !== 0) this.spawn(opt.mobs === undefined ? 10 : opt.mobs);
   }
 
   /* 몬스터를 뿌린다.
@@ -224,6 +247,8 @@
   };
 
   World.prototype.refreshFov = function () {
+    /* 마을은 안개가 없다 — 집 안에서 길을 잃으면 안 된다 */
+    if (this.inTown) { this.level.visible.fill(1); return false; }
     var tx = Math.floor(this.player.x), ty = Math.floor(this.player.y);
     var k = tx + "," + ty;
     if (k === this._fovAt) return false;
@@ -331,9 +356,65 @@
         this.ents.splice(i, 1);
     }
 
+    this.tickRecall(SIM_DT);
     this.refreshFov();
     this.time += SIM_DT;
     this.steps++;
+  };
+
+  /* 지금 말을 걸 수 있는 것. 없으면 null.
+   * ⚠ 가장 가까운 **하나만** 돌려준다. 여러 개를 주면 화면이 "무엇을 누를지" 를
+   *   못 정해 안내 문구가 깜빡인다. */
+  World.prototype.nearProp = function () {
+    var best = null, bd = 1e9, p = this.player;
+    for (var i = 0; i < this.props.length; i++) {
+      var o = this.props[i];
+      var d = Math.hypot(o.x - p.x, o.y - p.y);
+      if (d > o.def.reach) continue;
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  };
+
+  /* 밟고 선 칸이 계단인가 — 던전에서 더 내려가는 길이다.
+   * ⚠ 밟는 **순간**이 아니라 서 있는 동안 계속 참이다. 눌러서 내려가게 한다
+   *   (밟자마자 내려가면 지나가다 실수로 떨어진다). */
+  World.prototype.onStairs = function () {
+    var lv = this.level;
+    var tx = Math.floor(this.player.x), ty = Math.floor(this.player.y);
+    var t = lv.at(tx, ty);
+    return (t === D.STAIRS || t === D.DEEP) ? t : 0;
+  };
+
+  /* 마을로 돌아가기 — **그냥 되면 안 된다.**
+   * 언제든 한 번에 빠져나갈 수 있으면 위험이 사라진다(도망 버튼이 된다).
+   * 2초 동안 가만히 서 있어야 하고, 맞으면 끊긴다. */
+  var RECALL_SEC = 2.0;
+  World.prototype.recallStart = function () {
+    if (this.inTown || this.player.dead) return false;
+    if (this.recall) return true;
+    this.recall = { t: 0, x: this.player.x, y: this.player.y, hp: this.player.hp };
+    return true;
+  };
+  World.prototype.recallStop = function (why) {
+    if (!this.recall) return;
+    this.recall = null;
+    this.recallBroke = why || "끊김";
+  };
+  World.prototype.tickRecall = function (dt) {
+    var r = this.recall;
+    if (!r) return;
+    var p = this.player;
+    if (p.dead) return this.recallStop("죽음");
+    /* 움직이면 끊긴다 — 걸으면서 도망칠 수 없게 */
+    if (Math.hypot(p.x - r.x, p.y - r.y) > 0.25) return this.recallStop("움직임");
+    if (p.hp < r.hp) return this.recallStop("피격");
+    r.hp = p.hp;
+    r.t += dt;
+    if (r.t >= RECALL_SEC) { this.recall = null; this.recallDone = true; }
+  };
+  World.prototype.recallLeft = function () {
+    return this.recall ? Math.max(0, RECALL_SEC - this.recall.t) : 0;
   };
 
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */

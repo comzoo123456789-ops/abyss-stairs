@@ -71,9 +71,14 @@
     saveAcc += dt;
     if (saveAcc >= global.SAVE.AUTO_EVERY) { saveAcc = 0; global.SAVE.save(hero); }
 
-    /* 죽으면 되살린다. 대가는 **아직 정하지 않았다**(보류) — 지금은 세어만 둔다.
-     * ⚠ 죽자마자 되살리면 무슨 일이 있었는지 모른다. 1.2초를 둔다. */
+    /* 귀환이 다 찼다 — 마을로 */
+    if (world.recallDone) { world.recallDone = false; toTown(); }
+
+    /* 죽으면 **마을에서** 깬다. 대가는 아직 정하지 않았다(보류) — 세어만 둔다.
+     * ⚠ 죽자마자 옮기면 무슨 일이 있었는지 모른다. 1.2초를 둔다. */
     if (world.player.dead && world.time - world.playerDeadAt > 1.2) revive();
+
+    hud();
 
     fps.t += dt; fps.n++;
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
@@ -86,12 +91,111 @@
     return view.toWorld(mouse.cx, mouse.cy);
   }
 
-  /* 되살린다. 캐릭터는 그대로 두고 **층만 다시 만든다.**
-   * ⚠ 마을은 5단계다. 그때까지는 같은 층을 새로 뽑는다. */
+  /* 마을로. 체력은 마을에 들어가면 알아서 다 찬다(World 안에서). */
+  function toTown() {
+    closePanel();
+    start({ depth: 0 });
+    global.SAVE.save(hero);
+  }
+
+  /* 던전으로. **도달한 층까지만** 갈 수 있다 — 안 그러면 1레벨이 30층에 간다. */
+  function toDepth(d) {
+    closePanel();
+    d = Math.max(1, Math.min(hero.maxDepth, Math.floor(d) || 1));
+    start({ depth: d });
+    global.SAVE.save(hero);
+  }
+
+  /* 한 층 더 깊이 — 계단을 밟고 눌렀을 때.
+   * ⚠ 여기서만 maxDepth 가 는다(포탈은 이미 가 본 곳만 연다). 그래서
+   *   "내려가 본 적 없는 층으로 포탈이 열리는" 일이 안 생긴다. */
+  function descend() {
+    var d = world.depth + 1;
+    start({ depth: d, hp: world.player.hp });
+    global.SAVE.save(hero);
+  }
+
+  /* 죽으면 마을에서 깬다. 캐릭터는 그대로다 — 대가는 보류다(사용자 결정). */
   function revive() {
     hero.deaths++;
-    global.SAVE.save(hero);
-    start({ depth: world.depth });
+    toTown();
+  }
+
+  /* 발밑에 무엇이 있고 무엇을 누르면 되는지.
+   * ⚠ **눌러야 뭔가 일어나는 자리에는 반드시 글자가 있어야 한다.** 아이콘만
+   *   두거나 아무 표시도 없으면 회원은 그 자리를 그냥 지나친다(마을에 서서
+   *   "어디로 가야 하지" 를 묻게 된다). */
+  function hud() {
+    var el = document.getElementById("act");
+    if (!el) return;
+    var txt = "";
+    if (world.recall) {
+      txt = "마을로 돌아가는 중… " + world.recallLeft().toFixed(1) + "초 (움직이면 끊긴다)";
+    } else if (world.player.dead) {
+      txt = "쓰러졌다…";
+    } else {
+      var pr = world.nearProp();
+      if (pr) txt = "[E] " + pr.def.label + " — " + pr.def.verb;
+      else if (world.onStairs()) txt = "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
+      else if (!world.inTown) txt = "[T] 마을로 귀환 (2초간 가만히)";
+    }
+    el.textContent = txt;
+    el.style.visibility = txt ? "visible" : "hidden";
+  }
+
+  /* [E] — 발밑/눈앞의 것에 말을 건다. **한 키로 다 한다.**
+   * ⚠ 물건마다 키를 따로 두면 회원이 외워야 할 것이 늘어난다. */
+  function interact() {
+    if (world.player.dead) return;
+    var pr = world.nearProp();
+    if (pr) {
+      if (pr.id === "portal") return openPortal();
+      if (pr.id === "well") {
+        var p = world.player;
+        if (p.hp >= p.maxHp) return;
+        p.hp = p.maxHp;
+        if (global.SFX) global.SFX.play("potion");
+        return;
+      }
+      return;
+    }
+    if (world.onStairs()) descend();
+  }
+
+  /* 층 선택 창. 캔버스가 아니라 **DOM** 이다 — 글자를 고르는 자리는
+   * 브라우저가 이미 잘하는 일이고, 캔버스로 만들면 키보드로 못 고른다. */
+  function openPortal() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var html = '<h2>심연의 문</h2><p class="sub">가 본 곳까지 열린다 — 지금 ' +
+      hero.maxDepth + '층</p><div class="floors">';
+    for (var d = 1; d <= hero.maxDepth; d++)
+      html += '<button data-depth="' + d + '">' + d + '층</button>';
+    html += '</div><p class="sub">Esc 로 닫는다</p>';
+    box.innerHTML = html;
+    box.hidden = false;
+    box.style.display = "";
+    var btns = box.querySelectorAll("button[data-depth]");
+    for (var i = 0; i < btns.length; i++) {
+      btns[i].addEventListener("click", function () {
+        toDepth(Number(this.getAttribute("data-depth")));
+      });
+    }
+    if (btns.length) btns[btns.length - 1].focus();
+  }
+
+  function closePanel() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    box.hidden = true;
+    /* ⚠ hidden 만으로는 안 감춰지는 경우가 있다(다른 규칙이 display 를 주면).
+     *   둘 다 건다 — 전에 같은 함정을 여러 번 밟았다. */
+    box.style.display = "none";
+    box.innerHTML = "";
+  }
+  function panelOpen() {
+    var box = document.getElementById("panel");
+    return !!box && !box.hidden;
   }
 
   function diag() {
@@ -106,7 +210,8 @@
       "Lv." + hero.level + " " + hero.xp + "/" + need + "xp" +
       " · 체력 " + p.hp + "/" + p.maxHp +
       " · 금화 " + hero.gold +
-      " · " + world.depth + "층(최고 " + hero.maxDepth + ")" +
+      " · " + (world.inTown ? "마을" : world.depth + "층") +
+      "(최고 " + hero.maxDepth + ")" +
       " · 적 " + alive +
       " · " + fps.v + "fps" +
       (p.dead ? " · 쓰러졌다…" : "");
@@ -118,7 +223,10 @@
     opt.hero = hero;                 /* **같은 객체**를 넘긴다(사본 아님) */
     opt.sprite = hero.cls;
     world = new W.World(opt);
-    if (world.depth > hero.maxDepth) hero.maxDepth = world.depth;
+    /* ⚠ 마을(0층)은 도달 기록이 아니다. 그리고 상한(30)을 넘기지 않는다 —
+     *   SAVE 가 어차피 자르지만, 자르는 곳이 하나뿐이면 여기서 조용히 어긋난다. */
+    if (!world.inTown && world.depth > hero.maxDepth)
+      hero.maxDepth = Math.min(global.SAVE.FIELDS.maxDepth.max, world.depth);
     last = 0;
     raf = requestAnimationFrame(frame);
     return world;
@@ -144,17 +252,26 @@
     hero = loaded.save;
     if (loaded.broken) console.warn("저장이 깨져 새로 시작한다(옛 것은 :broken 에 치워 뒀다)");
     if (loaded.blocked) console.warn("이 브라우저는 저장을 막았다 — 저장 없이 돈다");
-    start({});
+    /* **마을에서 시작한다.** 게임을 켜면 안전한 곳에 서 있어야 한다 —
+     * 열자마자 몬스터에 둘러싸이면 조작을 배울 틈이 없다. */
+    start({ depth: 0 });
 
     global.addEventListener("resize", function () { view.resize(); });
     global.addEventListener("keydown", function (e) {
       wakeAudio();
+      if (e.code === "Escape") { closePanel(); return; }
+      /* ⚠ 창 잠금은 **무엇보다 먼저**다. 아래에 두면 이동 키가 이미 처리된
+       *   뒤라 층을 고르는 동안 주인공이 그대로 걸어간다(실측 2.24칸 이동).
+       *   ⚠ 게다가 keys[] 에 눌림이 남아 창을 닫은 뒤에도 혼자 걸어간다. */
+      if (panelOpen()) return;
       if (MOVE[e.code]) { keys[e.code] = 1; e.preventDefault(); }
-      if (e.code === "KeyR") start({ depth: world.depth });
-      /* 다음 층 — 마을·계단은 5단계다. 그때까지 키로 내려간다. */
-      if (e.code === "Period" || e.code === "PageDown") start({ depth: world.depth + 1 });
-      if (e.code === "Comma" || e.code === "PageUp")
-        start({ depth: Math.max(1, world.depth - 1) });
+      /* 움직이면 귀환이 끊긴다 — 걸으면서 도망칠 수 없게.
+       * ⚠ 규칙(world)도 자리로 판정하지만, 키를 누른 그 순간 끊어야
+       *   "눌렀는데 아직 도는" 한 프레임이 안 생긴다. */
+      if (MOVE[e.code] && world.recall) world.recallStop("움직임");
+      if (e.code === "KeyE") { interact(); e.preventDefault(); return; }
+      if (e.code === "KeyT") { world.recallStart(); return; }
+      if (e.code === "KeyR" && !world.inTown) start({ depth: world.depth });
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
       if (e.code === "Space") { var a = aim(); world.swing(a.x, a.y); e.preventDefault(); }
     });
@@ -196,6 +313,18 @@
       (codes || []).forEach(function (c) { keys[c] = 1; });
     };
     global.__hero = function () { return hero; };
+    global.__town = toTown;
+    global.__depth = toDepth;
+    global.__act = interact;
+    global.__descend = descend;
+    global.__panel = function () {
+      var b = document.getElementById("panel");
+      return { open: panelOpen(), floors: b ? b.querySelectorAll("button[data-depth]").length : 0 };
+    };
+    global.__near = function () {
+      var pr = world.nearProp();
+      return pr ? pr.id : (world.onStairs() ? "stairs" : null);
+    };
     global.__save = function () { return global.SAVE.save(hero); };
     global.__reload = function () {
       hero = global.SAVE.load().save;
@@ -210,7 +339,10 @@
                foes: foes.length, atk: !!p.atk, rest: p.atkRest,
                depth: world.depth,
                level: hero.level, xp: hero.xp, gold: hero.gold,
-               maxDepth: hero.maxDepth, deaths: hero.deaths };
+               maxDepth: hero.maxDepth, deaths: hero.deaths,
+               inTown: world.inTown, props: world.props.length,
+               recall: world.recall ? world.recallLeft() : null,
+               onStairs: !!world.onStairs() };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };

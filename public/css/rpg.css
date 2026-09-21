@@ -29,3 +29,35 @@ html, body {
   position: absolute; left: 0; right: 0; bottom: 8px;
   text-align: center; color: var(--ink-dim); font-size: 12px; pointer-events: none;
 }
+
+/* 지금 누를 수 있는 것 — 화면 아래 가운데.
+   ⚠ 조작 안내(.hint)보다 **위**에 둔다. 겹치면 둘 다 안 읽힌다. */
+.act {
+  position: absolute; left: 0; right: 0; bottom: 34px;
+  text-align: center; font-size: 15px; color: #ffe9a8;
+  text-shadow: 0 2px 0 rgba(0,0,0,.9), 0 0 10px rgba(0,0,0,.8);
+  pointer-events: none; letter-spacing: .01em;
+}
+
+/* 층 선택 창.
+   ⚠ z-index 를 넉넉히 준다 — 전에 모달이 다른 것 밑에 깔려 버튼을 못 누른 적이 있다.
+   ⚠ hidden 속성만으로는 안 감춰지는 경우가 있어 규칙으로도 못 박는다. */
+.panel[hidden] { display: none !important; }
+.panel {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  z-index: 900; min-width: 300px; max-width: min(520px, 92vw);
+  padding: 20px 22px; border-radius: 10px;
+  background: #1a1720; border: 1px solid #4a4254;
+  box-shadow: 0 18px 50px rgba(0,0,0,.65);
+}
+.panel h2 { margin: 0 0 4px; font-size: 19px; color: #e8e2d4; }
+.panel .sub { margin: 0 0 14px; font-size: 13px; color: var(--ink-dim); }
+.panel .sub:last-child { margin: 12px 0 0; }
+.floors { display: flex; flex-wrap: wrap; gap: 8px; }
+.floors button {
+  min-width: 64px; padding: 10px 12px; cursor: pointer;
+  font: inherit; font-size: 14px; color: #e8e2d4;
+  background: #2b2635; border: 1px solid #574d66; border-radius: 6px;
+}
+.floors button:hover { background: #3a3348; border-color: #8f6bff; }
+.floors button:focus-visible { outline: 2px solid #8f6bff; outline-offset: 2px; }

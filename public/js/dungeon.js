@@ -432,6 +432,9 @@
 
   global.DUNGEON = {
     WALL: WALL, FLOOR: FLOOR, DOOR: DOOR, STAIRS: STAIRS, DEEP: DEEP,
+    /* ⚠ 마을은 손으로 만든 지도다(town.js). 생성기를 안 쓰므로 Level 을 밖에서
+     *   만들 수 있어야 한다 — 안 열면 town.js 가 Level 을 베껴 두 벌이 된다. */
+    Level: Level,
     makeRng: makeRng,
     generate: generate,
     randomFloor: randomFloor,

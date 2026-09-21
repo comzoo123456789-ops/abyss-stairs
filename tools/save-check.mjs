@@ -139,7 +139,12 @@ const carry = await ev(`(function(){
   window.__peek();                    /* 지금 세계 */
   return { before: { lv: h.level, xp: h.xp, gold: h.gold } };
 })()`);
-await ev(`(function(){ var e = new KeyboardEvent("keydown", { code: "Period" }); window.dispatchEvent(e); })()`);
+/* ⚠ 전에는 `.` 키로 내려갔다. 5단계에서 그 키는 없어지고 **계단**이 됐다 —
+ *   검사의 전제가 낡은 것이지 제품이 틀린 게 아니다. 지금 길로 내려간다.
+ *   (게임은 마을에서 시작하므로 먼저 1층으로 들어간다.) */
+await ev(`window.__depth(1)`);
+await sleep(400);
+await ev(`window.__descend()`);
 await sleep(400);
 const carried = await ev(`(function(){
   var h = window.__hero(), p = window.__peek();

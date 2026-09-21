@@ -144,6 +144,17 @@
     }
     ctx.globalAlpha = 1;
 
+    /* 2-a) 마을 물건(포탈·샘). 개체보다 **먼저** 그린다 — 앞을 지나가면
+     *      사람이 앞에 서야 한다(뒤에 그리면 물건이 사람을 덮는다).
+     * ⚠ 일렁이는 프레임은 **시간**으로 고른다(걸은 거리가 아니다 — 물건은 안 걷는다). */
+    for (var pi = 0; pi < world.props.length; pi++) {
+      var pr = world.props[pi];
+      var pf = S.hasFrames(pr.def.sprite)
+        ? Math.floor(world.time * 4) % S.framesOf(pr.def.sprite).length : 0;
+      placeAt(ctx, S.bake(pr.def.sprite, pf), pr.def.sprite,
+              (pr.x - 0.5) * TILE + ox, (pr.y - 0.5) * TILE + oy);
+    }
+
     /* 3) 휘두르는 부채꼴 — **개체보다 먼저, 한 벌로** 깐다.
      *
      * ⚠ 개체마다 자기 부채꼴을 그리게 두었더니, 주인공보다 **아래에 선 몬스터**의

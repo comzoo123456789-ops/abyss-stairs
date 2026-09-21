@@ -24,7 +24,12 @@
   <div class="viewport"><canvas id="view"></canvas></div>
   <!-- 뼈대를 세우는 동안 **재는 자리**. 눈으로는 60Hz 규칙이 맞는지 모른다. -->
   <div id="diag" class="diag">…</div>
-  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; 마우스 조준 · 클릭/스페이스 공격 &nbsp;·&nbsp; . 다음 층 · , 이전 층 · R 새 층</div>
+  <!-- 지금 누를 수 있는 것. **눌러야 뭔가 일어나는 자리에는 반드시 글자가 있어야
+       한다** — 표시가 없으면 회원은 그 자리를 그냥 지나친다. -->
+  <div id="act" class="act"></div>
+  <!-- 층 선택 창. 캔버스가 아니라 DOM 이다(키보드로 고를 수 있어야 한다). -->
+  <div id="panel" class="panel" hidden style="display:none"></div>
+  <div class="hint">WASD · 방향키 이동 &nbsp;·&nbsp; 마우스 조준 · 클릭/스페이스 공격 &nbsp;·&nbsp; E 조작 · T 귀환 · R 새 층</div>
 </div>
 
 <script src="js/sprites.js?v=1"></script>
@@ -32,6 +37,7 @@
 <script src="js/sound.js?v=1"></script>
 <script src="js/save.js?v=1"></script>
 <script src="js/dungeon.js?v=1"></script>
+<script src="js/town.js?v=1"></script>
 <script src="js/combat.js?v=1"></script>
 <script src="js/world.js?v=1"></script>
 <script src="js/ai.js?v=1"></script>
