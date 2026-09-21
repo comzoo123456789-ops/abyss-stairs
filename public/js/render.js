@@ -136,6 +136,32 @@
     return v.t >= 1 ? 0 : v.stride;
   }
 
+  /* 공격 자세.
+   *
+   * 지금까지 **몸 전체가 앞으로 밀리는 것**(lunge)과 무기 **궤적**만 있었다.
+   * 팔은 한 번도 안 움직였다(사용자 지적). 찌르는 동안 프레임을 둘로 나눈다:
+   *   앞 35%  → 3 치켜듦      나머지 → 4 내려침
+   * 찌르기(130ms)와 같은 시계를 쓰므로 궤적·밀림과 저절로 맞는다.
+   *
+   * ⚠ **그 프레임이 있는 스프라이트에만** 준다. 없는 프레임을 부르면 그 프레임
+   *   전용 그림이 하나도 안 그려져 **팔이 통째로 사라진 몸**이 나온다(오류는 안 난다).
+   *   몬스터 16종에는 아직 공격 프레임이 없다 — 걸음 프레임으로 떨어진다. */
+  var ATTACK_UP = 3, ATTACK_DOWN = 4;
+  Renderer.prototype.poseOf = function (e, v, sprite) {
+    var l = this.lunges.get(e);
+    if (l && S.hasFrame && S.hasFrame(sprite, ATTACK_UP)) {
+      return l.t < 0.35 ? ATTACK_UP : ATTACK_DOWN;
+    }
+    return S.hasFrames(sprite) ? frameOf(v) : 0;
+  };
+
+  /* 무기는 손을 따라간다. 팔만 올라가고 칼이 허리에 붙어 있으면 어색하다.
+   * ⚠ 무기 그림을 프레임마다 새로 그리면 7종 × 2장이 는다 — **옮기는 것**으로 낸다. */
+  var WEAPON_POSE = {
+    3: { dx: 7, dy: -9 },     /* 치켜듦 — 위로 */
+    4: { dx: 10, dy: 2 }      /* 내려침 — 앞으로 */
+  };
+
   function Renderer(canvas, game) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
@@ -307,7 +333,11 @@
     var an = armorArt(p);
     if (an) placeAt(ctx, S.bake(an, 0, tint), an, x, y);
     var wn = weaponArt(p);
-    if (wn) placeAt(ctx, S.bake(wn, 0, tint), wn, x, y);
+    if (wn) {
+      /* 공격 중이면 무기도 손을 따라 옮긴다 — 팔만 올라가고 칼이 허리에 있으면 어색하다 */
+      var wp = WEAPON_POSE[frame];
+      placeAt(ctx, S.bake(wn, 0, tint), wn, x + (wp ? wp.dx : 0), y + (wp ? wp.dy : 0));
+    }
   }
 
   Renderer.prototype.tintOf = function (e) {
@@ -981,7 +1011,7 @@
       sx = Math.round(mv.vx * TILE + ox + (this.lunges.get(mo) ? this.lunges.get(mo).dx * ml : 0));
       sy = Math.round(mv.vy * TILE + oy + bobOf(mv) +
                       (this.lunges.get(mo) ? this.lunges.get(mo).dy * ml : 0));
-      ctx.drawImage(S.bake(mo.sprite, S.hasFrames(mo.sprite) ? frameOf(mv) : 0,
+      ctx.drawImage(S.bake(mo.sprite, this.poseOf(mo, mv, mo.sprite),
                            this.tintOf(mo)), sx, sy);
       if (mo.hp < mo.maxhp) {
         var frac = Math.max(0, mo.hp / mo.maxhp);
@@ -1051,7 +1081,8 @@
     ctx.fillStyle = glow;
     ctx.fillRect(pxp - TILE, pyp - TILE, TILE * 3, TILE * 3);
     /* 몸 → 갑옷 → 무기. 장비를 껴도 외형이 안 변하던 것을 고친다 */
-    drawFigure(ctx, g.player, g.player.sprite || "warrior", frameOf(pv),
+    var pSprite = g.player.sprite || "warrior";
+    drawFigure(ctx, g.player, pSprite, this.poseOf(g.player, pv, pSprite),
                this.tintOf(g.player), pxp, pyp);
 
     /* 4-b) 피격 표시 — 맞은 자리에 짧게 튀는 빛. 로그를 안 봐도 뭔가 맞았음을 안다 */

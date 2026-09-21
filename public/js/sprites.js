@@ -152,8 +152,14 @@
     var only = null;
     for (var i = 0; i < s.ops.length; i++) {
       var o = s.ops[i], k = o[0];
+      /* ⚠ ["f", 3] 처럼 하나만 받다가 **여러 프레임**도 받게 넓혔다.
+       *   팔을 움직이려면 "서기·걸음(0·1·2)에서는 이 팔, 공격(3·4)에서는 저 팔"
+       *   이 필요한데, 하나씩만 받으면 같은 팔을 세 번 적어야 하고 반드시 어긋난다. */
       if (k === "f") { only = (o[1] === null || o[1] === undefined) ? null : o[1]; continue; }
-      if (only !== null && only !== frame) continue;
+      if (only !== null) {
+        if (Array.isArray(only)) { if (only.indexOf(frame) < 0) continue; }
+        else if (only !== frame) continue;
+      }
       if (k === "rect") b.rect(o[1], o[2], o[3], o[4], P[o[5]]);
       else if (k === "ell") b.ell(o[1], o[2], o[3], o[4], P[o[5]]);
       else if (k === "line") b.line(o[1], o[2], o[3], o[4], P[o[5]]);
@@ -216,18 +222,31 @@
     return c;
   }
 
-  /* 이 스프라이트에 걸음 프레임이 있는가 — 없으면 렌더러가 굳이 프레임을 안 바꾼다 */
-  function hasFrames(name) {
+  /* 이 스프라이트가 **어떤 프레임 번호를 갖는가**.
+   * ⚠ 없는 프레임을 부르면 그 프레임 전용 그림이 하나도 안 그려진다 —
+   *   팔이나 다리가 통째로 사라진 그림이 나온다(오류는 안 난다). 부르는 쪽이
+   *   반드시 확인하고 골라야 한다. */
+  function framesOf(name) {
     var s = SPR[name];
-    if (!s) return false;
-    if (s._hf === undefined) {
-      s._hf = false;
+    if (!s) return [];
+    if (!s._frames) {
+      var set = {};
       for (var i = 0; i < s.ops.length; i++) {
-        if (s.ops[i][0] === "f" && s.ops[i][1]) { s._hf = true; break; }
+        var o = s.ops[i];
+        if (o[0] !== "f" || o[1] === null || o[1] === undefined) continue;
+        var v = o[1];
+        if (Array.isArray(v)) { for (var j = 0; j < v.length; j++) set[v[j]] = 1; }
+        else set[v] = 1;
       }
+      s._frames = Object.keys(set).map(Number).sort(function (a, b) { return a - b; });
     }
-    return s._hf;
+    return s._frames;
   }
+
+  function hasFrame(name, f) { return framesOf(name).indexOf(f) >= 0; }
+
+  /* 이 스프라이트에 걸음 프레임이 있는가 — 없으면 렌더러가 굳이 프레임을 안 바꾼다 */
+  function hasFrames(name) { return framesOf(name).length > 0; }
 
   /* ── 공용 색 ───────────────────────────────────────── */
 
@@ -598,6 +617,7 @@
       return { total: total, worst: worst, name: worstName };
     },
     hasFrames: hasFrames,
+    framesOf: framesOf, hasFrame: hasFrame,
     sizeOf: sizeOf,          /* 그리는 쪽이 바닥을 맞추려면 크기를 알아야 한다 */
     terrain: terrain,
     data: SPR

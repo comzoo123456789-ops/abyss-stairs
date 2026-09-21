@@ -1271,6 +1271,38 @@ for (const [label, args] of SCREENS) {
   console.log("글씨".padEnd(20), ok(bad === 0), ran + "개 화면 · 문제 " + bad + "개");
 }
 
+// 프레임마다 몸이 온전한가 — 팔·다리가 통째로 사라지지 않았는지
+// ⚠ 프레임 필터는 **없는 프레임을 불러도 오류를 안 낸다.** 그 프레임 전용 그림이
+//   안 그려질 뿐이다. 공격 프레임을 넣으며 서 있는 다리를 [0] 으로만 묶어 두어
+//   공격할 때마다 다리가 사라졌는데 화면에 아무 단서가 없었다.
+// ⚠ **총 픽셀 수로는 못 잡는다**(다리는 몸의 10% 남짓이라 90% 로만 준다).
+//   세로 구간(위·가운데·아래)마다 따로 재야 잡힌다.
+{
+  const rf = spawnSync(process.execPath, [path.join(ROOT, "tools", "frame-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (rf.stdout.match(/✘/g) || []).length;
+  if (rf.status !== 0) fails++;
+  console.log("프레임".padEnd(20), ok(rf.status === 0),
+    bad ? "문제 " + bad + "건" : (rf.stdout.match(/✔/g) || []).length + "개 스프라이트 통과");
+  if (bad) rf.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
+// 공격 모션 — 때릴 때 팔이 실제로 움직이는가
+// ⚠ 스프라이트에 공격 프레임이 **있다는 것**과 때릴 때 그것이 **쓰인다는 것**은
+//   다른 얘기다. 렌더러가 안 골라 주면 그림만 있고 화면은 그대로다.
+//   적을 옆에 세우고 때려서 프레임이 3 → 4 → 0 으로 도는지 잰다.
+{
+  const ra = spawnSync(process.execPath, [path.join(ROOT, "tools", "attack-check.mjs")],
+    { encoding: "utf8", cwd: ROOT });
+  const bad = (ra.stdout.match(/✘/g) || []).length;
+  if (ra.status !== 0) fails++;
+  console.log("공격 모션".padEnd(20), ok(ra.status === 0),
+    bad ? "문제 " + bad + "건" : (ra.stdout.match(/✔/g) || []).length + "개 직업 통과");
+  if (bad) ra.stdout.split(String.fromCharCode(10))
+    .filter(l => l.includes("✘")).forEach(l => console.log("   " + l.trim()));
+}
+
 // 장비 창 · 유물 표시 — 휴대폰에서 장비를 볼 수 있는가, 그리고 턴을 안 쓰는가
 {
   const rg = spawnSync(process.execPath, [path.join(ROOT, "tools", "gear-check.mjs")],

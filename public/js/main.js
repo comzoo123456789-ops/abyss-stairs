@@ -1353,6 +1353,26 @@
     /* 구역을 눈으로 보려면 그 층까지 내려가야 한다 — 검사용 창구.
      * ⚠ 게임 로직은 쓰지 않는다(__force·__putMonster 와 같은 자리). */
     window.__lvl = function () { return game.level; };
+    /* 지금 플레이어가 **어떤 자세 프레임**으로 그려지고 있는가.
+     * ⚠ 스프라이트에 공격 프레임이 있다는 것과, 때릴 때 그 프레임이 쓰인다는 것은
+     *   다른 얘기다 — 렌더러가 안 골라 주면 그림만 있고 화면은 그대로다. */
+    window.__pose = function () {
+      var sp = game.player.sprite || "warrior";
+      return view.poseOf(game.player, view.visOf(game.player), sp);
+    };
+    /* 정한 자리에 적을 놓는다(공격 모션 검사용) */
+    window.__putMonsterAt = function (x, y) {
+      var DATA = window.DATA;
+      var def = DATA.byId(DATA.MONSTERS, "rat");
+      if (!def || game.level.blocked(x, y) || game.monsterAt(x, y)) return null;
+      var mon = game.spawn(def, x, y, true);
+      mon.awake = true;
+      mon.hp = mon.maxhp = 9999;          /* 한 대에 안 죽어야 자세를 볼 수 있다 */
+      game.monsters.push(mon);
+      refresh();
+      return { x: x, y: y };
+    };
+    window.__move = function (dx, dy) { game.move(dx, dy); afterAction(); };
     window.__redraw = function () { view.draw(0); };
     window.__toDepth = function (d) {
       var guard = 0;
