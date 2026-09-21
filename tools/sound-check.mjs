@@ -108,9 +108,16 @@ console.log("모든 소리가 난다:", ok(silent.length === 0),
 /* ② 게임이 부르는 이름이 전부 표에 있는가.
  * ⚠ 반대 방향이다. 표에 있는데 안 부르는 것은 괜찮지만, 부르는데 표에
  *   없으면 **조용히 아무 일도 안 일어난다** — 그게 제단에서 일어난 일이다. */
-const src = fs.readFileSync(path.join(ROOT, "js", "game.js"), "utf8");
+/* ⚠ 전에는 game.js 한 파일만 훑었다. 실시간판에서는 소리를 부르는 자리가
+ *   여러 곳이다(전투·세계·화면) — **한 곳만 보면 나머지가 조용히 샌다.**
+ *   부르는 파일이 늘면 여기에 이름을 더한다. */
+const CALLERS = ["combat.js", "world.js", "app.js", "view.js", "ai.js"];
+const src = CALLERS
+  .filter((f) => fs.existsSync(path.join(ROOT, "js", f)))
+  .map((f) => fs.readFileSync(path.join(ROOT, "js", f), "utf8"))
+  .join("\n");
 const called = new Set();
-const re = /sfx\(\s*(?:[^)]*\?\s*)?"([a-z]+)"(?:\s*:\s*"([a-z]+)")?/g;
+const re = /SFX\.play\(\s*(?:[^)]*\?\s*)?"([a-z]+)"(?:\s*:\s*"([a-z]+)")?/g;
 let m;
 while ((m = re.exec(src))) {
   if (m[1]) called.add(m[1]);

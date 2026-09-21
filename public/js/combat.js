@@ -95,11 +95,14 @@
         if (angleDiff(Math.atan2(dy, dx), a.ang) > half) continue;
       }
       damage(world, e, t, a.m.dmg);
+      /* ⚠ 맞은 **사람 수만큼** 울리면 여럿을 한 번에 칠 때 소리가 겹쳐 찢어진다.
+       *   한 번 휘두름 = 한 번 운다(아래 hit.length 로 낸다). */
       if (a.m.push && d > 1e-6) {
         t.knock = { x: dx / d, y: dy / d, left: a.m.push, spd: 6 };
       }
       hit.push(t);
     }
+    if (hit.length && global.SFX) global.SFX.play(hit.length > 1 ? "crit" : "hit");
     return hit;
   }
 
@@ -114,6 +117,7 @@
       to.hp = 0;
       to.dead = true;
       to.deadAt = world.time;
+      if (global.SFX) global.SFX.play(to.kind === "player" ? "die" : "kill");
       world.onDeath(to, from);
     }
     return n;

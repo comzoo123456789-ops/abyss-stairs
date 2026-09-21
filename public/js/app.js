@@ -90,6 +90,16 @@
     return world;
   }
 
+  /* 배경음은 **첫 조작 뒤에** 켠다.
+   * ⚠ 브라우저는 사용자가 뭔가 누르기 전에는 소리를 못 내게 막는다(자동재생 정책).
+   *   페이지가 뜨자마자 부르면 조용히 실패하고 그 뒤로 영영 안 나온다. */
+  var musicOn = false;
+  function wakeAudio() {
+    if (musicOn) return;
+    musicOn = true;
+    if (global.MUSIC) global.MUSIC.zone("office");
+  }
+
   function boot() {
     var canvas = document.getElementById("view");
     view = new V.View(canvas);
@@ -97,6 +107,7 @@
 
     global.addEventListener("resize", function () { view.resize(); });
     global.addEventListener("keydown", function (e) {
+      wakeAudio();
       if (MOVE[e.code]) { keys[e.code] = 1; e.preventDefault(); }
       if (e.code === "KeyR") start({});
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
@@ -109,7 +120,7 @@
     });
     canvas.addEventListener("mousedown", function (e) {
       mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
-      mouse.down = true; e.preventDefault();
+      mouse.down = true; wakeAudio(); e.preventDefault();
     });
     /* ⚠ mouseup 을 캔버스에만 걸면, 캔버스 밖에서 손을 떼었을 때 **계속 눌린
      *   상태로 굳는다.** 창 전체에서 받는다. */
@@ -122,6 +133,11 @@
     global.__w = function () { return world; };
     global.__v = function () { return view; };
     global.__fps = function () { return fps.v; };
+    global.__wake = wakeAudio;
+    global.__music = function () {
+      return global.MUSIC ? { zone: global.MUSIC.current(), on: global.MUSIC.isOn() }
+                          : { zone: null, on: false };
+    };
     global.__start = start;
     global.__hold = function (codes) {
       keys = Object.create(null);

@@ -493,6 +493,9 @@
     zone: function (zoneId) { return musicStart(zoneId); },
     stop: function () { musicStop(0.6); },
     isOn: function () { return musicOn; },
+    /* 지금 무슨 곡이 도는가. 점검기가 "게임에서 정말 나고 있는가" 를 이걸로 본다 —
+     * 안에서만 알고 밖에서 못 물으면 "난다고 하는데 조용하다" 를 잡을 수 없다. */
+    current: function () { return mus ? mus.zone : null; },
     setOn: function (v) {
       musicOn = !!v;
       try { localStorage.setItem("rl_music", musicOn ? "1" : "0"); } catch (e) {}
