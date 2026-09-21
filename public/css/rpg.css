@@ -146,3 +146,24 @@ html, body {
 }
 .bar-pick .slot.on { background: #8f6bff; border-color: #8f6bff; color: #fff; }
 .bar-pick .slot:hover { border-color: #8f6bff; }
+
+/* 스킬 아이콘.
+   ⚠ 이름 글자보다 **아이콘이 먼저 읽혀야** 한다 — 전투 중에는 글자를 못 읽는다.
+     아이콘을 칸 가득 채우고 이름은 아래에 작게 깐다. */
+.sk .ico {
+  position: absolute; left: 50%; top: 2px; transform: translateX(-50%);
+  width: 34px; height: 34px; image-rendering: pixelated;
+}
+.sk .nm {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  text-align: center; font-size: 10px; line-height: 13px;
+  background: rgba(12,10,16,.78);
+}
+.sk .cd { top: 14px; text-shadow: 0 1px 3px #000, 0 0 6px #000; }
+.sk.empty .ico { display: none; }
+
+/* 재주책 제목 옆 아이콘 */
+.col.skill h3 .ico {
+  width: 26px; height: 26px; image-rendering: pixelated;
+  vertical-align: -7px; margin-right: 6px;
+}

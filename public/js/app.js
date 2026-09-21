@@ -571,7 +571,8 @@
       var r = SK.resolve(def.id, hero.skills);
       var barAt = hero.bar.indexOf(def.id);
       html += '<div class="col skill">';
-      html += '<h3>' + esc(def.name) +
+      html += '<h3><canvas class="ico" data-ico="' + esc(def.icon) + '"></canvas>' +
+        esc(def.name) +
         (barAt >= 0 ? ' <b class="key">' + (barAt + 1) + '</b>' : '') + '</h3>';
       html += '<p class="sub">' + esc(def.text) + '</p>';
       html += '<div class="tot">재사용 ' + r.cd.toFixed(1) + '초 · 시전 ' +
@@ -603,6 +604,10 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    /* ⚠ innerHTML 을 넣은 **뒤에** 그려야 한다 — 그 전에는 캔버스가 없다. */
+    box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
+      paintIcon(cv, cv.getAttribute("data-ico"), 34);
+    });
     wire(box, "syn", function (v) { takeSyn(v); });
     wire(box, "bar", function (v) { setBar(v); });
     wire(box, "reset", function () { resetSkills(); });
@@ -648,6 +653,20 @@
   /* 화면 아래 스킬 줄 — **쿨다운이 보여야** 언제 쓸지 안다.
    * ⚠ 매 프레임 innerHTML 을 다시 만들지 말 것(초당 60번이면 눈에 띄게 끊긴다).
    *   칸은 한 번만 만들고 **채움만** 고친다. */
+  /* 스프라이트 하나를 캔버스에 그린다.
+   * ⚠ **한 번만** 그린다. 매 프레임 다시 그리면 손잡이 네 칸 × 60fps = 초당 240번이다.
+   * ⚠ 도트는 흐리면 안 된다(imageSmoothingEnabled = false). */
+  function paintIcon(cv, name, px) {
+    if (!cv || !global.SPRITES) return;
+    var img = global.SPRITES.bake(name);
+    if (!img) return;
+    cv.width = px; cv.height = px;
+    var g = cv.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    g.clearRect(0, 0, px, px);
+    g.drawImage(img, 0, 0, px, px);
+  }
+
   var barEls = null;
   function buildBar() {
     var el = document.getElementById("skillbar");
@@ -657,10 +676,14 @@
     for (var i = 0; i < 4; i++) {
       var d = document.createElement("div");
       d.className = "sk";
-      d.innerHTML = '<i class="cool"></i><b class="key">' + (i + 1) +
+      /* ⚠ 아이콘이 **덮개(.cool) 밑**에 와야 쿨다운이 아이콘을 덮는다.
+       *   순서를 바꾸면 덮개가 아이콘에 가려 남은 시간이 안 읽힌다. */
+      d.innerHTML = '<canvas class="ico"></canvas>' +
+                    '<i class="cool"></i><b class="key">' + (i + 1) +
                     '</b><span class="nm"></span><span class="cd"></span>';
       el.appendChild(d);
       barEls.push({ root: d, cool: d.querySelector(".cool"),
+                    ico: d.querySelector(".ico"), painted: null,
                     nm: d.querySelector(".nm"), cd: d.querySelector(".cd") });
     }
   }
@@ -674,9 +697,12 @@
         e.root.className = "sk empty";
         e.nm.textContent = "—"; e.cd.textContent = "";
         e.cool.style.height = "0%";
+        e.painted = null;
         continue;
       }
       var def = SK.byId(id), r = SK.resolve(id, hero.skills);
+      /* ⚠ **바뀌었을 때만** 다시 굽는다(위 주석 참조). */
+      if (e.painted !== def.icon) { paintIcon(e.ico, def.icon, 40); e.painted = def.icon; }
       var left = SK.cdLeft(world, id, hero.skills);
       var lowStam = world.player.stam < r.stam;
       e.root.className = "sk" + (left > 0 ? " cooling" : "") + (lowStam ? " nostam" : "");

@@ -43,7 +43,7 @@
    *   buff   자기에게 건다
    */
   var SKILLS = [
-    { id: "cleave", name: "베어넘기기", kind: "swing", icon: "w_axe",
+    { id: "cleave", name: "베어넘기기", kind: "swing", icon: "s_cleave",
       cd: 4.0, cast: 0.25, after: 0.20, stam: 18,
       mult: 1.9, reach: 1.9, arc: 170, push: 0.6,
       text: "앞을 넓게 벤다",
@@ -54,7 +54,7 @@
           s: { mult: 0.9, cast: 0.15 } }
       ] },
 
-    { id: "dash", name: "돌진", kind: "dash", icon: "w_spear",
+    { id: "dash", name: "돌진", kind: "dash", icon: "s_dash",
       cd: 6.0, cast: 0.0, after: 0.18, stam: 22,
       mult: 1.2, dist: 4.2, speed: 22, reach: 0.9,
       text: "앞으로 뚫고 나가며 스치는 것을 벤다",
@@ -64,7 +64,7 @@
         { id: "chase", name: "연속",    text: "적을 맞히면 재사용이 2초 줄어든다", s: { refund: 2 } }
       ] },
 
-    { id: "nova", name: "충격파", kind: "nova", icon: "w_staff",
+    { id: "nova", name: "충격파", kind: "nova", icon: "s_nova",
       cd: 8.0, cast: 0.40, after: 0.25, stam: 30,
       mult: 1.5, reach: 3.2, push: 1.4,
       text: "사방으로 밀어낸다",
@@ -74,7 +74,7 @@
         { id: "quick", name: "빠르게",  text: "시전 0.40 → 0.15초", s: { cast: -0.25 } }
       ] },
 
-    { id: "burn", name: "불바다", kind: "field", icon: "potion",
+    { id: "burn", name: "불바다", kind: "field", icon: "s_burn",
       cd: 12.0, cast: 0.35, after: 0.25, stam: 34,
       mult: 0.45, reach: 2.4, dur: 6.0, tick: 0.6, range: 5.0,
       text: "가리킨 곳을 6초간 태운다",
@@ -84,7 +84,7 @@
         { id: "wide",  name: "넓게",    text: "반경 2.4 → 3.4칸", s: { reach: 1.0 } }
       ] },
 
-    { id: "ward", name: "결의", kind: "buff", icon: "shield",
+    { id: "ward", name: "결의", kind: "buff", icon: "s_ward",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 25,
       dur: 6.0, armor: 8, apsPct: 25,
       text: "6초간 방어 +8 · 공격속도 +25%",

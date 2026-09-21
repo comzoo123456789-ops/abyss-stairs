@@ -433,6 +433,74 @@ add("손으로 고쳐도 안 무너진다",
   (forged.nope ? "⚠남음" : "지워짐") + " · 손잡이 [" +
   forged.bar.map(function (x) { return x || "—"; }).join(",") + "]");
 
+/* ── ⑯ 아이콘이 **정말 그려지는가** ─────────────────────
+ * ⚠ "그림 이름이 표에 있다" 와 "화면에 보인다" 는 다른 얘기다. 이름이 틀리면
+ *   bake() 가 null 을 돌려주고 캔버스는 **빈 채로 남는다** — 오류도 안 난다.
+ *   그래서 이름을 세지 말고 **칠해진 픽셀을 센다.**
+ * ⚠ 다섯이 서로 달라야 한다. 같은 그림을 다섯 번 쓰면 손잡이에서 구별이 안 된다. */
+const icons = await ev(`(function(){
+  var S = window.SPRITES, SK = window.SKILLS;
+  var out = [];
+  for (var i = 0; i < SK.LIST.length; i++) {
+    var def = SK.LIST[i];
+    var img = S.bake(def.icon);
+    var row = { id: def.id, icon: def.icon, exists: !!img, lit: 0, colors: 0, sig: "" };
+    if (img) {
+      var c = document.createElement("canvas");
+      c.width = 32; c.height = 32;
+      var g = c.getContext("2d");
+      g.imageSmoothingEnabled = false;
+      g.drawImage(img, 0, 0, 32, 32);
+      var d = g.getImageData(0, 0, 32, 32).data;
+      var seen = {}, sum = 0;
+      for (var k = 0; k < d.length; k += 4) {
+        if (d[k + 3] < 20) continue;
+        row.lit++;
+        var key = (d[k] >> 4) + "," + (d[k+1] >> 4) + "," + (d[k+2] >> 4);
+        if (!seen[key]) { seen[key] = 1; row.colors++; }
+        sum += d[k] * 3 + d[k+1] * 5 + d[k+2] * 7 + k;
+      }
+      row.sig = String(sum);
+    }
+    out.push(row);
+  }
+  return out;
+})()`);
+const missing = icons.filter(i => !i.exists);
+const blank = icons.filter(i => i.exists && i.lit < 200);
+const dull = icons.filter(i => i.exists && i.colors < 3);
+const sigs = new Set(icons.map(i => i.sig));
+add("아이콘이 그려진다", missing.length === 0 && blank.length === 0 && dull.length === 0,
+  icons.length + "종 · " + icons.map(i => i.icon + "(" + i.lit + "점)").join(" · ") +
+  (missing.length ? " · ⚠없는 그림 " + missing.map(i => i.icon).join(",") : "") +
+  (blank.length ? " · ⚠거의 빈 것 " + blank.map(i => i.icon).join(",") : "") +
+  (dull.length ? " · ⚠색이 두 가지뿐 " + dull.map(i => i.icon).join(",") : ""));
+
+add("아이콘이 서로 다르다", sigs.size === icons.length,
+  sigs.size + " / " + icons.length + "종이 서로 다른 그림");
+
+/* 손잡이 칸에 **실제로 칠해졌는가** — 캔버스를 그대로 읽는다 */
+await ev(`(function(){
+  var h = window.__hero();
+  h.bar = ["cleave", "dash", "nova", "ward"];
+})()`);
+await sleep(300);
+const painted = await ev(`(function(){
+  var out = [];
+  document.querySelectorAll("#skillbar .sk .ico").forEach(function (cv) {
+    var g = cv.getContext("2d");
+    var d = g.getImageData(0, 0, cv.width, cv.height).data;
+    var lit = 0;
+    for (var k = 0; k < d.length; k += 4) if (d[k + 3] > 20) lit++;
+    out.push({ w: cv.width, lit: lit });
+  });
+  return out;
+})()`);
+const emptySlot = painted.filter(p => p.lit < 200);
+add("손잡이에 칠해진다", painted.length === 4 && emptySlot.length === 0,
+  "칸 " + painted.length + "개 · 칠해진 점 " + painted.map(p => p.lit).join("/") +
+  (emptySlot.length ? " · ⚠빈 칸 " + emptySlot.length + "개" : ""));
+
 add("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 3).join(" / ") : "0건");
 
 console.log("\n7단계 — 스킬(초 단위)\n");
