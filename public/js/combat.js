@@ -132,6 +132,15 @@
     var n = Math.max(1, Math.round(Math.max(raw * 0.30, raw - (to.def || 0))));
     to.hp -= n;
     to.hurt = 0.18;                 /* 맞은 티(깜빡임) — 초 */
+
+    /* 전투 타격감 피드백: 치명타 시 화면 떨림 및 스파크 파티클 */
+    if (crit) {
+      if (world.addShake) world.addShake(0.12, 3.5);
+      if (world.spawnSparks) world.spawnSparks(to.x, to.y - 0.2, "#ffd34d", 8);
+    } else if (world.spawnSparks) {
+      world.spawnSparks(to.x, to.y - 0.2, to.team !== 0 ? "#ffe9a8" : "#ff8d7a", 3);
+    }
+
     /* 흡혈 — 때린 **사람 수만큼** 회복된다(광역 무기의 값어치다) */
     if (from && from.lifeOnHit > 0 && from.hp < from.maxHp && !from.dead)
       from.hp = Math.min(from.maxHp, from.hp + from.lifeOnHit);

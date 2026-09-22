@@ -202,6 +202,13 @@
     this.recallDone = false;
     this.recallBroke = "";
 
+    /* 전투 타격감 & 시각 피드백 (Juice FX) */
+    this.shake = 0;
+    this.shakeMag = 0;
+    this.sparks = [];       /* 타격 스파크 파티클 */
+    this.orbs = [];         /* 처치 시 생성되는 경험치/영혼 및 금화 흡수 구슬 */
+    this.debris = [];       /* 바닥에 남는 타격 잔해/핏자국 */
+
     var s = this.level.upAt || { x: 2, y: 2 };
     var sx = startAt ? startAt.x : s.x + 0.5;
     var sy = startAt ? startAt.y : s.y + 0.5;
@@ -364,6 +371,50 @@
     return null;
   };
 
+  /* 화면 흔들림(Screen Shake) — 치명타나 보스 처치 등 큰 충격에 발동 */
+  World.prototype.addShake = function (time, mag) {
+    this.shake = Math.max(this.shake, time || 0.12);
+    this.shakeMag = Math.max(this.shakeMag, mag || 3.5);
+  };
+
+  /* 타격 스파크 파티클 — 피격 지점에서 튀는 파티클 */
+  World.prototype.spawnSparks = function (x, y, color, count) {
+    count = count || 5;
+    for (var i = 0; i < count; i++) {
+      if (this.sparks.length >= 60) this.sparks.shift();
+      var ang = Math.random() * Math.PI * 2;
+      var spd = 1.2 + Math.random() * 3.2;
+      this.sparks.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd,
+        color: color || "#ffd34d",
+        t: 0,
+        life: 0.18 + Math.random() * 0.14
+      });
+    }
+  };
+
+  /* 영혼/경험치/금화 흡수 구슬 */
+  World.prototype.spawnOrbs = function (x, y, kind, count) {
+    count = count || 3;
+    for (var i = 0; i < count; i++) {
+      if (this.orbs.length >= 40) this.orbs.shift();
+      var ang = Math.random() * Math.PI * 2;
+      var dist = 0.35 + Math.random() * 0.65;
+      this.orbs.push({
+        x: x, y: y,
+        vx: Math.cos(ang) * dist * 3.2,
+        vy: Math.sin(ang) * dist * 3.2,
+        burst: 0.14 + Math.random() * 0.08, /* 0.14초간 사방으로 튄 뒤 플레이어에게 유도 */
+        kind: kind || "xp",                  /* "xp" (푸른 영혼) 또는 "gold" (금빛) */
+        spd: 1.8,
+        t: 0,
+        life: 1.8
+      });
+    }
+  };
+
   World.prototype.onDeath = function (who, by) {
     this.log.push({ t: this.time, what: "death", who: who.name || who.sprite });
     /* 소환자가 죽으면 **부른 것도 함께 무너진다.**
@@ -376,6 +427,23 @@
         mn.dead = true; mn.deadAt = this.time; mn.hp = 0;
       }
     }
+
+    /* 바닥 잔해 (Debris) — 쓰러진 몬스터의 핏자국/흔적 */
+    if (who !== this.player) {
+      if (this.debris.length >= 40) this.debris.shift();
+      this.debris.push({
+        x: who.x, y: who.y,
+        color: who.boss ? "#52141a" : "#3d1419",
+        t: 0,
+        life: 8.0,
+        dots: [
+          { dx: 0, dy: 0, r: who.boss ? 3.8 : 2.5 },
+          { dx: (Math.random() - 0.5) * 0.32, dy: (Math.random() - 0.5) * 0.32, r: 1.8 },
+          { dx: (Math.random() - 0.5) * 0.44, dy: (Math.random() - 0.5) * 0.44, r: 1.4 }
+        ]
+      });
+    }
+
     if (who === this.player) { this.playerDeadAt = this.time; return; }
     /* ⚠ 보상은 **주인공이 잡았을 때만.** 안 걸면 몬스터끼리 싸움 붙였을 때나
      *   함정에 죽었을 때도 경험치가 들어온다(무한 파밍 통로다). */
@@ -389,9 +457,16 @@
     var xpMult = 1 + ((this.gear && this.gear.xpPct) || 0) / 100;
     var ups = S.gainXp(this.hero, Math.round(who.xp * xpMult));
     this.dropFrom(who);
-    if (who.xp) this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + Math.round(who.xp * xpMult) + "xp",
-                                     t: 0, life: 1.0, foe: true });
+    if (who.xp) {
+      this.spawnOrbs(who.x, who.y, "xp", 4);
+      this.floaters.push({ x: who.x, y: who.y - 1.1, text: "+" + Math.round(who.xp * xpMult) + "xp",
+                           t: 0, life: 1.0, foe: true });
+    }
+    if (who.gold) {
+      this.spawnOrbs(who.x, who.y, "gold", 3);
+    }
     if (who.boss) {
+      this.addShake(0.35, 6);
       this.log.push({ t: this.time, what: "boss", who: who.name });
       if (global.SFX) global.SFX.play("win");
     }
@@ -707,6 +782,54 @@
       var z = this.ents[i];
       if (z.dead && z !== this.player && this.time - z.deadAt > 0.9)
         this.ents.splice(i, 1);
+    }
+
+    /* ⑦ 화면 셰이크 및 시각 피드백 파티클 갱신 */
+    if (this.shake > 0) {
+      this.shake -= SIM_DT;
+      if (this.shake <= 0) { this.shake = 0; this.shakeMag = 0; }
+    }
+
+    /* 타격 스파크 */
+    for (i = this.sparks.length - 1; i >= 0; i--) {
+      var sp = this.sparks[i];
+      sp.t += SIM_DT;
+      sp.x += sp.vx * SIM_DT;
+      sp.y += sp.vy * SIM_DT;
+      if (sp.t >= sp.life) this.sparks.splice(i, 1);
+    }
+
+    /* 흡수 구슬 (Orbs) — 플레이어 몸으로 궤적을 그리며 유도 */
+    var px = this.player.x, py = this.player.y;
+    for (i = this.orbs.length - 1; i >= 0; i--) {
+      var ob = this.orbs[i];
+      ob.t += SIM_DT;
+      if (ob.burst > 0) {
+        ob.burst -= SIM_DT;
+        ob.x += ob.vx * SIM_DT;
+        ob.y += ob.vy * SIM_DT;
+        ob.vx *= 0.88;
+        ob.vy *= 0.88;
+      } else {
+        var odx = px - ob.x, ody = py - ob.y;
+        var od = Math.hypot(odx, ody);
+        if (od < 0.35 || ob.t >= ob.life) {
+          /* 플레이어에 닿아 흡수됨 */
+          this.spawnSparks(px, py - 0.4, ob.kind === "gold" ? "#ffd700" : "#7ae8ff", 2);
+          this.orbs.splice(i, 1);
+          continue;
+        }
+        ob.spd = Math.min(14, ob.spd + 22 * SIM_DT);
+        ob.x += (odx / od) * ob.spd * SIM_DT;
+        ob.y += (ody / od) * ob.spd * SIM_DT;
+      }
+    }
+
+    /* 바닥 잔해 (Debris) */
+    for (i = this.debris.length - 1; i >= 0; i--) {
+      var db = this.debris[i];
+      db.t += SIM_DT;
+      if (db.t >= db.life) this.debris.splice(i, 1);
     }
 
     this.tickRecall(SIM_DT);

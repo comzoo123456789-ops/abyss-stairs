@@ -138,6 +138,11 @@
     /* 기기 픽셀 격자에 맞춘다 — 안 맞추면 도트 가장자리가 지글거린다 */
     ox = Math.round(ox * q) / q;
     oy = Math.round(oy * q) / q;
+    if (world.shake > 0) {
+      var sm = world.shakeMag || 3;
+      ox += (Math.random() - 0.5) * sm;
+      oy += (Math.random() - 0.5) * sm;
+    }
     this.ox = ox; this.oy = oy;
 
     /* 보이는 범위만 — 한 칸씩 넉넉히 잡는다(가장자리 잘림 방지).
@@ -199,6 +204,26 @@
       }
     }
     ctx.globalAlpha = 1;
+
+    /* 2-a0) 바닥 타격 잔해(Debris) — 쓰러진 몬스터의 핏자국/흔적 */
+    if (world.debris) {
+      for (var bi = 0; bi < world.debris.length; bi++) {
+        var deb = world.debris[bi];
+        var dtx0 = Math.floor(deb.x), dty0 = Math.floor(deb.y);
+        if (dtx0 < 0 || dty0 < 0 || dtx0 >= lv.w || dty0 >= lv.h) continue;
+        if (!lv.visible[dty0 * lv.w + dtx0]) continue;
+        var dbk = Math.max(0, 1 - deb.t / deb.life);
+        var dbAlpha = (dbk * 0.45).toFixed(3);
+        var dbx = deb.x * TILE + ox, dby = deb.y * TILE + oy;
+        ctx.fillStyle = hexA(deb.color, parseFloat(dbAlpha));
+        for (var dti = 0; dti < deb.dots.length; dti++) {
+          var dot = deb.dots[dti];
+          ctx.beginPath();
+          ctx.arc(dbx + dot.dx * TILE, dby + dot.dy * TILE, dot.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
 
     /* 2-a) 마을 물건(포탈·샘). 개체보다 **먼저** 그린다 — 앞을 지나가면
      *      사람이 앞에 서야 한다(뒤에 그리면 물건이 사람을 덮는다).
@@ -439,11 +464,55 @@
     }
     ctx.globalAlpha = 1;
 
+    /* 전투 피드백 파티클(스파크) & 영혼/금화 흡수 구슬 */
+    this.drawCombatFX(world, ox, oy);
+
     /* 마을 전용 앰비언트 파티클(불티, 반딧불이) & NPC 말풍선 */
     this.drawAmbientFX(world, ox, oy);
     this.drawTownBubbles(world, ox, oy);
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+
+  /* 전투 타격 스파크 및 영혼/금화 흡수 구슬 FX */
+  View.prototype.drawCombatFX = function (world, ox, oy) {
+    var ctx = this.ctx;
+    var i;
+
+    /* 1) 타격 스파크 파티클 */
+    if (world.sparks && world.sparks.length) {
+      for (i = 0; i < world.sparks.length; i++) {
+        var sp = world.sparks[i];
+        var sk = 1 - sp.t / sp.life;
+        if (sk <= 0) continue;
+        var sx = sp.x * TILE + ox, sy = sp.y * TILE + oy;
+        ctx.fillStyle = sp.color;
+        ctx.globalAlpha = Math.min(1, sk * 1.6);
+        ctx.fillRect(Math.round(sx), Math.round(sy), 2, 2);
+      }
+    }
+
+    /* 2) 영혼/경험치 및 금화 흡수 구슬 (Orbs) */
+    if (world.orbs && world.orbs.length) {
+      for (i = 0; i < world.orbs.length; i++) {
+        var ob = world.orbs[i];
+        var oxp = ob.x * TILE + ox, oyp = ob.y * TILE + oy;
+        var isGold = ob.kind === "gold";
+        var colCore = isGold ? "#fff4b8" : "#e0f7ff";
+        var colGlow = isGold ? "rgba(255,190,40,0.45)" : "rgba(110,220,255,0.50)";
+
+        /* 외곽 광채 */
+        ctx.fillStyle = colGlow;
+        ctx.beginPath();
+        ctx.arc(oxp, oyp, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        /* 중심 코어 */
+        ctx.fillStyle = colCore;
+        ctx.fillRect(Math.round(oxp - 1.5), Math.round(oyp - 1.5), 3, 3);
+      }
+    }
+    ctx.globalAlpha = 1;
   };
 
   /* 마을 환경 파티클 — 모닥불 불티(Ember) & 반딧불이(Firefly) */
