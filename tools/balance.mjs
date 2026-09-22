@@ -13,7 +13,7 @@
  *   바뀐다 — 바꿀 때는 왜 바꾸는지 함께 적을 것.
  * ⚠ 화면을 그리지 않는다. 규칙만 돌려 실시간의 수백 배로 간다(실측 약 600배).
  *
- * 쓰기:  node tools/balance.mjs [판수]      기본 12판/조건
+ * 쓰기:  node tools/balance.mjs [판수] [경력수]   기본 12판/조건 · 5경력
  */
 import { spawn } from "child_process";
 import fs from "fs"; import os from "os"; import path from "path"; import http from "http";
@@ -446,7 +446,11 @@ await ev(`window.__career = function (SEED, CLS) {
 /* ⚠ **한 번만 돌리면 안 된다.** 지도·전리품·죽음이 판마다 달라 한 경력의 결과가
  *   24분에서 50분까지 흔들렸다(실측). 여러 번 돌려 평균과 폭을 함께 본다 —
  *   폭을 안 보면 "좋아졌다" 와 "운이 좋았다" 를 구별할 수 없다. */
-const CAREERS = 5;
+/* ⚠ 경력 수를 **늘릴 수 있어야** 한다. 치명타가 Math.random 이라 5경력으로는
+ *   "안 죽는다(0회)" 와 "한 번쯤 죽는다(1.6회)" 를 못 가린다 — 실측으로 같은
+ *   코드가 둘 다 냈다. 판정이 흔들릴 때는 판수를 늘려 다시 잰다.
+ *   쓰기: node tools/balance.mjs [판수] [경력수] */
+const CAREERS = Math.max(3, parseInt(process.argv[3] || "5", 10));
 const careers = [];
 for (let c = 0; c < CAREERS; c++) careers.push(await ev(`window.__career(${4000 + c * 331})`));
 const mean = f => careers.reduce((a, r) => a + f(r), 0) / careers.length;
@@ -459,6 +463,11 @@ const career = {
   marks: {}, path: careers[0].path,
   lo: Math.min(...careers.map(r => r.minutes)),
   hi: Math.max(...careers.map(r => r.minutes)),
+  /* 죽음의 **폭** — 평균만 보면 잡음을 결론으로 보고한다(치명타가 Math.random
+   * 이라 씨앗을 고정해도 경력마다 다르다). */
+  dLo: Math.min(...careers.map(r => r.deaths)),
+  dHi: Math.max(...careers.map(r => r.deaths)),
+  dEach: careers.map(r => r.deaths),
   done: careers.filter(r => r.level >= 30).length
 };
 for (const lv of [5, 10, 15, 20, 25, 30]) {
@@ -520,6 +529,9 @@ for (const st of careers.reduce(function (a, r) { return a.concat(r.path); }, []
 }
 /* ⚠ 층마다 여러 번 나오므로 줄줄이 찍지 않는다 — **평균만** 본다. */
 const avgGap = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : 0;
+/* ⚠ 이 격차는 ①번 곡선을 기준으로 잰다. 그 곡선 자체가 12판 표본이라
+ *   실행마다 몇 층의 판정이 뒤집히고, 그때 기준이 바뀌어 격차도 함께 흔들린다
+ *   (실측: +2.7 → -0.2). 방향만 참고하고 값을 단정하지 말 것. */
 console.log("  평균 " + (avgGap >= 0 ? "+" : "") + avgGap.toFixed(1) + "레벨" +
   (avgGap > 5 ? "  ⚠ 적정보다 한참 위 — 파밍할 이유가 없다"
    : avgGap < -3 ? "  ⚠ 적정보다 아래 — 벽에 부딪힌다" : ""));
@@ -635,11 +647,17 @@ V("끝까지 갈 수 있는가", career.done === CAREERS,
   career.done + "/" + CAREERS + " 경력이 Lv.30 · 30층에 닿았다 · " +
   career.minutes + "분(" + career.lo + "~" + career.hi + ") — 목표 분량은 정해야 할 값이다");
 
-/* 긴장 — **한 번도 안 죽으면** 아무 일도 안 일어난 것이다 */
-V("긴장이 있는가", career.deaths >= 0.5,
-  "경력당 죽음 " + career.deaths + "회 · 적정보다 평균 " +
+/* 긴장 — **한 번도 안 죽으면** 아무 일도 안 일어난 것이다.
+ * ⚠ 문턱(0.5회)이 경력들의 **폭 안**에 들면 판정하지 않는다. 치명타가
+ *   Math.random 이라 실행마다 흔들린다 — 실측으로 같은 코드가 0회와 1.6회를
+ *   모두 냈다. "이 경력 수로는 못 가린다" 와 "통과" 는 다른 말이다. */
+const tenShaky = career.dLo < 0.5 && career.dHi >= 0.5;
+verdict.push(["긴장이 있는가", career.deaths >= 0.5,
+  "경력당 죽음 " + career.deaths + "회(" + career.dEach.join("·") + ") · 적정보다 평균 " +
   (avgGap >= 0 ? "+" : "") + avgGap.toFixed(1) + "레벨" +
-  (career.deaths < 0.5 ? "  ⚠ 곧장 내려가도 안 죽는다 — 파밍할 이유가 없다" : ""));
+  (tenShaky ? "  ⚠ " + CAREERS + "경력으로는 못 가린다 — 안 죽은 경력과 죽은 경력이 섞였다"
+   : career.deaths < 0.5 ? "  ⚠ 곧장 내려가도 안 죽는다 — 파밍할 이유가 없다" : ""),
+  tenShaky]);
 
 V("봇 실력에 안 기대는가", swing < 0.5,
   "24층을 Lv.18 로 · 빠른 봇 " + (fast.clear * 100).toFixed(0) + "% ~ 느린 봇 " +
