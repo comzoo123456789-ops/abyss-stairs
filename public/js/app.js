@@ -1049,6 +1049,39 @@
     return !!box && !box.hidden;
   }
 
+  /* ── 상세 정보 팝업 ──────────────────────────────────── */
+  function openInfo() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var p = world.player;
+    var alive = 0;
+    for (var i = 0; i < world.ents.length; i++)
+      if (!world.ents[i].dead && world.ents[i].team !== 0 && world.ents[i].kind !== "dummy") alive++;
+    var need = global.SAVE.needFor(hero.level);
+    var place = world.inTown ? "마을 (0층)" : world.depth + "층 (심연의 던전)";
+    var xpPct = need ? Math.min(100, Math.round((hero.xp || 0) / need * 100)) : 0;
+
+    var html = '<h2>캐릭터 정보</h2><div class="sub">현재 탐험 및 보유 상태</div>' +
+      '<div class="cols" style="flex-direction:column; gap:8px;">' +
+        '<div class="col" style="width:100%; font-size:14px; line-height:1.9;">' +
+          '<div>• 직업 / 레벨: <b style="color:#ffd24a;">' + (world.cls ? world.cls.name : "방랑자") + ' (Lv.' + hero.level + ')</b></div>' +
+          '<div>• 현재 위치: <b>' + place + '</b></div>' +
+          '<div>• 보유 금화: <b style="color:#ffe9a8;">' + hero.gold + ' GOLD</b></div>' +
+          '<div>• 보유 물약: <b style="color:#9fd29a;">' + hero.potions + '개</b></div>' +
+          '<div>• 체력 / 기력: <b style="color:#ff6a52;">' + Math.round(p.hp) + '/' + p.maxHp + '</b> · <b style="color:#6fb3d2;">' + Math.round(p.stam) + '/' + (p.stamMax || 100) + '</b></div>' +
+          '<div>• 던전 남은 적: ' + (alive > 0 ? '<b style="color:#ff6a52;">' + alive + '마리</b>' : '<b style="color:#9fd29a;">없음 (안전)</b>') + '</div>' +
+          '<div>• 경험치: <b>' + (hero.xp || 0) + ' / ' + need + ' (' + xpPct + '%)</b></div>' +
+          '<div>• 최고 도달 층: <b>' + hero.maxDepth + '층</b></div>' +
+        '</div>' +
+      '</div><p class="sub" style="margin-top:10px;">Esc 또는 ✕ 닫기 버튼으로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel";
+    box.hidden = false;
+    box.style.display = "";
+    addCloseButton(box);
+  }
+
   function diag() {
     var el = document.getElementById("diag");
     if (!el) return;
@@ -1059,7 +1092,7 @@
     var need = global.SAVE.needFor(hero.level);
     var place = world.inTown ? "마을" : world.depth + "층";
     el.innerHTML =
-      '<div class="d-badge">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></div>' +
+      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></span> <b class="d-info-btn">ℹ️ 정보</b></div>' +
       '<div class="d-info">' +
         '<span>' + place + '</span>' +
         '<span>금화 <b>' + hero.gold + '</b></span>' +
@@ -1100,6 +1133,17 @@
     var bSkills = document.getElementById("btnSkills");
     var bPot = document.getElementById("btnPotion");
     var bRec = document.getElementById("btnRecall");
+    var elDiag = document.getElementById("diag");
+
+    if (elDiag) {
+      var doDiag = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio();
+        if (panelOpen()) closePanel(); else openInfo();
+      };
+      elDiag.addEventListener("touchstart", doDiag, { passive: false });
+      elDiag.addEventListener("click", doDiag);
+    }
 
     if (bBag) {
       var doBag = function (e) {

@@ -41,7 +41,7 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   z-index: 100; pointer-events: none;
 }
 .diag {
-  pointer-events: none;
+  pointer-events: auto; cursor: pointer;
   display: flex; align-items: center; gap: 8px;
   padding: 5px 10px; border-radius: 6px;
   background: rgba(22, 17, 26, 0.88);
@@ -49,7 +49,10 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   box-shadow: 0 4px 14px rgba(0,0,0,.6), inset 0 0 8px rgba(0,0,0,.4);
   font-size: 11px; letter-spacing: .02em;
   backdrop-filter: blur(2px);
+  user-select: none; -webkit-user-select: none;
+  transition: background .15s, border-color .15s;
 }
+.diag:hover { background: #36281b; border-color: #ffd24a; }
 .diag .d-badge {
   display: inline-flex; align-items: center; gap: 4px;
   padding: 2px 6px; border-radius: 4px;
@@ -468,15 +471,15 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 /* 모바일 & 터치 디바이스 반응형 미디어 쿼리 */
 @media (max-width: 800px), (pointer: coarse) {
   .action-pad { display: block; }
-  .hint { display: none; }
+  .hint { display: none !important; }
   .bottom { bottom: 15px; }
   .bottom .skillbar { display: none; } /* 모바일에서는 우측 액션 패드가 대신함 */
   .orb-hp { position: absolute; left: 14px; bottom: 12px; width: 52px; height: 52px; }
   .orb-st { position: absolute; left: 74px; bottom: 12px; width: 52px; height: 52px; }
   .top-bar { top: 6px; left: 6px; right: 6px; gap: 4px; align-items: center; }
-  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; max-width: 46%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .diag .d-info { gap: 3px; font-size: 10px; }
-  .diag .d-fps { display: none; }
+  .diag { font-size: 10px; padding: 4px 6px; gap: 2px; max-width: 35%; overflow: hidden; white-space: nowrap; }
+  .diag .d-info { display: none !important; }
+  .diag .d-fps { display: none !important; }
   .top-menu { gap: 3px; }
   .tbtn kbd { display: none; }
   .tbtn .t-lbl { display: inline-block; font-size: 10px; color: #ffe9a8; font-weight: bold; }
