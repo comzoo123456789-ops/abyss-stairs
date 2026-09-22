@@ -13,9 +13,14 @@
   var keys = Object.create(null);
   var last = 0, raf = 0;
   var fps = { t: 0, n: 0, v: 0 };
-  /* 마우스 — **PC 에서 조준은 마우스다.** 이것이 손가락 조작과 가장 크게 다른 점이고
-   * PC 부터 만들기로 한 이유다(엄지 두 개로는 이동과 조준을 동시에 못 한다). */
+  /* 마우스 — **PC 에서 조준은 마우스다.** */
   var mouse = { cx: 0, cy: 0, down: false, has: false };
+  /* 모바일 터치 및 가상 조이스틱 상태 */
+  var touchMove = { x: 0, y: 0 };
+  var touchAttacking = false;
+  var stickTouchId = null;
+  var stickStartX = 0, stickStartY = 0;
+
   /* 캐릭터. **세계보다 오래 산다** — 층을 옮겨도 이 객체 하나를 계속 들고 다닌다.
    * ⚠ 층마다 새로 불러오지 말 것. 저장이 마지막으로 쓰인 시점으로 되감긴다. */
   var hero = null;
@@ -38,6 +43,10 @@
       var d = MOVE[k];
       if (d) { x += d[0]; y += d[1]; }
     }
+    if (touchMove.x || touchMove.y) {
+      x += touchMove.x;
+      y += touchMove.y;
+    }
     /* ⚠ 반대 방향을 함께 누르면 0 이 되어야 한다(WD-002 키보드처럼 눌림이
      *   남는 경우가 있다). 합으로 두면 저절로 상쇄된다 — 정규화는 규칙 쪽에서 한다. */
     return { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
@@ -55,7 +64,7 @@
 
     /* 누르고 있으면 계속 휘두른다 — 공격속도는 COMBAT 이 지킨다.
      * ⚠ 여기서 주기를 다시 세지 말 것. 두 곳이 되면 한쪽만 고쳐져 어긋난다. */
-    if (mouse.down && !world.player.dead) {
+    if ((mouse.down || touchAttacking) && !world.player.dead) {
       var a = aim();
       world.swing(a.x, a.y);
     }
@@ -153,6 +162,12 @@
     }
     el.textContent = txt;
     el.style.visibility = txt ? "visible" : "hidden";
+
+    var eBtn = document.getElementById("btnTouchInteract");
+    if (eBtn) {
+      var hasInteract = !world.player.dead && !!(world.nearDrop() || world.nearProp() || world.onStairs());
+      eBtn.classList.toggle("highlight", hasInteract);
+    }
   }
 
   /* 물약 — 실시간에서는 **멈추지 않는다.** 마시는 동안에도 맞는다.
@@ -855,6 +870,34 @@
       e.cd.textContent = left > 0 ? left.toFixed(1) : "";
       e.cool.style.height = left > 0 ? Math.round(left / r.cd * 100) + "%" : "0%";
     }
+
+    /* 모바일 우측 액션 패드 스킬 버튼 동기화 */
+    for (var j = 0; j < 4; j++) {
+      var mid = hero.bar[j];
+      var mbtn = document.getElementById("btnSkill" + (j + 1));
+      if (!mbtn) continue;
+      if (!mid) {
+        mbtn.style.opacity = "0.35";
+        var mcdEmpty = mbtn.querySelector(".cd"); if (mcdEmpty) mcdEmpty.textContent = "";
+        var mcoolEmpty = mbtn.querySelector(".cool"); if (mcoolEmpty) mcoolEmpty.style.height = "0%";
+        continue;
+      }
+      var mdef = SK.byId(mid), mr = SK.resolve(mid, hero.skills);
+      var mico = mbtn.querySelector(".act-ico");
+      if (mbtn._painted !== mdef.icon && mico) { paintIcon(mico, mdef.icon, 30); mbtn._painted = mdef.icon; }
+      var mleft = SK.cdLeft(world, mid, hero.skills);
+      mbtn.style.opacity = "1";
+      mbtn.classList.toggle("cooling", mleft > 0);
+      var mcd = mbtn.querySelector(".cd");
+      if (mcd) mcd.textContent = mleft > 0 ? mleft.toFixed(1) : "";
+      var mcool = mbtn.querySelector(".cool");
+      if (mcool) mcool.style.height = mleft > 0 ? Math.round(mleft / mr.cd * 100) + "%" : "0%";
+    }
+
+    /* 상단 메뉴 물약 개수 갱신 */
+    var potEl = document.getElementById("potNum");
+    if (potEl) potEl.textContent = hero.potions || 0;
+
     /* 구슬 — **체력은 왼쪽, 기력은 오른쪽.** 아래에서 차오른다.
      * ⚠ 숫자만 두면 전투 중에 못 읽는다. 차오르는 높이가 먼저 읽히고
      *   숫자는 확인용이다. */
@@ -998,6 +1041,156 @@
     if (global.MUSIC) global.MUSIC.zone("office");
   }
 
+  /* 상단 퀵 메뉴바 이벤트 등록 (가방·재주책·물약·귀환) */
+  function setupTopMenu() {
+    var bBag = document.getElementById("btnBag");
+    var bSkills = document.getElementById("btnSkills");
+    var bPot = document.getElementById("btnPotion");
+    var bRec = document.getElementById("btnRecall");
+
+    if (bBag) bBag.addEventListener("click", function (e) {
+      wakeAudio();
+      if (panelOpen()) closePanel(); else openBag();
+    });
+    if (bSkills) bSkills.addEventListener("click", function (e) {
+      wakeAudio();
+      if (panelOpen()) closePanel(); else openBook();
+    });
+    if (bPot) bPot.addEventListener("click", function (e) {
+      wakeAudio(); drink();
+    });
+    if (bRec) bRec.addEventListener("click", function (e) {
+      wakeAudio(); if (!world.inTown) world.recallStart();
+    });
+  }
+
+  /* 모바일 가상 조이스틱 & 우측 액션 패드 터치 이벤트 */
+  function setupTouchControls(canvas) {
+    var vstick = document.getElementById("vstick");
+    var vknob = vstick ? vstick.querySelector(".vstick-knob") : null;
+    var btnAtk = document.getElementById("btnTouchAtk");
+    var btnE = document.getElementById("btnTouchInteract");
+
+    /* 1) 좌측 가상 조이스틱 */
+    canvas.addEventListener("touchstart", function (e) {
+      wakeAudio();
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.clientX < window.innerWidth * 0.55 && stickTouchId === null) {
+          stickTouchId = t.identifier;
+          stickStartX = t.clientX;
+          stickStartY = t.clientY;
+          if (vstick) {
+            vstick.style.left = stickStartX + "px";
+            vstick.style.top = stickStartY + "px";
+            vstick.style.display = "block";
+            if (vknob) vknob.style.transform = "translate(0, 0)";
+          }
+          touchMove.x = 0; touchMove.y = 0;
+        } else if (stickTouchId !== null && t.clientX >= window.innerWidth * 0.55) {
+          /* 오른쪽 캔버스 터치 시 조준 & 공격 */
+          mouse.cx = t.clientX; mouse.cy = t.clientY; mouse.has = true;
+          mouse.down = true;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    canvas.addEventListener("touchmove", function (e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === stickTouchId) {
+          var dx = t.clientX - stickStartX;
+          var dy = t.clientY - stickStartY;
+          var dist = Math.hypot(dx, dy);
+          var maxR = 40;
+          var clampR = Math.min(dist, maxR);
+          var nx = dist > 1e-3 ? (dx / dist) : 0;
+          var ny = dist > 1e-3 ? (dy / dist) : 0;
+          if (vknob) vknob.style.transform = "translate(" + (nx * clampR) + "px," + (ny * clampR) + "px)";
+          var power = clampR / maxR;
+          touchMove.x = nx * power;
+          touchMove.y = ny * power;
+          if (Math.abs(touchMove.x) > 0.05 && world && world.player) {
+            world.player.face = touchMove.x > 0 ? 1 : -1;
+          }
+        } else {
+          mouse.cx = t.clientX; mouse.cy = t.clientY; mouse.has = true;
+        }
+      }
+      e.preventDefault();
+    }, { passive: false });
+
+    function onTouchEnd(e) {
+      for (var i = 0; i < e.changedTouches.length; i++) {
+        var t = e.changedTouches[i];
+        if (t.identifier === stickTouchId) {
+          stickTouchId = null;
+          touchMove.x = 0; touchMove.y = 0;
+          if (vstick) vstick.style.display = "none";
+        }
+      }
+      if (e.touches.length === 0) {
+        mouse.down = false;
+        touchAttacking = false;
+      }
+    }
+    canvas.addEventListener("touchend", onTouchEnd, { passive: false });
+    canvas.addEventListener("touchcancel", onTouchEnd, { passive: false });
+    global.addEventListener("touchend", onTouchEnd);
+    global.addEventListener("touchcancel", onTouchEnd);
+
+    /* 2) 우측 액션 패드 (공격, 스킬, 상호작용) */
+    if (btnAtk) {
+      btnAtk.addEventListener("touchstart", function (e) {
+        wakeAudio();
+        touchAttacking = true;
+        e.preventDefault();
+      }, { passive: false });
+      btnAtk.addEventListener("touchend", function (e) {
+        touchAttacking = false;
+        e.preventDefault();
+      }, { passive: false });
+      btnAtk.addEventListener("mousedown", function (e) {
+        wakeAudio();
+        touchAttacking = true;
+      });
+      global.addEventListener("mouseup", function () {
+        touchAttacking = false;
+      });
+    }
+
+    if (btnE) {
+      btnE.addEventListener("touchstart", function (e) {
+        wakeAudio();
+        interact();
+        e.preventDefault();
+      }, { passive: false });
+      btnE.addEventListener("click", function (e) {
+        wakeAudio();
+        interact();
+      });
+    }
+
+    /* 1~4 스킬 버튼 */
+    for (var s = 1; s <= 4; s++) {
+      (function (slotIndex) {
+        var sb = document.getElementById("btnSkill" + (slotIndex + 1));
+        if (sb) {
+          sb.addEventListener("touchstart", function (e) {
+            wakeAudio();
+            castSlot(slotIndex);
+            e.preventDefault();
+          }, { passive: false });
+          sb.addEventListener("click", function (e) {
+            wakeAudio();
+            castSlot(slotIndex);
+          });
+        }
+      })(s - 1);
+    }
+  }
+
   function boot() {
     var canvas = document.getElementById("view");
     view = new V.View(canvas);
@@ -1097,7 +1290,9 @@
     document.addEventListener("visibilitychange", function () {
       if (document.visibilityState === "hidden") global.SAVE.save(hero);
     });
-    global.addEventListener("beforeunload", function () { global.SAVE.save(hero); });
+    /* 상단 통합 메뉴바 및 모바일 가상 조이스틱/액션 패드 바인딩 */
+    setupTopMenu();
+    setupTouchControls(canvas);
 
     /* 점검기용 손잡이. 화면을 눈으로 보는 것만으로는 60Hz 규칙이 맞는지 모른다. */
     global.__w = function () { return world; };

@@ -34,10 +34,14 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
  *   그 틈 때문에 resize 가 매 프레임 조금씩 커진다(무한 성장). */
 #view { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 
-/* 좌측 상단 상태 뱃지 — 「관리소 장부」 미니 위젯 */
-.diag {
-  position: absolute; left: 10px; top: 10px;
+/* 상단 헤더 바 — 좌측 상태 뱃지 & 우측 통합 퀵 메뉴바 */
+.top-bar {
+  position: absolute; left: 10px; top: 10px; right: 10px;
+  display: flex; justify-content: space-between; align-items: flex-start;
   z-index: 100; pointer-events: none;
+}
+.diag {
+  pointer-events: none;
   display: flex; align-items: center; gap: 8px;
   padding: 5px 10px; border-radius: 6px;
   background: rgba(22, 17, 26, 0.88);
@@ -63,6 +67,34 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 .diag .d-info .d-foe b { color: #ff6a52; font-weight: bold; }
 .diag .d-fps {
   font-size: 10px; color: #7a7060; margin-left: 2px;
+}
+
+/* 상단 우측 퀵 메뉴바 */
+.top-menu {
+  display: flex; gap: 6px; pointer-events: auto;
+}
+.tbtn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 8px; border-radius: 6px;
+  background: rgba(26, 20, 32, 0.92);
+  border: 1px solid #5a4632;
+  color: #e8e2d4; font-family: var(--sans); font-size: 12px;
+  box-shadow: 0 3px 10px rgba(0,0,0,.5);
+  cursor: pointer; user-select: none; -webkit-user-select: none;
+  touch-action: manipulation;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.tbtn:hover { background: #36281b; border-color: #ffd24a; }
+.tbtn:active { transform: translateY(1px) scale(0.97); }
+.tbtn .t-ico { font-size: 13px; }
+.tbtn .t-lbl { font-size: 11px; color: #ffe9a8; font-weight: bold; }
+.tbtn kbd {
+  display: inline-block; font-size: 9px; padding: 1px 3px; border-radius: 3px;
+  background: #362c3f; color: #b5a88e; border: 1px solid #4a3d54; margin-left: 2px;
+}
+.tbtn .t-badge {
+  display: inline-block; font-size: 10px; padding: 1px 4px; border-radius: 8px;
+  background: #d84a3c; color: #fff; font-weight: bold; margin-left: 2px;
 }
 .hint {
   position: absolute; left: 0; right: 0; bottom: 8px;
@@ -318,4 +350,115 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 .smrow .no {
   font-size: 11px; color: #7a7286; font-weight: normal;
   text-align: center; padding: 5px 9px;
+}
+
+/* ── 모바일 가상 조이스틱 (좌측 엄지 영역) ─────────────────── */
+.vstick {
+  position: absolute; z-index: 150; pointer-events: none;
+  width: 100px; height: 100px; transform: translate(-50%, -50%);
+}
+.vstick-base {
+  width: 100%; height: 100%; border-radius: 50%;
+  background: rgba(22, 17, 26, 0.55);
+  border: 2px solid rgba(255, 210, 74, 0.45);
+  box-shadow: 0 0 16px rgba(0,0,0,0.6), inset 0 0 12px rgba(255, 210, 74, 0.2);
+  position: relative; display: flex; align-items: center; justify-content: center;
+}
+.vstick-knob {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffd24a, #855b1b);
+  border: 2px solid #fff;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.7);
+  position: absolute; transform: translate(0, 0);
+  transition: transform 0.04s ease-out;
+}
+
+/* ── 모바일 우측 액션 & 스킬 클러스터 패드 (우측 엄지 영역) ─── */
+.action-pad {
+  position: absolute; right: 12px; bottom: 16px;
+  width: 180px; height: 180px;
+  z-index: 150; pointer-events: none;
+  display: none; /* 데스크톱 기본 숨김, 모바일/터치 활성화 */
+}
+.action-pad .act-btn {
+  position: absolute; pointer-events: auto;
+  border-radius: 50%; border: 2px solid #7a5c38;
+  background: rgba(26, 20, 32, 0.94);
+  color: #e8e2d4; font-family: var(--sans);
+  box-shadow: 0 4px 14px rgba(0,0,0,0.7);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+  transition: transform .08s, background .15s, border-color .15s;
+}
+.action-pad .act-btn:active {
+  transform: scale(0.92); background: #3d2c1c; border-color: #ffd24a;
+}
+
+/* 대형 메인 공격 버튼 */
+.act-atk {
+  right: 10px; bottom: 10px;
+  width: 68px; height: 68px;
+  background: radial-gradient(circle at 35% 35%, #9c2f2a, #4a1210) !important;
+  border: 3px solid #ff6a52 !important;
+}
+.act-atk .act-ico-txt { font-size: 24px; pointer-events: none; }
+.act-atk .lbl { font-size: 11px; font-weight: bold; color: #ffe9a8; margin-top: -2px; pointer-events: none; }
+
+/* 1, 2, 3, 4 스킬 버튼 — 공격 버튼 주변 부채꼴 배치 */
+.act-sk {
+  width: 44px; height: 44px;
+  overflow: hidden;
+}
+.act-sk .act-ico { width: 30px; height: 30px; image-rendering: pixelated; pointer-events: none; }
+.act-sk .lbl {
+  position: absolute; right: 4px; bottom: 1px;
+  font-size: 9px; color: #ffd24a; font-weight: bold; pointer-events: none;
+}
+.act-sk .cool {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0%;
+  background: rgba(0,0,0,0.75); pointer-events: none;
+}
+.act-sk .cd {
+  position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: bold; color: #ffe9a8;
+  text-shadow: 0 1px 3px #000; pointer-events: none;
+}
+.act-sk.cooling { border-color: #4a4254; opacity: 0.85; }
+
+/* 부채꼴 좌표 */
+#btnSkill1 { right: 88px; bottom: 10px; }
+#btnSkill2 { right: 82px; bottom: 62px; }
+#btnSkill3 { right: 50px; bottom: 94px; }
+#btnSkill4 { right: 0px;  bottom: 88px; }
+
+/* E 상호작용 버튼 */
+.act-e {
+  right: -2px; bottom: 14px;
+  width: 42px; height: 42px;
+  background: #36281b !important; border-color: #ffd24a !important;
+}
+.act-e .act-ico-txt { font-size: 18px; pointer-events: none; }
+.act-e .lbl { font-size: 9px; font-weight: bold; color: #ffd24a; pointer-events: none; }
+.act-e.highlight {
+  animation: actPulse 0.9s infinite alternate;
+}
+@keyframes actPulse {
+  0% { box-shadow: 0 0 6px #ffd24a; transform: scale(1); }
+  100% { box-shadow: 0 0 18px #ff6a52; transform: scale(1.08); }
+}
+
+/* 모바일 & 터치 디바이스 반응형 미디어 쿼리 */
+@media (max-width: 800px), (pointer: coarse) {
+  .action-pad { display: block; }
+  .hint { display: none; }
+  .bottom { bottom: 15px; }
+  .bottom .skillbar { display: none; } /* 모바일에서는 우측 액션 패드가 대신함 */
+  .orb-hp { position: absolute; left: 14px; bottom: 12px; width: 52px; height: 52px; }
+  .orb-st { position: absolute; left: 74px; bottom: 12px; width: 52px; height: 52px; }
+  .top-bar { top: 6px; left: 6px; right: 6px; }
+  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; }
+  .tbtn kbd { display: none; }
+  .tbtn { padding: 4px 6px; font-size: 11px; }
 }
