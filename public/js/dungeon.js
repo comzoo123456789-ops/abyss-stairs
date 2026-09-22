@@ -9,7 +9,7 @@
 
   /* ⚠ DEEP 은 **두 번째 계단**이다. STAIRS 로 같이 두면 어느 쪽을 밟았는지
    *   구별할 수가 없다 — 칸 종류를 따로 둔다(그리기·길찾기·검사가 다 이걸 본다). */
-  var WALL = 0, FLOOR = 1, DOOR = 2, STAIRS = 3, DEEP = 4;
+  var WALL = 0, FLOOR = 1, DOOR = 2, STAIRS = 3, DEEP = 4, DOOR_OPEN = 5;
 
   /* ── 씨앗 있는 난수 ──────────────────────────────────────
    * Math.random 을 그대로 쓰면 같은 층을 두 번 볼 수 없다.
@@ -31,6 +31,7 @@
     this.tiles = new Uint8Array(w * h);      /* 지형 */
     this.visible = new Uint8Array(w * h);    /* 지금 보이는가 */
     this.seen = new Uint8Array(w * h);       /* 한 번이라도 봤는가(= 흐릿하게 기억) */
+    this.walked = new Uint8Array(w * h);     /* 직접 걸어온 길(미니맵 표시용) */
     /* 함정은 지형이 아니라 별도 층이다 — 지형에 섞으면 밟기 전에 벽처럼 보이거나
      * 발동한 뒤 바닥으로 되돌릴 때 원래 지형을 잃는다. 0=없음 1=숨음 2=드러남 */
     this.traps = new Uint8Array(w * h);
@@ -53,9 +54,10 @@
     return this.tiles[y * this.w + x];
   };
   Level.prototype.blocked = function (x, y) {
-    return this.at(x, y) === WALL;
+    var t = this.at(x, y);
+    return t === WALL || t === DOOR;
   };
-  /* 문은 통과할 수 있지만 시야는 막는다 — 복도 너머가 다 보이면 긴장이 없다. */
+  /* 닫힌 문과 벽은 시야를 막고, 열린 문은 시야가 통과한다. */
   Level.prototype.opaque = function (x, y) {
     var t = this.at(x, y);
     return t === WALL || t === DOOR;
@@ -95,17 +97,69 @@
    *
    * 문이 설 자리는 "지나가려면 반드시 여기를 통과해야 하는 한 칸" 이다 —
    * 좌우가 뚫려 있고 위아래가 벽이거나, 그 반대. 그리고 문 옆에 문을 두지 않는다. */
-  function isChoke(lv, x, y) {
+  function inRoom(r, x, y) {
+    return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
+  }
+  function inAnyRoom(lv, x, y) {
+    for (var i = 0; i < lv.rooms.length; i++) {
+      if (inRoom(lv.rooms[i], x, y)) return true;
+    }
+    return false;
+  }
+  function inAnyRoomInterior(lv, x, y) {
+    for (var i = 0; i < lv.rooms.length; i++) {
+      var r = lv.rooms[i];
+      if (x > r.x && x < r.x + r.w - 1 && y > r.y && y < r.y + r.h - 1) return true;
+    }
+    return false;
+  }
+
+  /* 문이 설 자리:
+   * 1. 지나갈 수 있는 바닥 칸(FLOOR)이어야 한다.
+   * 2. 방 내부 한가운데(기둥이나 모서리 틈새)가 아니어야 한다.
+   * 3. 좌우가 벽이고 위아래가 바닥이거나, 위아래가 벽이고 좌우가 바닥인 1칸 통로.
+   * 4. 방의 출입구 역할을 해야 한다(통로의 한쪽은 방, 반대쪽은 복도 또는 다른 방).
+   * 5. 양쪽이 모두 같은 방 내부면 방 안의 기둥 사이이므로 절대 문을 세우지 않는다. */
+  function isDoorway(lv, x, y) {
     if (lv.at(x, y) !== FLOOR) return false;
-    var l = !lv.blocked(x - 1, y), r = !lv.blocked(x + 1, y);
-    var u = !lv.blocked(x, y - 1), dn = !lv.blocked(x, y + 1);
-    return (l && r && !u && !dn) || (u && dn && !l && !r);
+    if (inAnyRoomInterior(lv, x, y)) return false;
+
+    if (lv.downAt && Math.abs(lv.downAt.x - x) <= 1 && Math.abs(lv.downAt.y - y) <= 1) return false;
+    if (lv.deepAt && Math.abs(lv.deepAt.x - x) <= 1 && Math.abs(lv.deepAt.y - y) <= 1) return false;
+    if (lv.upAt && Math.abs(lv.upAt.x - x) <= 1 && Math.abs(lv.upAt.y - y) <= 1) return false;
+
+    var lWall = lv.at(x - 1, y) === WALL, rWall = lv.at(x + 1, y) === WALL;
+    var uWall = lv.at(x, y - 1) === WALL, dWall = lv.at(x, y + 1) === WALL;
+    var lFloor = lv.at(x - 1, y) === FLOOR, rFloor = lv.at(x + 1, y) === FLOOR;
+    var uFloor = lv.at(x, y - 1) === FLOOR, dFloor = lv.at(x, y + 1) === FLOOR;
+
+    var hDoor = (uWall && dWall && lFloor && rFloor);
+    var vDoor = (lWall && rWall && uFloor && dFloor);
+    if (!hDoor && !vDoor) return false;
+
+    var c1InRoom = hDoor ? inAnyRoom(lv, x - 1, y) : inAnyRoom(lv, x, y - 1);
+    var c2InRoom = hDoor ? inAnyRoom(lv, x + 1, y) : inAnyRoom(lv, x, y + 1);
+    var selfInRoom = inAnyRoom(lv, x, y);
+
+    if (!c1InRoom && !c2InRoom && !selfInRoom) return false;
+
+    // 양쪽 통로가 동일한 방이면 방 안쪽 틈새이므로 배제
+    for (var i = 0; i < lv.rooms.length; i++) {
+      var r = lv.rooms[i];
+      var s1 = hDoor ? inRoom(r, x - 1, y) : inRoom(r, x, y - 1);
+      var s2 = hDoor ? inRoom(r, x + 1, y) : inRoom(r, x, y + 1);
+      if (s1 && s2) return false;
+    }
+
+    return true;
   }
 
   function nearDoor(lv, x, y) {
-    for (var j = -1; j <= 1; j++)
-      for (var i = -1; i <= 1; i++)
-        if (lv.at(x + i, y + j) === DOOR) return true;
+    for (var j = -2; j <= 2; j++)
+      for (var i = -2; i <= 2; i++) {
+        var t = lv.at(x + i, y + j);
+        if (t === DOOR || t === DOOR_OPEN) return true;
+      }
     return false;
   }
 
@@ -209,7 +263,7 @@
     var cand = [];
     for (var y = 1; y < lv.h - 1; y++) {
       for (var x = 1; x < lv.w - 1; x++) {
-        if (isChoke(lv, x, y)) cand.push([x, y]);
+        if (isDoorway(lv, x, y)) cand.push([x, y]);
       }
     }
     /* 후보를 섞어 한쪽으로 몰리지 않게 한다 */
@@ -217,7 +271,7 @@
       var k = Math.floor(rng() * (s + 1));
       var t = cand[s]; cand[s] = cand[k]; cand[k] = t;
     }
-    /* 층에 문 3~5개면 충분하다. 확률만 두면 층마다 0개~열몇 개로 들쭉날쭉하다. */
+    /* 층에 문 3~5개면 충분하다. */
     var want = 3 + Math.floor(rng() * 3);
     var placed = 0;
     for (var c = 0; c < cand.length && placed < want; c++) {
@@ -270,30 +324,18 @@
     shapeRooms(lv, rng);
     placeDoors(lv, rng);
 
-    /* 보물방 — 시작 방이 아닌 가장 작은 방. **입구에만** 문을 단다.
-     * ⚠ 예전에는 둘레를 전부 문으로 바꿨다. 복도가 방 옆을 따라 지나가면 그 줄이
-     *   통째로 문이 되어 한 층에 문이 열 개씩 생겼다 — 그래서 문이 많아 보였다.
-     * ⚠ 벽으로 막지도 않는다. 들어갈 길이 없으면 아이템이 영영 안 닿는다. */
+    /* 보물방 — 시작 방이 아닌 가장 작은 방. 입구 통로에 문을 단다. */
     lv.treasure = null;
     if (depth >= 2 && rng() < 0.4 && lv.rooms.length >= 4) {
       var cands = lv.rooms.slice(1).sort(function (a, b) { return a.w * a.h - b.w * b.h; });
       var tr = cands[0];
-      /* 방 안쪽 한 칸 테두리에서 '바깥과 이어지는 칸' 만 문으로 — 그게 입구다 */
       var doors = 0;
-      for (var ty = tr.y; ty < tr.y + tr.h && doors < 2; ty++) {
-        for (var tx = tr.x; tx < tr.x + tr.w && doors < 2; tx++) {
-          var onEdge = (tx === tr.x || tx === tr.x + tr.w - 1 || ty === tr.y || ty === tr.y + tr.h - 1);
-          if (!onEdge || lv.at(tx, ty) !== FLOOR) continue;
-          /* 방 밖으로 통하는 이웃이 있는가 */
-          var opens = false;
-          for (var s2 = 0; s2 < 4; s2++) {
-            var nx2 = tx + [0, 0, -1, 1][s2], ny2 = ty + [-1, 1, 0, 0][s2];
-            if (nx2 >= tr.x && nx2 < tr.x + tr.w && ny2 >= tr.y && ny2 < tr.y + tr.h) continue;
-            if (!lv.blocked(nx2, ny2)) { opens = true; break; }
+      for (var ty = tr.y - 1; ty <= tr.y + tr.h && doors < 1; ty++) {
+        for (var tx = tr.x - 1; tx <= tr.x + tr.w && doors < 1; tx++) {
+          if (isDoorway(lv, tx, ty) && !nearDoor(lv, tx, ty)) {
+            lv.tiles[lv.idx(tx, ty)] = DOOR;
+            doors++;
           }
-          if (!opens || nearDoor(lv, tx, ty)) continue;
-          lv.tiles[lv.idx(tx, ty)] = DOOR;
-          doors++;
         }
       }
       lv.treasure = tr;
@@ -431,7 +473,7 @@
   }
 
   global.DUNGEON = {
-    WALL: WALL, FLOOR: FLOOR, DOOR: DOOR, STAIRS: STAIRS, DEEP: DEEP,
+    WALL: WALL, FLOOR: FLOOR, DOOR: DOOR, STAIRS: STAIRS, DEEP: DEEP, DOOR_OPEN: DOOR_OPEN,
     /* ⚠ 마을은 손으로 만든 지도다(town.js). 생성기를 안 쓰므로 Level 을 밖에서
      *   만들 수 있어야 한다 — 안 열면 town.js 가 Level 을 베껴 두 벌이 된다. */
     Level: Level,

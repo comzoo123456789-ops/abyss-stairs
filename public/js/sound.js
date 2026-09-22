@@ -314,6 +314,11 @@
         tone(a, out, { type: "triangle", f0: f, f1: f, dur: 0.30, vol: 0.364, at: i * 0.13, send: 0.6 });
         tone(a, out, { type: "sine", f0: f * 2, f1: f * 2, dur: 0.22, vol: 0.13, at: i * 0.13, send: 0.7 });
       });
+    },
+    /* 문 — 삐걱이며 열리고 닫히는 나무/돌 마찰음 */
+    door: function (a, out) {
+      tone(a, out, { type: "triangle", f0: 170, f1: 95, dur: 0.16, vol: 0.28, send: 0.4 });
+      hiss(a, out, { dur: 0.13, vol: 0.22, cut: 1400, curve: 1.5, at: 0.02, send: 0.3 });
     }
   };
 

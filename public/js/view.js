@@ -185,6 +185,7 @@
           if (fzone && zones) fz = zones[fzone[id]] || zone;
           ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), fz), sx, sy);
           if (t === D.DOOR) ctx.drawImage(S.bake("door"), sx, sy);
+          else if (t === D.DOOR_OPEN) ctx.drawImage(S.bake("door_open"), sx, sy);
           else if (t === D.STAIRS) ctx.drawImage(S.bake("stairs"), sx, sy);
           else if (t === D.DEEP) ctx.drawImage(S.bake("deep"), sx, sy);
         }

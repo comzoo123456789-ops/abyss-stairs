@@ -37,7 +37,8 @@
   function solid(lv, tx, ty) {
     /* 바깥은 벽으로 친다 — 안 그러면 지도 밖으로 걸어 나간다 */
     if (tx < 0 || ty < 0 || tx >= lv.w || ty >= lv.h) return true;
-    return lv.tiles[ty * lv.w + tx] === D.WALL;
+    var t = lv.tiles[ty * lv.w + tx];
+    return t === D.WALL || t === D.DOOR;
   }
 
   /* 몸을 (x,y) 에 두었을 때 벽에 겹치는가.
@@ -837,6 +838,10 @@
     }
 
     this.tickRecall(SIM_DT);
+    var ptx = Math.floor(this.player.x), pty = Math.floor(this.player.y);
+    if (this.level.inside(ptx, pty)) {
+      this.level.walked[pty * this.level.w + ptx] = 1;
+    }
     this.refreshFov();
     this.time += SIM_DT;
     this.steps++;
@@ -854,6 +859,56 @@
       if (d < bd) { bd = d; best = o; }
     }
     return best;
+  };
+
+  /* 근처에 여닫을 수 있는 문이 있는가 (거리 1.45 이내) */
+  World.prototype.nearDoor = function () {
+    var lv = this.level;
+    var p = this.player;
+    var tx = Math.floor(p.x), ty = Math.floor(p.y);
+    var best = null, bd = 1.45;
+    for (var dy = -1; dy <= 1; dy++) {
+      for (var dx = -1; dx <= 1; dx++) {
+        var x = tx + dx, y = ty + dy;
+        if (!lv.inside(x, y)) continue;
+        var t = lv.at(x, y);
+        if (t === D.DOOR || t === D.DOOR_OPEN) {
+          var dist = Math.hypot(x + 0.5 - p.x, y + 0.5 - p.y);
+          if (dist < bd) {
+            bd = dist;
+            best = { x: x, y: y, open: (t === D.DOOR_OPEN) };
+          }
+        }
+      }
+    }
+    return best;
+  };
+
+  /* 문 열기 / 닫기 */
+  World.prototype.toggleDoor = function (door) {
+    if (!door) return { ok: false };
+    var lv = this.level;
+    var idx = lv.idx(door.x, door.y);
+    if (door.open) {
+      /* 닫으려 할 때: 문틀 사이에 플레이어나 살아있는 몬스터가 서 있으면 못 닫는다 */
+      for (var i = 0; i < this.ents.length; i++) {
+        var e = this.ents[i];
+        if (e.dead) continue;
+        if (Math.abs(e.x - (door.x + 0.5)) < 0.55 && Math.abs(e.y - (door.y + 0.5)) < 0.55) {
+          return { ok: false, msg: "문 사이에 무언가 있어 닫을 수 없다" };
+        }
+      }
+      lv.tiles[idx] = D.DOOR;
+      this.refreshFov();
+      if (global.SFX) global.SFX.play("door");
+      return { ok: true, state: "closed" };
+    } else {
+      /* 열기 */
+      lv.tiles[idx] = D.DOOR_OPEN;
+      this.refreshFov();
+      if (global.SFX) global.SFX.play("door");
+      return { ok: true, state: "open" };
+    }
   };
 
   /* 밟고 선 칸이 계단인가 — 던전에서 더 내려가는 길이다.

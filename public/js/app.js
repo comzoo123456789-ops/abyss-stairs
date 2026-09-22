@@ -178,7 +178,93 @@
    * ⚠ **눌러야 뭔가 일어나는 자리에는 반드시 글자가 있어야 한다.** 아이콘만
    *   두거나 아무 표시도 없으면 회원은 그 자리를 그냥 지나친다(마을에 서서
    *   "어디로 가야 하지" 를 묻게 된다). */
+  /* ── 던전 미니맵 (걸어온 길 탐험 지도) ────────────────────────── */
+  var miniCanvas = null;
+  var miniCtx = null;
+
+  function renderMinimap() {
+    var box = document.getElementById("minimapBox");
+    if (!box) return;
+    if (world.inTown || world.depth === 0) {
+      box.style.display = "none";
+      return;
+    }
+    box.style.display = "block";
+
+    if (!miniCanvas) {
+      miniCanvas = document.getElementById("minimap");
+      if (miniCanvas) miniCtx = miniCanvas.getContext("2d");
+    }
+    if (!miniCanvas || !miniCtx) return;
+
+    var lv = world.level;
+    var mw = miniCanvas.width;
+    var mh = miniCanvas.height;
+    var scaleX = mw / lv.w;
+    var scaleY = mh / lv.h;
+
+    miniCtx.fillStyle = "#120e17";
+    miniCtx.fillRect(0, 0, mw, mh);
+
+    var D = global.DUNGEON;
+    for (var y = 0; y < lv.h; y++) {
+      for (var x = 0; x < lv.w; x++) {
+        var id = y * lv.w + x;
+        if (!lv.seen[id]) continue;
+        var t = lv.tiles[id];
+        var rx = x * scaleX, ry = y * scaleY;
+        var rw = Math.max(1, scaleX), rh = Math.max(1, scaleY);
+
+        if (t === D.WALL) {
+          miniCtx.fillStyle = "#261f30";
+          miniCtx.fillRect(rx, ry, rw, rh);
+        } else if (t === D.DOOR) {
+          miniCtx.fillStyle = "#eab308";
+          miniCtx.fillRect(rx, ry, rw, rh);
+        } else if (t === D.DOOR_OPEN) {
+          miniCtx.fillStyle = "#22c55e";
+          miniCtx.fillRect(rx, ry, rw, rh);
+        } else if (t === D.STAIRS) {
+          miniCtx.fillStyle = "#06b6d4";
+          miniCtx.fillRect(rx, ry, rw, rh);
+        } else if (t === D.DEEP) {
+          miniCtx.fillStyle = "#ec4899";
+          miniCtx.fillRect(rx, ry, rw, rh);
+        } else {
+          if (lv.walked && lv.walked[id]) {
+            miniCtx.fillStyle = "#a28ebd";
+          } else {
+            miniCtx.fillStyle = "#4a3e59";
+          }
+          miniCtx.fillRect(rx, ry, rw, rh);
+        }
+      }
+    }
+
+    /* 시야 안의 적 표시 */
+    miniCtx.fillStyle = "#ef4444";
+    for (var i = 0; i < world.ents.length; i++) {
+      var e = world.ents[i];
+      if (e.dead || e.team === 0 || e.kind === "dummy") continue;
+      var ex = Math.floor(e.x), ey = Math.floor(e.y);
+      if (lv.inside(ex, ey) && lv.visible[ey * lv.w + ex]) {
+        miniCtx.fillRect(e.x * scaleX - 1, e.y * scaleY - 1, 2, 2);
+      }
+    }
+
+    /* 플레이어 위치 */
+    var p = world.player;
+    var px = p.x * scaleX, py = p.y * scaleY;
+    miniCtx.fillStyle = "#ffd24a";
+    miniCtx.beginPath();
+    miniCtx.arc(px, py, 2.5, 0, Math.PI * 2);
+    miniCtx.fill();
+    miniCtx.fillStyle = "#ffffff";
+    miniCtx.fillRect(px - 0.75, py - 0.75, 1.5, 1.5);
+  }
+
   function hud() {
+    renderMinimap();
     var el = document.getElementById("act");
     if (!el) return;
     var txt = "";
@@ -189,6 +275,7 @@
     } else {
       var dp = world.nearDrop();
       var pr = world.nearProp();
+      var dr = world.nearDoor();
       /* ⚠ 전리품을 **먼저** 본다. 포탈 위에 떨어진 물건을 못 줍는 일이 없게. */
       if (dp) {
         var ti = global.ITEMS.tierOf(dp.item.tier);
@@ -197,6 +284,7 @@
       }
       else if (pr) txt = "[E] " + pr.def.label + " — " + pr.def.verb;
       else if (world.onStairs()) txt = "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
+      else if (dr) txt = dr.open ? "[E] 문 — 닫기" : "[E] 문 — 열기";
       else if (!world.inTown) txt = "[T] 마을로 귀환 (2초간 가만히)";
     }
     el.textContent = txt;
@@ -204,7 +292,7 @@
 
     var eBtn = document.getElementById("btnTouchInteract");
     if (eBtn) {
-      var hasInteract = !world.player.dead && !!(world.nearDrop() || world.nearProp() || world.onStairs());
+      var hasInteract = !world.player.dead && !!(world.nearDrop() || world.nearProp() || world.onStairs() || world.nearDoor());
       eBtn.classList.toggle("highlight", hasInteract);
     }
   }
@@ -266,7 +354,13 @@
       }
       return;
     }
-    if (world.onStairs()) descend();
+    if (world.onStairs()) { descend(); return; }
+    var dr = world.nearDoor();
+    if (dr) {
+      var res = world.toggleDoor(dr);
+      if (!res.ok && res.msg) toast(res.msg);
+      return;
+    }
   }
 
   /* 층 선택 창. 캔버스가 아니라 **DOM** 이다 — 글자를 고르는 자리는
@@ -1517,7 +1611,7 @@
     };
     global.__near = function () {
       var pr = world.nearProp();
-      return pr ? pr.id : (world.onStairs() ? "stairs" : null);
+      return pr ? pr.id : (world.onStairs() ? "stairs" : (world.nearDoor() ? "door" : null));
     };
     global.__save = function () { return global.SAVE.save(hero); };
     global.__reload = function () {
