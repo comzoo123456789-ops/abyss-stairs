@@ -463,6 +463,18 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 .act-e.highlight {
   animation: actPulse 0.9s infinite alternate;
 }
+
+/* 귀환 (T) 버튼 — 4번 스킬 위(right: 15px, bottom: 158px) 배치 */
+.act-rec {
+  right: 15px; bottom: 158px;
+  width: 44px; height: 44px;
+  background: #281e36 !important; border-color: #8f6bff !important;
+}
+.act-rec .act-ico-txt { font-size: 18px; pointer-events: none; }
+.act-rec .lbl { font-size: 9px; font-weight: bold; color: #ffe9a8; pointer-events: none; }
+.act-rec.highlight {
+  animation: actPulse 0.9s infinite alternate;
+}
 @keyframes actPulse {
   0% { box-shadow: 0 0 6px #ffd24a; transform: scale(1); }
   100% { box-shadow: 0 0 18px #ff6a52; transform: scale(1.08); }

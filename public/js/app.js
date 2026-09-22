@@ -937,17 +937,23 @@
     var potEl = document.getElementById("potNum");
     if (potEl) potEl.textContent = hero.potions || 0;
     var mRec = document.getElementById("btnRecall");
-    if (mRec && world) {
-      if (world.inTown) {
-        mRec.style.opacity = "0.45";
-        mRec.classList.remove("highlight");
-      } else if (world.recall) {
-        mRec.style.opacity = "1";
-        mRec.classList.add("highlight");
-      } else {
-        mRec.style.opacity = "1";
-        mRec.classList.remove("highlight");
-      }
+    var tRec = document.getElementById("btnTouchRecall");
+    if (world) {
+      var inTown = world.inTown;
+      var isRecall = world.recall;
+      [mRec, tRec].forEach(function (el) {
+        if (!el) return;
+        if (inTown) {
+          el.style.opacity = "0.45";
+          el.classList.remove("highlight");
+        } else if (isRecall) {
+          el.style.opacity = "1";
+          el.classList.add("highlight");
+        } else {
+          el.style.opacity = "1";
+          el.classList.remove("highlight");
+        }
+      });
     }
 
     /* 구슬 — **체력은 왼쪽, 기력은 오른쪽.** 아래에서 차오른다.
@@ -1300,6 +1306,22 @@
         wakeAudio();
         interact();
       });
+    }
+
+    var btnTouchRec = document.getElementById("btnTouchRecall");
+    if (btnTouchRec) {
+      var doTouchRecall = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio();
+        if (panelOpen()) closePanel();
+        if (!world || world.inTown) {
+          toast("마을에서는 귀환할 수 없다 (이미 마을)");
+          return;
+        }
+        world.recallStart();
+      };
+      btnTouchRec.addEventListener("touchstart", doTouchRecall, { passive: false });
+      btnTouchRec.addEventListener("click", doTouchRecall);
     }
 
     /* 1~4 스킬 버튼 */
