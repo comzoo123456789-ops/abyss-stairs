@@ -49,19 +49,11 @@
   function View(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    /* 던전에서 쓰는 배율.
-     * ⚠ 2.0 이었는데 **마을과 1.85배나 달랐다**(실측 1280폭: 마을 1.08 · 던전 2.00
-     *   · 주인공 화면 높이 46px ↔ 86px). 층에 들어가면 캐릭터와 지도가 갑자기
-     *   커져 "줄인 크기가 아니다" 로 읽혔다.
-     * ⚠ 마을 배율은 **창 크기에 따라 달라지고**(지도가 들어오는 배율) 던전은
-     *   고정이라, 창이 작을수록 차이가 벌어진다. 이 값을 내리면 던전만 작아지는
-     *   게 아니라 **양쪽 차이도 함께 줄어든다** — 마을 공식이 min(fit, baseZoom)
-     *   이기 때문이다(1280 에서 1.39배 · 1920 에서 1.0배).
-     * ⚠ 도트가 고른 것은 **정수 배율(1·2)** 뿐이다. 1.5 는 한 도트가 1px 또는
-     *   2px 로 갈려 살짝 들쭉날쭉하다 — 마을이 이미 1.08 로 돌고 있어 새로
-     *   생기는 문제는 아니다. */
-    this.baseZoom = 1.5;
-    this.zoom = 1.5;
+    /* 화면 배율.
+     * ⚠ 마을과 던전의 크기가 서로 다르면 위화감이 생기므로 같은 배율을 쓴다.
+     * ⚠ 도트가 가장 고르고 선명한 것은 정수 배율(2.0)이다. */
+    this.baseZoom = 2.0;
+    this.zoom = 2.0;
     this.dpr = 1;
     this.viewW = 0; this.viewH = 0;
     this.zone = null;
@@ -104,15 +96,9 @@
   View.prototype.draw = function (world, alpha) {
     var ctx = this.ctx, lv = world.level;
     var p = world.player;
-    /* **거점은 전체가 보여야 한다.** 던전은 좁게 봐야 무섭고, 마을은 넓게 봐야
-     * 어디에 뭐가 있는지 안다 — 같은 확대를 쓰면 마을이 "좁은 복도" 로 읽힌다
-     * (실측으로 그렇게 나왔다). 마을에서만 지도가 화면에 들어오는 배율로 내린다.
-     * ⚠ 1 아래로는 안 내린다. 도트가 한 픽셀 밑으로 줄면 지글거린다. */
+    /* 마을과 던전의 캐릭터 및 맵 크기를 완전히 일치시킨다.
+     * 카메라가 플레이어를 중심에 두고 스크롤하므로 동일한 배율을 유지한다. */
     var want = this.baseZoom;
-    if (world.inTown) {
-      var fitW = this.cssW / (lv.w * TILE), fitH = this.cssH / (lv.h * TILE);
-      want = Math.max(1, Math.min(this.baseZoom, Math.min(fitW, fitH)));
-    }
     if (Math.abs(want - this.zoom) > 0.001) {
       this.zoom = want;
       this.viewW = this.cssW / this.zoom;
