@@ -123,6 +123,25 @@
       from: 19, hp: 60, dmg: 18, spd: 3.1, xp: 60, gold: 18, w: 18, r: 0.40,
       swing: { aps: 0.70, windup: 0.40, recover: 0.34, reach: 1.30, arc: 130, push: 0.70 } },
 
+    /* ── 언데드 셋 — **뼈 무덤 구역(19~24층)**.
+     * ⚠ 사용자 메모는 "1구역 묘지" 였지만 1구역은 지금 **관리소 아래**(1~6층)다.
+     *   언데드가 사는 곳은 4구역 뼈 무덤이라 그쪽에 넣었다. 묘지를 1구역에 새로
+     *   만들 생각이면 구역 표(ZONES)와 보스까지 함께 손대야 한다.
+     * ⚠ 사령술사는 **소환을 안 한다.** 지금 있는 행동(AI)은 melee·archer·mage·
+     *   healer·breaker 다섯뿐이고 소환하는 것이 없다 — 영혼염 지팡이에 맞춰
+     *   mage(장판)로 두었다. 소환을 붙이려면 새 행동을 만들어야 한다. */
+    { id: "skel_warrior", name: "해골 전사", sprite: "m_skel_warrior", brain: "melee",
+      from: 19, hp: 55, dmg: 16, spd: 3.2, xp: 58, gold: 17, w: 16,
+      /* 방패를 들었으니 느리게·무겁게 — 오크와 해골 사이 */
+      swing: { aps: 0.78, windup: 0.34, recover: 0.30, reach: 1.20, arc: 115, push: 0.55 } },
+
+    { id: "skel_archer", name: "해골 궁수", sprite: "m_skel_archer", brain: "archer",
+      from: 19, hp: 34, dmg: 13, spd: 3.3, xp: 48, gold: 14, w: 14,
+      shot: { cd: 1.6, cast: 0.42, speed: 14, range: 10.0, keep: 5.5 } },
+
+    { id: "necro", name: "사령술사", sprite: "m_necro", brain: "mage",
+      from: 21, hp: 44, dmg: 10, spd: 2.8, xp: 70, gold: 22, w: 9,
+      field: { cd: 4.0, cast: 0.75, r: 2.6, dur: 5.5, tick: 0.50, range: 7.5 } },
     { id: "troll", name: "트롤", sprite: "troll", brain: "melee",
       from: 24, hp: 110, dmg: 26, spd: 2.8, xp: 95, gold: 28, w: 12, r: 0.46,
       swing: { aps: 0.55, windup: 0.55, recover: 0.42, reach: 1.55, arc: 150, push: 1.10 } }

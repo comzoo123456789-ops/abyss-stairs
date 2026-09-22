@@ -211,6 +211,20 @@ window.__trials = function (cfg, n) {
     n: n, clear: p, se: Math.sqrt(p * (1 - p) / n),
     time: +avg(function (r) { return r.time; }, won).toFixed(1),
     taken: Math.round(avg(function (r) { return r.taken; })),
+    /* 받은 피해의 **표준오차** — 평균만 적으면 잡음이 결론이 된다.
+     * 실측: 같은 코드로 "16% 덜 맞는다" 와 "6% 더 맞는다" 가 번갈아 나왔다. */
+    takenSe: (function () {
+      var m = avg(function (r) { return r.taken; });
+      var v = avg(function (r) { return (r.taken - m) * (r.taken - m); });
+      return Math.sqrt(v / Math.max(1, rows.length));
+    })(),
+    /* 초당 받은 피해 — **총량보다 이쪽이 옳다.** 피하면 판이 길어져 총량은
+     * 늘어도 초당으로는 줄 수 있다. */
+    takenPerSec: (function () {
+      var t = 0, sec = 0;
+      for (var i = 0; i < rows.length; i++) { t += rows[i].taken; sec += rows[i].time; }
+      return sec > 0 ? t / sec : 0;
+    })(),
     hpLow: +avg(function (r) { return r.hpLow; }).toFixed(2),
     potions: +avg(function (r) { return r.potions; }).toFixed(1),
     kills: +avg(function (r) { return r.kills; }).toFixed(1),
@@ -665,9 +679,21 @@ V("봇 실력에 안 기대는가", swing < 0.5,
 
 /* ⚠ 이것이 **실시간 전투가 성립한다는 증거**다. 피하나 안 피하나 같으면
  *   선딜도 예고도 아무 뜻이 없고, 그냥 수치 싸움이다. */
-V("피하는 것이 값어치를 하는가", dodgeWorth > 0.15,
-  "안 피하면 " + blind.taken + " 피해 · 피하면 " + mid.taken + " 피해 (" +
-  (dodgeWorth * 100).toFixed(0) + "% 덜 맞는다)");
+/* ⚠ 문턱이 **오차 안**에 들면 판정하지 않는다. 두 평균의 차이라 오차는
+ *   각각의 오차를 합친 것이다(sqrt(a²+b²)). */
+const dodgeDiff = blind.taken - mid.taken;
+const dodgeSe = Math.sqrt(blind.takenSe * blind.takenSe + mid.takenSe * mid.takenSe);
+const dodgeShaky = Math.abs(dodgeDiff) < 1.96 * dodgeSe;
+const dpsWorth = blind.takenPerSec > 0
+  ? (blind.takenPerSec - mid.takenPerSec) / blind.takenPerSec : 0;
+verdict.push(["피하는 것이 값어치를 하는가", dodgeWorth > 0.15,
+  "안 피하면 " + blind.taken + "±" + (1.96 * blind.takenSe).toFixed(0) +
+  " · 피하면 " + mid.taken + "±" + (1.96 * mid.takenSe).toFixed(0) + " 피해 (" +
+  (dodgeWorth * 100).toFixed(0) + "% 덜 맞는다) · 초당 " +
+  blind.takenPerSec.toFixed(1) + " → " + mid.takenPerSec.toFixed(1) +
+  "(" + (dpsWorth * 100).toFixed(0) + "%)" +
+  (dodgeShaky ? "  ⚠ 차이가 오차 안이라 이 판수로는 못 가린다" : ""),
+  dodgeShaky]);
 
 /* ⚠ 옛 턴제판에서 쓰던 잣대를 그대로 가져왔다 — **25%p 이하**.
  *   그보다 벌어지면 "고를 수 있다" 가 아니라 "정답이 있다" 가 된다. */
