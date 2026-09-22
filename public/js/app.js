@@ -285,6 +285,7 @@
     box.className = "panel";
     box.hidden = false;
     box.style.display = "";
+    addCloseButton(box);
     var btns = box.querySelectorAll("button[data-depth]");
     for (var i = 0; i < btns.length; i++) {
       btns[i].addEventListener("click", function () {
@@ -316,6 +317,22 @@
      *   둘 다 건다 — 전에 같은 함정을 여러 번 밟았다. */
     box.style.display = "none";
     box.innerHTML = "";
+  }
+
+  function addCloseButton(box) {
+    if (!box) return;
+    var btn = document.createElement("button");
+    btn.className = "panel-close";
+    btn.innerHTML = "✕ 닫기";
+    btn.title = "창 닫기 (Esc)";
+    var doClose = function (e) {
+      if (e) e.preventDefault();
+      wakeAudio();
+      closePanel();
+    };
+    btn.addEventListener("touchstart", doClose, { passive: false });
+    btn.addEventListener("click", doClose);
+    box.appendChild(btn);
   }
   /* ── 가방과 장착 ───────────────────────────────────────
    * ⚠ 수치는 **world.gear** 를 읽는다. 여기서 다시 더하면 두 벌이 되어
@@ -415,6 +432,7 @@
     box.hidden = false;
     box.style.display = "";
     box.className = "panel wide";
+    addCloseButton(box);
 
     box.querySelectorAll("[data-on]").forEach(function (el) {
       el.addEventListener("click", function () { equipFromBag(Number(this.getAttribute("data-on"))); });
@@ -506,6 +524,7 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    addCloseButton(box);
     wire(box, "buy", function () { buyPotion(); });
     wire(box, "sell", function (v) { sellOne(Number(v)); });
     wire(box, "selljunk", function () { sellJunk(); });
@@ -569,6 +588,7 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    addCloseButton(box);
     wire(box, "enh", function (k) { doSmith(k, "enh"); });
     wire(box, "ref", function (k) { doSmith(k, "ref"); });
   }
@@ -705,6 +725,7 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    addCloseButton(box);
     wire(box, "put", function (v) { moveItem(hero.bag, hero.stash, Number(v), S.STASH, "창고가 가득 찼다"); });
     wire(box, "get", function (v) { moveItem(hero.stash, hero.bag, Number(v), S.BAG, "가방이 가득 찼다"); });
   }
@@ -781,6 +802,7 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    addCloseButton(box);
     /* ⚠ innerHTML 을 넣은 **뒤에** 그려야 한다 — 그 전에는 캔버스가 없다. */
     box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
       paintIcon(cv, cv.getAttribute("data-ico"), 34);
@@ -911,9 +933,22 @@
       if (mcool) mcool.style.height = mleft > 0 ? Math.round(mleft / mr.cd * 100) + "%" : "0%";
     }
 
-    /* 상단 메뉴 물약 개수 갱신 */
+    /* 상단 메뉴 물약 개수 갱신 및 귀환 버튼 상태 동기화 */
     var potEl = document.getElementById("potNum");
     if (potEl) potEl.textContent = hero.potions || 0;
+    var mRec = document.getElementById("btnRecall");
+    if (mRec && world) {
+      if (world.inTown) {
+        mRec.style.opacity = "0.45";
+        mRec.classList.remove("highlight");
+      } else if (world.recall) {
+        mRec.style.opacity = "1";
+        mRec.classList.add("highlight");
+      } else {
+        mRec.style.opacity = "1";
+        mRec.classList.remove("highlight");
+      }
+    }
 
     /* 구슬 — **체력은 왼쪽, 기력은 오른쪽.** 아래에서 차오른다.
      * ⚠ 숫자만 두면 전투 중에 못 읽는다. 차오르는 높이가 먼저 읽히고
@@ -985,6 +1020,7 @@
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
+    addCloseButton(box);
     box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
       paintIcon(cv, cv.getAttribute("data-ico"),
         cv.className.indexOf("face") >= 0 ? 64 : 26);
@@ -1065,20 +1101,46 @@
     var bPot = document.getElementById("btnPotion");
     var bRec = document.getElementById("btnRecall");
 
-    if (bBag) bBag.addEventListener("click", function (e) {
-      wakeAudio();
-      if (panelOpen()) closePanel(); else openBag();
-    });
-    if (bSkills) bSkills.addEventListener("click", function (e) {
-      wakeAudio();
-      if (panelOpen()) closePanel(); else openBook();
-    });
-    if (bPot) bPot.addEventListener("click", function (e) {
-      wakeAudio(); drink();
-    });
-    if (bRec) bRec.addEventListener("click", function (e) {
-      wakeAudio(); if (!world.inTown) world.recallStart();
-    });
+    if (bBag) {
+      var doBag = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio();
+        if (panelOpen()) closePanel(); else openBag();
+      };
+      bBag.addEventListener("touchstart", doBag, { passive: false });
+      bBag.addEventListener("click", doBag);
+    }
+    if (bSkills) {
+      var doSkills = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio();
+        if (panelOpen()) closePanel(); else openBook();
+      };
+      bSkills.addEventListener("touchstart", doSkills, { passive: false });
+      bSkills.addEventListener("click", doSkills);
+    }
+    if (bPot) {
+      var doPot = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio(); drink();
+      };
+      bPot.addEventListener("touchstart", doPot, { passive: false });
+      bPot.addEventListener("click", doPot);
+    }
+    if (bRec) {
+      var doRec = function (e) {
+        if (e) e.preventDefault();
+        wakeAudio();
+        if (panelOpen()) closePanel();
+        if (!world || world.inTown) {
+          toast("마을에서는 귀환할 수 없다 (이미 마을)");
+          return;
+        }
+        world.recallStart();
+      };
+      bRec.addEventListener("touchstart", doRec, { passive: false });
+      bRec.addEventListener("click", doRec);
+    }
   }
 
   /* 모바일 가상 조이스틱 & 우측 액션 패드 터치 이벤트 */

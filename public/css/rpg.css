@@ -121,6 +121,22 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   background: #1a1720; border: 1px solid #4a4254;
   box-shadow: 0 18px 50px rgba(0,0,0,.65);
 }
+.panel-close {
+  position: absolute; right: 12px; top: 12px;
+  padding: 5px 11px; border-radius: 6px;
+  background: #36281b; border: 1px solid #7a5c38;
+  color: #ffd24a; font-family: var(--sans); font-size: 12px; font-weight: bold;
+  cursor: pointer; z-index: 910;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  transition: background .15s, border-color .15s, transform .1s;
+}
+.panel-close:hover {
+  background: #4d3824; border-color: #ffd24a; color: #fff;
+}
+.panel-close:active {
+  transform: scale(0.94); background: #5c1e19; border-color: #ff6a52; color: #fff;
+}
 .panel h2 { margin: 0 0 4px; font-size: 19px; color: #e8e2d4; }
 .panel .sub { margin: 0 0 14px; font-size: 13px; color: var(--ink-dim); }
 .panel .sub:last-child { margin: 12px 0 0; }
@@ -458,11 +474,12 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   .orb-hp { position: absolute; left: 14px; bottom: 12px; width: 52px; height: 52px; }
   .orb-st { position: absolute; left: 74px; bottom: 12px; width: 52px; height: 52px; }
   .top-bar { top: 6px; left: 6px; right: 6px; gap: 4px; align-items: center; }
-  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .diag .d-info { gap: 4px; font-size: 10px; }
+  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; max-width: 46%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .diag .d-info { gap: 3px; font-size: 10px; }
   .diag .d-fps { display: none; }
   .top-menu { gap: 3px; }
   .tbtn kbd { display: none; }
-  .tbtn .t-lbl { display: none; }
+  .tbtn .t-lbl { display: inline-block; font-size: 10px; color: #ffe9a8; font-weight: bold; }
   .tbtn { padding: 4px 6px; font-size: 11px; height: 32px; }
+  .tbtn.highlight { animation: actPulse 0.9s infinite alternate; }
 }
