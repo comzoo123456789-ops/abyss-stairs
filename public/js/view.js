@@ -53,18 +53,17 @@
     this.viewW = 0; this.viewH = 0;
     this.zone = null;
     this._ao = null;
-    this.baseZoom = 1.35;
-    this.zoom = 1.35;
+    this.baseZoom = 1.0;
+    this.zoom = 1.0;
     this.resize();
   }
 
   View.prototype.calcBaseZoom = function () {
     var w = this.cssW || (this.canvas && this.canvas.parentNode ? this.canvas.parentNode.getBoundingClientRect().width : 1280);
-    /* ⚠ PC(큰 화면)에서는 1.35배로 시야를 넓히고 도트가 너무 거대해지는 것을 방지,
-     *   태블릿은 1.5배, 모바일(좁은 화면)에서는 1.8배로 캐릭터 가독성 확보. */
-    if (w < 600) return 1.8;
-    if (w < 1100) return 1.5;
-    return 1.35;
+    /* 던전 및 마을 시야 확장 — 너무 크게 확대되면 좁아서 답답하므로 축소 (모바일 1.15배, 태블릿 1.1배, PC 1.0배) */
+    if (w < 600) return 1.15;
+    if (w < 1100) return 1.1;
+    return 1.0;
   };
 
   View.prototype.resize = function () {
