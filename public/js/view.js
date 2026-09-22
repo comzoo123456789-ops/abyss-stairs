@@ -49,6 +49,7 @@
   function View(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
+    this.baseZoom = 2;   /* 던전에서 쓰는 배율 */
     this.zoom = 2;
     this.dpr = 1;
     this.viewW = 0; this.viewH = 0;
@@ -92,6 +93,20 @@
   View.prototype.draw = function (world, alpha) {
     var ctx = this.ctx, lv = world.level;
     var p = world.player;
+    /* **거점은 전체가 보여야 한다.** 던전은 좁게 봐야 무섭고, 마을은 넓게 봐야
+     * 어디에 뭐가 있는지 안다 — 같은 확대를 쓰면 마을이 "좁은 복도" 로 읽힌다
+     * (실측으로 그렇게 나왔다). 마을에서만 지도가 화면에 들어오는 배율로 내린다.
+     * ⚠ 1 아래로는 안 내린다. 도트가 한 픽셀 밑으로 줄면 지글거린다. */
+    var want = this.baseZoom;
+    if (world.inTown) {
+      var fitW = this.cssW / (lv.w * TILE), fitH = this.cssH / (lv.h * TILE);
+      want = Math.max(1, Math.min(this.baseZoom, Math.min(fitW, fitH)));
+    }
+    if (Math.abs(want - this.zoom) > 0.001) {
+      this.zoom = want;
+      this.viewW = this.cssW / this.zoom;
+      this.viewH = this.cssH / this.zoom;
+    }
     var q = this.zoom * this.dpr;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -103,8 +118,21 @@
     /* 카메라 — 주인공의 보간된 자리를 화면 한가운데 둔다 */
     var camX = lerp(p.px, p.x, alpha) * TILE;
     var camY = lerp(p.py, p.y, alpha) * TILE;
-    var ox = Math.round((this.viewW / 2 - camX) * q) / q;
-    var oy = Math.round((this.viewH / 2 - camY) * q) / q;
+    var ox = this.viewW / 2 - camX;
+    var oy = this.viewH / 2 - camY;
+    /* **지도 밖을 비추지 않는다.**
+     * ⚠ 이게 없으면 가장자리에서 검은 띠가 보이고, 마을처럼 지도가 화면보다
+     *   작을 때는 위가 잘려 **게이트 윗부분이 안 보였다**(실측).
+     * ⚠ 지도가 화면보다 **작으면 가운데 놓는다** — 그때 clamp 를 그대로 쓰면
+     *   한쪽 구석에 붙어 버린다(부등호가 뒤집힌다). */
+    var mapW = lv.w * TILE, mapH = lv.h * TILE;
+    if (mapW <= this.viewW) ox = (this.viewW - mapW) / 2;
+    else ox = Math.min(0, Math.max(this.viewW - mapW, ox));
+    if (mapH <= this.viewH) oy = (this.viewH - mapH) / 2;
+    else oy = Math.min(0, Math.max(this.viewH - mapH, oy));
+    /* 기기 픽셀 격자에 맞춘다 — 안 맞추면 도트 가장자리가 지글거린다 */
+    ox = Math.round(ox * q) / q;
+    oy = Math.round(oy * q) / q;
     this.ox = ox; this.oy = oy;
 
     /* 보이는 범위만 — 한 칸씩 넉넉히 잡는다(가장자리 잘림 방지).
@@ -114,10 +142,13 @@
     var x1 = Math.min(lv.w - 1, Math.ceil((this.viewW - ox) / TILE) + 1);
     var y1 = Math.min(lv.h - 1, Math.ceil((this.viewH - oy) / TILE) + 1);
 
-    /* 구역 팔레트 — **깊이에서 바로 구한다.** 바깥에서 넣어 주게 두면
-     * 층을 옮길 때 한 곳을 빠뜨려 옛 색으로 남는다(마을은 구역이 없다). */
-    var zone = world.inTown ? null
+    /* 팔레트 — **깊이에서 바로 구한다.** 바깥에서 넣어 주게 두면 층을 옮길 때
+     * 한 곳을 빠뜨려 옛 색으로 남는다.
+     * ⚠ 마을은 **자기 색**이 있다(world.zone). 전에는 null 을 줘서 던전 기본
+     *   팔레트로 그려졌고, 그래서 아무리 꾸며도 던전 복도로 보였다. */
+    var zone = world.inTown ? world.zone
       : (global.DATA ? global.DATA.zoneAt(world.depth) : this.zone);
+    var fzone = world.fzone, zones = world.zones;
     var x, y, id, t, sx, sy;
 
     /* 1) 지형 */
@@ -136,7 +167,14 @@
           var kind = !openBelow ? "wall" : (openAbove ? "wallthin" : "wallface");
           ctx.drawImage(S.terrain(kind, variantAt(x, y, S.WALL_VARIANTS), zone), sx, sy);
         } else {
-          ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), zone), sx, sy);
+          /* 바닥은 **칸마다 다른 팔레트**로 같은 그림을 굽는다 — 흙길 · 석판길 ·
+           * 목조(건물 안). 밝기가 갈라져야 어디로 가야 하는지, 어디가 안인지를
+           * 바닥이 말해 준다.
+           * ⚠ 번호가 목록 밖이면 기본 팔레트로 떨어뜨린다 — 지도를 고치다
+           *   범위를 넘기면 여기서 조용히 undefined 가 되어 통째로 안 그려진다. */
+          var fz = zone;
+          if (fzone && zones) fz = zones[fzone[id]] || zone;
+          ctx.drawImage(S.terrain("floor", variantAt(x, y, S.FLOOR_VARIANTS), fz), sx, sy);
           if (t === D.DOOR) ctx.drawImage(S.bake("door"), sx, sy);
           else if (t === D.STAIRS) ctx.drawImage(S.bake("stairs"), sx, sy);
           else if (t === D.DEEP) ctx.drawImage(S.bake("deep"), sx, sy);
@@ -162,10 +200,44 @@
      * ⚠ 일렁이는 프레임은 **시간**으로 고른다(걸은 거리가 아니다 — 물건은 안 걷는다). */
     for (var pi = 0; pi < world.props.length; pi++) {
       var pr = world.props[pi];
+      /* ⚠ 위상을 물건마다 어긋낸다 — 게이트와 보관함 룬이 똑같이 깜빡이면
+       *   둘이 한 물건처럼 보인다. */
       var pf = S.hasFrames(pr.def.sprite)
-        ? Math.floor(world.time * 4) % S.framesOf(pr.def.sprite).length : 0;
+        ? Math.floor(world.time * 4 + pi * 1.7) % S.framesOf(pr.def.sprite).length : 0;
       placeAt(ctx, S.bake(pr.def.sprite, pf), pr.def.sprite,
               (pr.x - 0.5) * TILE + ox, (pr.y - 0.5) * TILE + oy);
+    }
+
+    /* 2-a1) 마을 장식 — 등불·모닥불·나무·간판.
+     * ⚠ 불빛을 **먼저** 깔고 그림을 나중에 얹는다. 순서를 바꾸면 빛이 그림을
+     *   덮어 뿌옇게 된다.
+     * ⚠ 흔들리는 것은 **시간**으로 프레임을 고른다(걸은 거리가 아니다 — 물건은
+     *   안 걷는다). 개체마다 위상을 어긋내지 않으면 다 같이 깜빡여 기계 같다. */
+    for (var ki = 0; ki < world.decor.length; ki++) {
+      var dk = world.decor[ki];
+      if (!dk.def.light) continue;
+      var lx = dk.x * TILE + ox, ly = (dk.y - 0.35) * TILE + oy;
+      var lr = dk.def.light * TILE;
+      /* 숨 쉬듯 크기가 조금 변한다 — 고정이면 조명이 아니라 얼룩이다 */
+      var puls = 1 + Math.sin(world.time * 2.2 + dk.phase * 6.3) * 0.06;
+      var lg = ctx.createRadialGradient(lx, ly, 2, lx, ly, lr * puls);
+      lg.addColorStop(0, "rgba(255,190,110,.30)");
+      lg.addColorStop(0.45, "rgba(255,160,80,.12)");
+      lg.addColorStop(1, "rgba(255,140,60,0)");
+      ctx.fillStyle = lg;
+      ctx.beginPath(); ctx.arc(lx, ly, lr * puls, 0, Math.PI * 2); ctx.fill();
+    }
+    for (var kj = 0; kj < world.decor.length; kj++) {
+      var dd = world.decor[kj];
+      var dtx = Math.floor(dd.x), dty = Math.floor(dd.y);
+      if (dtx < x0 - 2 || dtx > x1 + 2 || dty < y0 - 2 || dty > y1 + 2) continue;
+      var dfr = 0;
+      if (dd.def.sway && S.hasFrames(dd.def.sprite)) {
+        var nf = S.framesOf(dd.def.sprite).length;
+        dfr = Math.floor(world.time * 6 + dd.phase * nf) % nf;
+      }
+      placeAt(ctx, S.bake(dd.def.sprite, dfr), dd.def.sprite,
+              (dd.x - 0.5) * TILE + ox, (dd.y - 0.5) * TILE + oy);
     }
 
     /* 2-a2) 장판. **개체보다 아래**에 깐다 — 바닥에 붙은 것이다. */

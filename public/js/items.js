@@ -140,6 +140,51 @@
   /* ── 굴리기 ─────────────────────────────────────────────
    * ⚠ 씨앗 난수만 쓴다. Math.random 이면 같은 판을 다시 돌려도 다른 것이 나와
    *   "이 물건이 왜 이렇게 세지?" 를 두 번 다시 못 본다. */
+  /* ── 강화 ───────────────────────────────────────────────
+   * 대장간에서 물건의 **기본 수치**를 올린다. 접사는 건드리지 않는다 —
+   * 접사까지 곱하면 접사가 넷 달린 희귀템만 강화 가치가 있어, 강화가
+   * "좋은 물건을 더 좋게" 만 하는 부익부가 된다.
+   * ⚠ 피해·방어·체력 **셋만** 올린다. 이동속도는 갑옷에서 **음수**라
+   *   (사슬갑옷 -6%) 비율로 곱하면 강화할수록 느려진다. */
+  var ENH_MAX = 10;
+  var ENH_PER = 0.04;                     /* 한 단계당 그 물건 수치의 4% (+10 이면 +40%) */
+
+  /* 강화가 물건에 얹어 주는 총량과 그 나눔.
+   *
+   * 여기까지 오는 데 **세 번 틀렸다.** 남겨 둔다 — 같은 길을 또 걷지 않으려면.
+   *   ① 기본 수치(표에 적힌 값)만 올렸다 → 기본값은 층이 깊어져도 그대로인데
+   *      접사는 ILVL_GROW 로 자란다. 피해 증가가 **5층 +46% → 30층 +11%** 로
+   *      금화가 남아도는 늦은 판에서 가장 쓸모없어졌다(정확히 반대여야 한다).
+   *   ② 칸마다 바닥(+단계 수)을 뒀다 → 수치가 작은 칸(방어 1~6)이 통째로
+   *      뒤집혀 ilvl 5 에서 방어 **+364%**.
+   *   ③ 칸마다 반올림했다 → 4% 가 0 이 되는 칸이 생겨 **단계가 통째로 멈췄다**
+   *      (전투도끼 ilvl1 에서 한 단계 · 피해 7 짜리 장검은 +1~+6 이 전부 같은 값).
+   *      값을 치렀는데 아무 것도 안 변하면 고장으로 느낀다.
+   *
+   * 지금은 **총량을 물건 단위로 먼저 정하고** 비율대로 나눈다.
+   *   총량 = max(단계 수, 좋은 수치 합 × 4% × 단계 수)
+   * 이 식은 **단계마다 반드시 는다**(증명: 비율 c=합×4% 가 1 이상이면 반올림이
+   * 단계마다 1 이상 커지고, 1 미만이면 바닥인 단계 수가 앞선다).
+   * ⚠ 음수는 합에서 뺀다. 사슬갑옷의 이동 -6% 를 비율로 곱하면 강화할수록 느려진다. */
+  function enhTotal(sum, enh) {
+    return Math.max(enh, Math.round(sum * ENH_PER * enh));
+  }
+
+  /* 성공 확률. **망가뜨리거나 단계를 깎지 않는다** — 금화만 잃는다.
+   * 물건이 부서지면 한 번의 실패가 몇 시간을 지운다. 그건 긴장이 아니라 손실이다. */
+  function enhChance(enh) {
+    if (enh < 3) return 1;
+    return Math.max(0.30, 1 - (enh - 2) * 0.10);
+  }
+  function enhCost(it) {
+    var v = (it && it.val) || 10;
+    return Math.max(10, Math.round((12 + v * 0.30) * Math.pow(1.55, it.enh || 0)));
+  }
+  function reforgeCost(it) {
+    var v = (it && it.val) || 10;
+    return Math.max(25, Math.round(30 + v * 0.80));
+  }
+
   function pickWeighted(rng, list, key) {
     var total = 0, i;
     for (i = 0; i < list.length; i++) total += list[i][key];
@@ -183,6 +228,36 @@
     return Math.max(1, Math.round(v * mult * grow));
   }
 
+  /* 강화를 기본 수치에 얹는다. **roll 과 rebuild 가 같은 함수를 부른다** —
+   * 두 벌로 적으면 새로 주운 것과 저장에서 되살린 것의 수치가 어긋난다. */
+  function applyEnh(it) {
+    if (!it.enh) return;
+    var keys = [], sum = 0, k, v;
+    for (k in it.s) {
+      v = it.s[k];
+      if (typeof v !== "number" || v <= 0) continue;
+      keys.push(k); sum += v;
+    }
+    if (!keys.length) return;
+    var total = enhTotal(sum, it.enh), given = 0;
+    /* 비율대로 나눈다. **내림**으로 나누고 남는 것은 아래에서 한 칸에 몰아 준다 —
+     * 반올림으로 나누면 총량이 맞지 않아 단조 증가가 다시 깨진다. */
+    for (var i = 0; i < keys.length; i++) {
+      var add = Math.floor(total * (it.s[keys[i]] / sum));
+      it.s[keys[i]] += add; given += add;
+    }
+    var gained = given;
+    /* 남은 것은 **한 칸에** 몰아 준다.
+     * ⚠ 어느 칸이냐가 중요하다. "가장 큰 값" 으로 골랐더니 **무기인데 피해가
+     *   아니라 이동속도(%)가 올랐다** — 단위가 섞여 있어 숫자 크기로는 무엇이
+     *   중요한지 못 고른다. 피해 → 방어 → 체력 순으로 고른다. */
+    var CORE = ["dmg", "armor", "hp"], pick = null;
+    for (var c = 0; c < CORE.length && !pick; c++)
+      if (it.s[CORE[c]] > 0) pick = CORE[c];
+    if (!pick) pick = keys[0];
+    if (total > gained) it.s[pick] += total - gained;
+  }
+
   /* 물건 하나를 굴린다. ilvl 은 대개 층 깊이다. */
   function roll(rng, opt) {
     opt = opt || {};
@@ -201,7 +276,8 @@
     var it = {
       uid: opt.uid || ("i" + Math.floor(rng() * 1e9).toString(36) + ilvl),
       slot: slot, base: base.id, name: base.name, sprite: base.sprite,
-      tier: tier.id, ilvl: ilvl, affixes: [], set: null, s: {}
+      tier: tier.id, ilvl: ilvl, affixes: [], set: null, s: {},
+      enh: Math.max(0, Math.min(ENH_MAX, Math.floor(opt.enh || 0)))
     };
 
     /* 베이스 수치 */
@@ -223,11 +299,29 @@
     }
 
     /* 접사 */
+    it.affixes = pickAffixes(rng, tier, ilvl);
+    for (var n = 0; n < it.affixes.length; n++) {
+      var a = byId(it.affixes[n]);
+      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult, ilvl);
+    }
+
+    /* ⚠ **접사를 다 얹은 뒤에** 강화를 건다. 앞에 두면 접사가 안 올라가
+     *   깊은 층에서 강화가 거의 무의미해진다(실측으로 잡은 것이다). */
+    applyEnh(it);
+    it.name = affixName(it, base, tier) + (it.enh ? " +" + it.enh : "");
+    it.req = reqLevel(it);
+    it.val = value(it, base, tier);
+    return it;
+  }
+
+  /* 접사를 고른다. **재련이 같은 규칙을 써야** 해서 함수로 뺐다 —
+   * 두 벌로 적으면 한쪽만 고쳐져 "재련하면 없던 접사가 나온다" 가 된다. */
+  function pickAffixes(rng, tier, ilvl) {
     var want = tier.affixes[0] +
       Math.floor(rng() * (tier.affixes[1] - tier.affixes[0] + 1));
     var pre = PREFIX.filter(function (a) { return a.il <= ilvl; });
     var suf = SUFFIX.filter(function (a) { return a.il <= ilvl; });
-    var usedPre = {}, usedSuf = {};
+    var usedPre = {}, usedSuf = {}, out = [];
     for (var n = 0; n < want; n++) {
       /* 접두·접미를 번갈아 — 한쪽으로 쏠리면 극단적인 물건이 나온다 */
       var fromPre = (n % 2 === 0);
@@ -238,14 +332,9 @@
       if (!avail.length) break;
       var a = avail[Math.floor(rng() * avail.length)];
       used[a.id] = 1;
-      it.affixes.push(a.id);
-      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult, ilvl);
+      out.push(a.id);
     }
-
-    it.name = affixName(it, base, tier);
-    it.req = reqLevel(it);
-    it.val = value(it, base, tier);
-    return it;
+    return out;
   }
 
   /* 이름 — 접두 + 베이스 + 접미. 세트 조각은 자기 이름을 지킨다. */
@@ -285,6 +374,9 @@
     var v = (base ? base.val : 10) * tier.mult;
     v += it.affixes.length * 8 * tier.mult;
     v += it.ilvl * 2;
+    /* ⚠ 강화한 값을 안 얹으면 **강화해 둔 물건을 팔 때 들인 금화가 증발한다.**
+     *   되사기 값도 이 값에서 나온다. */
+    v *= 1 + (it.enh || 0) * 0.10;
     return Math.max(1, Math.round(v));
   }
 
@@ -297,8 +389,11 @@
    * ⚠ 수치를 함께 저장하면 표를 고친 날 **옛 물건만 옛 수치로 남는다.** */
   function pack(it) {
     if (!it) return null;
-    return { u: it.uid, sl: it.slot, b: it.base, t: it.tier,
-             il: it.ilvl, a: (it.affixes || []).slice() };
+    var o = { u: it.uid, sl: it.slot, b: it.base, t: it.tier,
+              il: it.ilvl, a: (it.affixes || []).slice() };
+    /* ⚠ 0 일 때는 안 담는다 — 저장이 커지고, 없던 칸이 생기면 옛 저장과 비교가 어렵다 */
+    if (it.enh) o.e = it.enh;
+    return o;
   }
 
   function rebuild(p) {
@@ -321,7 +416,8 @@
     var it = {
       uid: (typeof p.u === "string" && p.u.length <= 24) ? p.u : ("i" + (++UID)),
       slot: slot, base: base.id, name: base.name, sprite: base.sprite,
-      tier: tier.id, ilvl: ilvl, affixes: affixes, set: null, s: {}
+      tier: tier.id, ilvl: ilvl, affixes: affixes, set: null, s: {},
+      enh: Math.max(0, Math.min(ENH_MAX, Math.floor(Number(p.e) || 0)))
     };
     for (var k in base) {
       if (SKIP[k]) continue;
@@ -340,7 +436,9 @@
       var af = byId(affixes[n]);
       for (var kk in af.s) it.s[kk] = (it.s[kk] || 0) + scaleStat(af.s[kk], af.t, tier.mult, ilvl);
     }
+    applyEnh(it);                       /* ⚠ 접사 뒤 — roll 과 같은 순서여야 한다 */
     if (!it.set) it.name = affixName(it, base, tier);
+    if (it.enh) it.name += " +" + it.enh;
     it.req = reqLevel(it);
     it.val = value(it, base, tier);
     return it;
@@ -425,6 +523,42 @@
     return bad;
   }
 
+  /* ── 대장간 ─────────────────────────────────────────────
+   * **저장본(팩)을 직접 고친다.** 되살린 물건(it)을 고쳐 봐야 다음 rebuild 에
+   * 되돌아간다 — 진실원은 팩이다(수치는 전부 팩에서 계산된 것이다).
+   * 두 함수 모두 **무엇을 왜 못 했는지** 이유를 돌려준다. 아무 일도 안 일어나면
+   * 회원은 고장으로 느낀다. */
+  function enhance(p, rng) {
+    if (!p) return { err: "물건이 없다" };
+    var it = rebuild(p);
+    if (!it) return { err: "알 수 없는 물건이다" };
+    if ((it.enh || 0) >= ENH_MAX) return { err: "더는 강화할 수 없다 (+" + ENH_MAX + " 가 끝)" };
+    var ch = enhChance(it.enh || 0);
+    var ok = (rng || Math.random)() < ch;
+    /* ⚠ 실패해도 **단계를 깎거나 부수지 않는다.** 금화만 잃는다. */
+    if (ok) p.e = (Number(p.e) || 0) + 1;
+    return { ok: ok, item: rebuild(p), was: it, chance: ch };
+  }
+
+  function reforge(p, rng) {
+    if (!p) return { err: "물건이 없다" };
+    var it = rebuild(p);
+    if (!it) return { err: "알 수 없는 물건이다" };
+    var tier = tierOf(it.tier);
+    if (tier.affixes[1] <= 0) return { err: "일반 등급에는 재련할 접사가 없다" };
+    var r = rng || Math.random;
+    /* ⚠ 세트 조각은 재련하지 않는다 — 접사가 바뀌어도 이름·세트는 그대로라
+     *   "무엇이 바뀌었나" 가 안 보이고, 세트 효과를 노린 물건을 망칠 수 있다. */
+    if (it.set) return { err: "세트 조각은 재련하지 않는다" };
+    p.a = pickAffixes(r, tier, it.ilvl);
+    return { ok: true, item: rebuild(p), was: it };
+  }
+
+  function tierOf(id) {
+    for (var i = 0; i < TIERS.length; i++) if (TIERS[i].id === id) return TIERS[i];
+    return TIERS[0];
+  }
+
   global.ITEMS = {
     SLOTS: SLOTS, SLOT_NAME: SLOT_NAME, TIERS: TIERS, BASES: BASES,
     PREFIX: PREFIX, SUFFIX: SUFFIX, SETS: SETS,
@@ -432,10 +566,9 @@
     roll: roll, totals: totals, swingOf: swingOf, canEquip: canEquip,
     pack: pack, rebuild: rebuild,
     reqLevel: reqLevel, audit: audit,
-    tierOf: function (id) {
-      for (var i = 0; i < TIERS.length; i++) if (TIERS[i].id === id) return TIERS[i];
-      return TIERS[0];
-    },
+    ENH_MAX: ENH_MAX, ENH_PER: ENH_PER, enhCost: enhCost, enhChance: enhChance,
+    reforgeCost: reforgeCost, enhance: enhance, reforge: reforge,
+    tierOf: tierOf,
     affix: byId
   };
 })(window);

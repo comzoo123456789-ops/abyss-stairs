@@ -153,10 +153,20 @@
     this.inTown = this.depth === 0;
     this.props = [];
     var startAt = null;
+    this.decor = [];
+    this.fzone = null;                 /* 칸마다 바닥 구역 번호(마을 전용) */
+    this.zone = null;
+    this.zones = null;                 /* 그 번호가 가리키는 팔레트 목록 */
     if (this.inTown) {
       var t = global.TOWN.build();
       this.level = t.level;
       this.props = t.props;
+      /* 마을은 **자기 색과 길**을 함께 들고 온다. 화면이 구역 표(DATA)를
+       * 뒤지지 않게 — 마을은 던전 구역이 아니다. */
+      this.decor = t.decor;
+      this.fzone = t.fzone;
+      this.zone = t.zone;
+      this.zones = t.zones;
       startAt = t.start;
     } else {
       this.level = D.generate(opt.w || 56, opt.h || 40, this.depth, seed);

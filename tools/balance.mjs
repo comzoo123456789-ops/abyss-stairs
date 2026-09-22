@@ -284,6 +284,7 @@ const skillGap = (slowest.r.time - fastest.r.time) / slowest.r.time * 100;
 /* ── ⑤ 성장 시간 ─────────────────────────────────────── */
 console.log("\n⑤ 성장 시간 — Lv.1 로 시작해 도달 층을 늘려 가며 계속 돈다\n");
 await ev(`window.__career = function (SEED, CLS) {
+  var spent = 0;                         /* 물약에 쓴 금화(대장간에 못 쓴 돈) */
   var W = window.WORLD, S = window.SAVE, DT = window.DATA, I = window.ITEMS;
   var hero = S.blank(CLS || "warrior");
   var total = 0, runs = 0, deaths = 0, marks = [];
@@ -320,7 +321,7 @@ await ev(`window.__career = function (SEED, CLS) {
       /* 깼으면 한 층 더 깊이 갈 수 있다 */
       hero.maxDepth = Math.min(DT.MAX_DEPTH, Math.max(hero.maxDepth, d + 1));
       /* 마을에 들러 물약을 채운다(금화가 되면) */
-      while (hero.potions < 5 && hero.gold >= 40) { hero.gold -= 40; hero.potions++; }
+      while (hero.potions < 5 && hero.gold >= 40) { hero.gold -= 40; hero.potions++; spent += 40; }
       /* 주운 것 중 좋은 것을 입는다 — 사람이 하듯 */
       var bag = S.liveBag(hero);
       for (var b = 0; b < bag.length; b++) {
@@ -347,8 +348,10 @@ await ev(`window.__career = function (SEED, CLS) {
      * 적정 레벨보다 한참 위면 아무 일도 안 일어나고, 아래면 벽이 된다. */
     marks.push({ d: d, lv: hero.level, cleared: cleared, died: w.player.dead });
   }
+  /* 대장간에 쓸 수 있는 돈 = 남은 금화. 물약값은 따로 센다(고정 지출이다). */
   return { level: hero.level, minutes: +(total / 60).toFixed(1), runs: runs,
-           deaths: deaths, maxDepth: hero.maxDepth, marks: mark, path: marks };
+           deaths: deaths, maxDepth: hero.maxDepth, marks: mark, path: marks,
+           gold: hero.gold, spent: spent };
 };`);
 
 /* ⚠ **한 번만 돌리면 안 된다.** 지도·전리품·죽음이 판마다 달라 한 경력의 결과가
@@ -381,6 +384,38 @@ console.log("  평균(" + CAREERS + "회): Lv." + career.level + " · 도달 " +
   "층 · " + career.minutes + "분(" + career.lo + "~" + career.hi + ") · " +
   career.runs + "판 · 죽음 " + career.deaths + "회 · Lv.30 도달 " +
   career.done + "/" + CAREERS);
+
+/* ── 금화 — 대장간을 **닿을 수 있는 자리**에 두었는가 ──
+ * ⚠ 표시값 합이 아니라 **기대 비용**으로 견준다(강화는 실패한다).
+ * ⚠ 너무 싸면 한 판에 +10 이 되어 소비처가 사라지고, 너무 비싸면
+ *   아무도 못 해 기능이 통째로 죽는다. 어느 쪽인지는 재야만 안다. */
+const money = await ev(`(function(){
+  var I = window.ITEMS;
+  function seeded(s){ return function(){ s=(s*1664525+1013904223)>>>0; return s/4294967296; }; }
+  var r = seeded(20250922), one = 0, all = 0;
+  for (var i = 0; i < I.SLOTS.length; i++) {
+    var it = I.roll(r, { slot: I.SLOTS[i], tier: "rare", ilvl: 28 });
+    var p = I.pack(it), sum = 0;
+    for (var n = 0; n < 10; n++) { sum += I.enhCost(I.rebuild(p)) / I.enhChance(n); p.e = n + 1; }
+    all += sum;
+    if (I.SLOTS[i] === "weapon") one = sum;
+  }
+  return { one: Math.round(one), all: Math.round(all) };
+})()`);
+const goldAvg = Math.round(mean(r => r.gold));
+const spentAvg = Math.round(mean(r => r.spent));
+const goldLo = Math.min(...careers.map(r => r.gold));
+const goldHi = Math.max(...careers.map(r => r.gold));
+console.log("\n  금화 — 한 경력에 남는 돈 " + goldAvg.toLocaleString() +
+  " (" + goldLo.toLocaleString() + "~" + goldHi.toLocaleString() + ") · 물약에 " +
+  spentAvg.toLocaleString());
+console.log("  대장간 기대비용: 무기 하나 +10 에 " + money.one.toLocaleString() +
+  " · 일곱 칸 전부 +10 에 " + money.all.toLocaleString());
+const ratio = goldAvg / money.one;
+console.log("  → 한 경력의 돈으로 무기를 " + ratio.toFixed(1) + "번 +10 할 수 있다" +
+  (ratio < 0.3 ? "  ⚠ 너무 비싸다 — 아무도 못 해 기능이 죽는다"
+   : ratio > 6 ? "  ⚠ 너무 싸다 — 한 판에 다 채워 소비처가 사라진다"
+   : "  적당하다(0.3~6배 사이)"));
 /* 적정 레벨과 견줘 본다 — **앞지르면 긴장이 없고, 뒤처지면 벽이 된다** */
 const need = {};
 for (const c of curve) if (c.ok) need[c.d] = c.lv;

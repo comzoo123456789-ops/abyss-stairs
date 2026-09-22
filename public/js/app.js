@@ -200,6 +200,7 @@
       if (pr.id === "portal") return openPortal();
       if (pr.id === "shop") return openShop();
       if (pr.id === "stash") return openStash();
+      if (pr.id === "smith") return openSmith();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -451,6 +452,109 @@
     wire(box, "sell", function (v) { sellOne(Number(v)); });
     wire(box, "selljunk", function () { sellJunk(); });
     wire(box, "buyback", function (v) { rebuy(Number(v)); });
+  }
+
+  /* ── 대장간 ─────────────────────────────────────────────
+   * 강화는 물건의 **기본 수치**를 올리고, 재련은 접사를 다시 굴린다.
+   * ⚠ 값은 전부 items.js 가 정한다(enhCost·enhChance·reforgeCost).
+   *   화면에서 다시 계산하면 "표시는 120금인데 140금이 나간다" 가 된다.
+   * ⚠ 저장본(팩)을 직접 고친다 — 되살린 물건을 고쳐 봐야 다음 불러오기에
+   *   되돌아간다(수치는 전부 팩에서 계산된 것이다). */
+  function smithRow(it, key) {
+    var I = global.ITEMS, ti = I.tierOf(it.tier);
+    var full = (it.enh || 0) >= I.ENH_MAX;
+    var ch = Math.round(I.enhChance(it.enh || 0) * 100);
+    var ec = I.enhCost(it), rc = I.reforgeCost(it);
+    var set = it.set, common = ti.affixes[1] <= 0;
+    return '<div class="smrow">' +
+      '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
+      '<span class="mt">' + I.SLOT_NAME[it.slot] + ' · ' + ti.name +
+        ' · 강화 +' + (it.enh || 0) + '/' + I.ENH_MAX + '</span>' +
+      '<span class="st">' + esc(statsOf(it)) + '</span>' +
+      '<span class="sact">' +
+        (full
+          ? '<b class="no">강화 끝</b>'
+          : '<button class="sbtn" data-enh="' + key + '">강화 ' + ec + '금' +
+            (ch < 100 ? ' <b>' + ch + '%</b>' : '') + '</button>') +
+        (common ? '<b class="no">재련할 접사 없음</b>'
+         : set ? '<b class="no">세트는 재련 안 함</b>'
+         : '<button class="sbtn" data-ref="' + key + '">재련 ' + rc + '금</button>') +
+      '</span></div>';
+  }
+
+  function openSmith() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var I = global.ITEMS, S = global.SAVE;
+    var eq = S.liveEquip(hero), bag = S.liveBag(hero);
+    /* ⚠ 비율을 **여기 적지 않는다.** 설계를 바꾼 날 화면만 옛 말을 한다
+     *   (실제로 4% 로 바꾼 뒤에도 "기본 수치를 올린다" 고 적혀 있었다). */
+    var per = Math.round(I.ENH_PER * 100);
+    var html = '<h2>대장장이</h2><p class="sub">금화 ' + hero.gold +
+      ' · 강화 한 단계마다 그 물건의 <b>좋은 수치가 모두 +' + per + '%</b>' +
+      '(+' + I.ENH_MAX + ' 이면 +' + (per * I.ENH_MAX) + '%) · ' +
+      '<b>실패해도 물건은 그대로다</b> — 금화만 잃는다</p><div class="cols">';
+
+    html += '<div class="col"><h3>입은 것</h3>';
+    var any = 0;
+    for (var i = 0; i < I.SLOTS.length; i++) {
+      var sl = I.SLOTS[i];
+      if (!eq[sl]) continue;
+      any++; html += smithRow(eq[sl], "eq:" + sl);
+    }
+    if (!any) html += '<p class="sub">입은 것이 없다.</p>';
+    html += '</div><div class="col"><h3>가방</h3>';
+    if (!bag.length) html += '<p class="sub">가방이 비었다.</p>';
+    for (var b = 0; b < bag.length; b++) html += smithRow(bag[b], "bag:" + b);
+    html += '</div></div><p class="sub">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    wire(box, "enh", function (k) { doSmith(k, "enh"); });
+    wire(box, "ref", function (k) { doSmith(k, "ref"); });
+  }
+
+  /* 팩을 가리키는 자리를 돌려준다. **객체를 그대로 고쳐야** 저장에 남는다 —
+   * 사본을 고치면 화면만 바뀌고 다음 불러오기에 되돌아간다. */
+  function packAt(key) {
+    var pr = String(key).split(":");
+    if (pr[0] === "eq") return hero.equip[pr[1]] || null;
+    if (pr[0] === "bag") return hero.bag[Number(pr[1])] || null;
+    return null;
+  }
+
+  function doSmith(key, what) {
+    var I = global.ITEMS;
+    var p = packAt(key);
+    if (!p) return toast("그 물건이 없다");
+    var it = I.rebuild(p);
+    if (!it) return toast("알 수 없는 물건이다");
+    var cost = (what === "enh") ? I.enhCost(it) : I.reforgeCost(it);
+    if (hero.gold < cost) return toast("금화가 " + (cost - hero.gold) + " 모자라다");
+
+    var r = (what === "enh") ? I.enhance(p) : I.reforge(p);
+    /* ⚠ **거절당했으면 금화를 안 받는다.** 먼저 깎고 나중에 물으면
+     *   "+10 인데 눌렀더니 돈만 사라졌다" 가 된다. */
+    if (r.err) return toast(r.err);
+    hero.gold -= cost;
+
+    if (what === "enh") {
+      if (r.ok) {
+        toast(r.item.name + " 완성");
+        if (global.SFX) global.SFX.play("pickup");
+      } else {
+        /* ⚠ 실패도 **분명히** 말한다. 아무 말이 없으면 눌린 줄 모른다. */
+        toast("강화 실패 — 물건은 그대로다 (" + Math.round(r.chance * 100) + "%)");
+        if (global.SFX) global.SFX.play("hurt");
+      }
+    } else {
+      toast("재련했다 — " + (statsOf(r.item) || "접사 없음"));
+      if (global.SFX) global.SFX.play("pickup");
+    }
+    world.applyHero();
+    global.SAVE.save(hero);
+    openSmith();
   }
 
   function wire(box, attr, fn) {
@@ -725,9 +829,28 @@
       e.cd.textContent = left > 0 ? left.toFixed(1) : "";
       e.cool.style.height = left > 0 ? Math.round(left / r.cd * 100) + "%" : "0%";
     }
-    var st = document.getElementById("stam");
-    if (st) st.style.width = Math.round(world.player.stam /
-      global.SKILLS.STAM_MAX * 100) + "%";
+    /* 구슬 — **체력은 왼쪽, 기력은 오른쪽.** 아래에서 차오른다.
+     * ⚠ 숫자만 두면 전투 중에 못 읽는다. 차오르는 높이가 먼저 읽히고
+     *   숫자는 확인용이다. */
+    var p2 = world.player;
+    fillOrb("orb-hp", "hpNum", p2.hp, p2.maxHp);
+    fillOrb("orb-st", "stNum", p2.stam, p2.stamMax || global.SKILLS.STAM_MAX);
+  }
+
+  var orbEls = {};
+  function fillOrb(cls, numId, val, max) {
+    var e = orbEls[cls];
+    if (!e) {
+      var root = document.querySelector("." + cls);
+      if (!root) return;
+      e = orbEls[cls] = { fill: root.querySelector(".fill"),
+                          num: document.getElementById(numId), root: root };
+    }
+    var f = Math.max(0, Math.min(1, max ? val / max : 0));
+    e.fill.style.height = (f * 100).toFixed(1) + "%";
+    e.num.textContent = Math.round(val);
+    /* ⚠ 위험할 때는 **눈에 띄어야** 한다. 색만 바꾸면 흘긋 봐서는 모른다 */
+    e.root.classList.toggle("low", f < 0.3);
   }
 
   /* ── 캐릭터 만들기 ─────────────────────────────────────
@@ -946,6 +1069,7 @@
     global.__resetsk = resetSkills;
     global.__shop = openShop;
     global.__stash = openStash;
+    global.__smith = openSmith;
     global.__buyback = function () { return buyback.length; };
     global.__drink = drink;
     global.__equip = equipFromBag;
