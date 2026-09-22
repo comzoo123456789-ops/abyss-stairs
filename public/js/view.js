@@ -439,7 +439,111 @@
     }
     ctx.globalAlpha = 1;
 
+    /* 마을 전용 앰비언트 파티클(불티, 반딧불이) & NPC 말풍선 */
+    this.drawAmbientFX(world, ox, oy);
+    this.drawTownBubbles(world, ox, oy);
+
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+  };
+
+  /* 마을 환경 파티클 — 모닥불 불티(Ember) & 반딧불이(Firefly) */
+  View.prototype.drawAmbientFX = function (world, ox, oy) {
+    if (!world.inTown) return;
+    var ctx = this.ctx, t = world.time;
+
+    /* 1) 모닥불 불티 — f 위치(15.5, 14.5) 부근에서 위로 피어오름 */
+    var fireX = 15.5 * TILE + ox, fireY = 14.5 * TILE + oy;
+    for (var i = 0; i < 8; i++) {
+      var seed = i * 1.37;
+      var age = (t * 1.8 + seed) % 1.5;
+      var k = age / 1.5;
+      var px = fireX + Math.sin(t * 3 + seed * 5) * (4 + k * 8) + (i % 2 === 0 ? -2 : 2);
+      var py = fireY - 4 - k * 36;
+      var alpha = (1 - k) * 0.85;
+      ctx.fillStyle = k < 0.4 ? "rgba(255,230,120," + alpha.toFixed(2) + ")" : "rgba(240,110,40," + alpha.toFixed(2) + ")";
+      ctx.fillRect(Math.round(px), Math.round(py), 2, 2);
+    }
+
+    /* 2) 반딧불이 — 마을의 풀밭/나무/우물가 주변을 날아다님 */
+    var fireflySpawns = [
+      { x: 3.5, y: 3.5 }, { x: 26.5, y: 3.5 },
+      { x: 5.5, y: 12.5 }, { x: 24.5, y: 12.5 },
+      { x: 6.5, y: 18.5 }, { x: 23.5, y: 18.5 },
+      { x: 15.5, y: 17.5 }, { x: 10.5, y: 15.5 }, { x: 20.5, y: 15.5 }
+    ];
+    for (var fi = 0; fi < fireflySpawns.length; fi++) {
+      var sp = fireflySpawns[fi];
+      var fseed = fi * 2.11;
+      var fx = (sp.x + Math.sin(t * 0.9 + fseed) * 1.8 + Math.cos(t * 1.4 + fseed * 2) * 0.8) * TILE + ox;
+      var fy = (sp.y + Math.cos(t * 0.8 + fseed * 1.3) * 1.4 + Math.sin(t * 1.2 + fseed) * 0.6) * TILE + oy;
+      var glow = Math.sin(t * 2.5 + fseed * 4) * 0.5 + 0.5;
+      if (glow > 0.15) {
+        ctx.fillStyle = "rgba(180,240,90," + (glow * 0.35).toFixed(2) + ")";
+        ctx.beginPath();
+        ctx.arc(fx, fy, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(230,255,160," + (glow * 0.85).toFixed(2) + ")";
+        ctx.fillRect(Math.round(fx - 1), Math.round(fy - 1), 2, 2);
+      }
+    }
+  };
+
+  /* NPC 상호작용 말풍선 */
+  View.prototype.drawTownBubbles = function (world, ox, oy) {
+    if (!world.inTown) return;
+    var ctx = this.ctx, p = world.player;
+    var npcs = [
+      { id: "smith",   name: "대장장이", line: "장비를 벼려줄 테니 언제든 가져오게.", x: 8.5,  y: 8.5 },
+      { id: "shop",    name: "잡화 상인", line: "심연에서 건져온 진귀한 물건이 있소.",   x: 20.5, y: 8.5 },
+      { id: "stash",   name: "보관함",   line: "귀중품은 장부에 맡겨두시오.",          x: 15.5, y: 11.5 },
+      { id: "portal",  name: "심연의 문", line: "아래에서 지워진 이름들이 부르고 있다...", x: 15.5, y: 4.5 },
+      { id: "well",    name: "회복의 샘", line: "맑은 샘물이 지친 몸을 치유해줍니다.",  x: 5.5,  y: 17.5 },
+      { id: "dummy1",  name: "허수아비", line: "[타격 훈련용 허수아비]",            x: 6.5,  y: 13.5 },
+      { id: "dummy2",  name: "허수아비", line: "[타격 훈련용 허수아비]",            x: 23.5, y: 13.5 }
+    ];
+
+    for (var i = 0; i < npcs.length; i++) {
+      var n = npcs[i];
+      var dist = Math.hypot(p.x - n.x, p.y - n.y);
+      if (dist > 3.0) continue;
+
+      var alpha = Math.min(1, (3.0 - dist) / 0.8);
+      var bx = n.x * TILE + ox;
+      var by = (n.y - 1.45) * TILE + oy;
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.font = "11px " + (global.NUM_FONT || "sans-serif");
+      var textW = ctx.measureText(n.line).width;
+      var padX = 8, padY = 4;
+      var boxW = textW + padX * 2, boxH = 19;
+      var rx = Math.round(bx - boxW / 2), ry = Math.round(by - boxH);
+
+      ctx.fillStyle = "rgba(22, 17, 26, 0.92)";
+      ctx.strokeStyle = "#8a6f4d";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (ctx.roundRect) {
+        ctx.roundRect(rx, ry, boxW, boxH, 4);
+      } else {
+        ctx.rect(rx, ry, boxW, boxH);
+      }
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = "#8a6f4d";
+      ctx.beginPath();
+      ctx.moveTo(bx - 3, ry + boxH);
+      ctx.lineTo(bx + 3, ry + boxH);
+      ctx.lineTo(bx, ry + boxH + 4);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.textAlign = "center";
+      ctx.fillStyle = n.id.indexOf("dummy") >= 0 ? "#b5a88e" : "#ffe9a8";
+      ctx.fillText(n.line, bx, ry + 13.5);
+      ctx.restore();
+    }
   };
 
   /* 부채꼴. 선딜 동안은 **엷게 예고**하고, 판정 순간 한 번 밝아진다. */

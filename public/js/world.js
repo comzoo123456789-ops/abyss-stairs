@@ -152,13 +152,13 @@
     this.depth = opt.depth === undefined ? 1 : opt.depth;
     this.inTown = this.depth === 0;
     this.props = [];
-    var startAt = null;
+    var startAt = null, t = null;
     this.decor = [];
     this.fzone = null;                 /* 칸마다 바닥 구역 번호(마을 전용) */
     this.zone = null;
     this.zones = null;                 /* 그 번호가 가리키는 팔레트 목록 */
     if (this.inTown) {
-      var t = global.TOWN.build();
+      t = global.TOWN.build();
       this.level = t.level;
       this.props = t.props;
       /* 마을은 **자기 색과 길**을 함께 들고 온다. 화면이 구역 표(DATA)를
@@ -210,8 +210,21 @@
     this.applyHero();
     /* 들어올 때 체력을 이어받는다 — 마을에서만 다 찬다(샘에서든, 죽어서 돌아왔든).
      * ⚠ 층을 옮길 때마다 다 채우면 계단이 곧 회복이 되어 던전이 안 위험해진다. */
-    if (opt.hp !== undefined) this.player.hp = Math.max(1, Math.min(this.player.maxHp, opt.hp));
-    if (this.inTown) this.player.hp = this.player.maxHp;
+    if (this.inTown) {
+      this.player.hp = this.player.maxHp;
+      if (t && t.dummies) {
+        for (var di = 0; di < t.dummies.length; di++) {
+          var dm = t.dummies[di];
+          this.ents.push(new Entity({
+            x: dm.x, y: dm.y, kind: "dummy", sprite: "t_dummy",
+            team: 1, hp: 999999, maxHp: 999999, name: "훈련용 허수아비",
+            spd: 0, r: 0.35, def: 0
+          }));
+        }
+      }
+    } else if (opt.hp !== undefined) {
+      this.player.hp = Math.max(1, Math.min(this.player.maxHp, opt.hp));
+    }
     this.refreshFov();
     /* ⚠ 마릿수를 여기서 정하지 않는다 — DATA.countAt 이 정한다.
      *   두 곳이 되면 표를 고쳐도 안 바뀐다. */

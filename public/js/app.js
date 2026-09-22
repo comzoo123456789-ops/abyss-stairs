@@ -1128,7 +1128,7 @@
     };
     global.__peek = function () {
       var p = world.player;
-      var foes = world.ents.filter(function (e) { return e.team !== 0 && !e.dead; });
+      var foes = world.ents.filter(function (e) { return e.team !== 0 && !e.dead && e.kind !== "dummy"; });
       return { x: p.x, y: p.y, hp: p.hp, maxHp: p.maxHp, dead: p.dead,
                steps: world.steps, time: world.time, fps: fps.v,
                foes: foes.length, atk: !!p.atk, rest: p.atkRest,

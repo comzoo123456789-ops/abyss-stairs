@@ -45,7 +45,7 @@
     "#..###s####..,,,..####s###...#",
     "#....l.......eKe.......l.....#",
     "#..u.t.e.....,,,.....e.t.u...#",
-    "#..c..o......,@,......o..c...#",
+    "#..c.X.o.....,@,.....o.X.c...#",
     "#....l..e....,f,....e..l.....#",
     "#..u.t.......eoe.......t.u...#",
     "#...####.....,,,.....####....#",
@@ -140,7 +140,7 @@
     /* 어느 칸이 석판길인가. ⚠ 지형(tiles)에 섞지 않는다 — 섞으면 길이 벽처럼
      *   막히거나, 길 위에 문을 놓을 수 없게 된다(함정을 따로 둔 것과 같은 이유). */
     var fzone = new Uint8Array(w * h);        /* 칸마다 ZONES 의 자리 번호 */
-    var props = [], decor = [], start = null;
+    var props = [], decor = [], dummies = [], start = null;
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
         var c = MAP[y][x];
@@ -148,6 +148,7 @@
         lv.tiles[id] = (c === "#") ? D.WALL : D.FLOOR;
         if (c === "," || c === "@" || c === "K") fzone[id] = Z_PATH;
         if (c === "@") start = { x: x + 0.5, y: y + 0.5 };
+        if (c === "X") dummies.push({ x: x + 0.5, y: y + 0.5 });
         var p = PROPS[c];
         if (p) props.push({ id: p.id, x: x + 0.5, y: y + 0.5, def: p });
         var dc = DECOR[c];
@@ -175,7 +176,7 @@
     lv.seen.fill(1);
     lv.rooms = [{ x: 1, y: 1, w: w - 2, h: h - 2 }];
     lv.upAt = start ? { x: Math.floor(start.x), y: Math.floor(start.y) } : { x: 2, y: 2 };
-    return { level: lv, props: props, decor: decor, fzone: fzone, zones: ZONES,
+    return { level: lv, props: props, decor: decor, dummies: dummies, fzone: fzone, zones: ZONES,
              start: start || { x: 2.5, y: 2.5 }, zone: ZONE };
   }
 

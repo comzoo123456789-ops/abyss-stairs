@@ -136,7 +136,9 @@
       from.hp = Math.min(from.maxHp, from.hp + from.lifeOnHit);
     world.floaters.push({ x: to.x, y: to.y - 0.6, text: String(n) + (crit ? "!" : ""), t: 0,
                           life: crit ? 0.95 : 0.75, crit: crit, foe: to.team !== 0 });
-    if (to.hp <= 0) {
+    if (to.kind === "dummy") {
+      to.hp = to.maxHp;
+    } else if (to.hp <= 0) {
       to.hp = 0;
       to.dead = true;
       to.deadAt = world.time;
