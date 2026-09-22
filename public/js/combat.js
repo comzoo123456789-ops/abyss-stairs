@@ -96,8 +96,9 @@
       }
       damage(world, e, t, a.m.dmg);
       /* ⚠ 맞은 **사람 수만큼** 울리면 여럿을 한 번에 칠 때 소리가 겹쳐 찢어진다.
-       *   한 번 휘두름 = 한 번 운다(아래 hit.length 로 낸다). */
-      if (a.m.push && d > 1e-6) {
+       *   한 번 휘두름 = 한 번 운다(아래 hit.length 로 낸다).
+       * ⚠ 훈련용 허수아비는 넉백되지 않고 자리에 단단히 고정된다. */
+      if (a.m.push && d > 1e-6 && t.kind !== "dummy") {
         t.knock = { x: dx / d, y: dy / d, left: a.m.push, spd: 6 };
       }
       hit.push(t);

@@ -133,6 +133,9 @@
     /* 개체마다 고정된 각도. 완전히 포개졌을 때 **어느 쪽으로 흩어질지**를 정한다.
      * ⚠ Math.random 을 쓰지 말 것 — 같은 판을 다시 돌렸을 때 결과가 달라진다.
      *   황금각(2.39996rad)으로 돌리면 몇 마리든 고르게 벌어진다. */
+    this.immovable = !!o.immovable;
+    this.startX = o.startX !== undefined ? o.startX : o.x;
+    this.startY = o.startY !== undefined ? o.startY : o.y;
     this.uid = ++UID;
     this.jitter = this.uid * 2.399963;
   }
@@ -216,9 +219,10 @@
         for (var di = 0; di < t.dummies.length; di++) {
           var dm = t.dummies[di];
           this.ents.push(new Entity({
-            x: dm.x, y: dm.y, kind: "dummy", sprite: "t_dummy",
+            x: dm.x, y: dm.y, startX: dm.x, startY: dm.y,
+            kind: "dummy", sprite: "t_dummy",
             team: 1, hp: 999999, maxHp: 999999, name: "훈련용 허수아비",
-            spd: 0, r: 0.35, def: 0
+            spd: 0, r: 0.35, def: 0, immovable: true
           }));
         }
       }
@@ -598,7 +602,7 @@
 
       /* 밀림이 걸음보다 먼저다 — 맞은 순간에는 조작이 잠깐 안 듣는 것이 맞다.
        * ⚠ 밀림을 순간이동으로 처리하면 벽을 뚫는다. 속도로 바꿔 같은 충돌을 태운다. */
-      if (e.knock) {
+      if (e.knock && !e.immovable) {
         var kd = Math.min(e.knock.left, e.knock.spd * SIM_DT);
         moveBy(this.level, e, e.knock.x * kd, e.knock.y * kd);
         e.knock.left -= kd;
@@ -617,7 +621,7 @@
       /* 돌진 중에는 조작으로 움직이지 않는다(돌진이 대신 옮긴다) */
       if (e.dash) slow = 0;
       var len = Math.sqrt(mx * mx + my * my);
-      if (len > 1e-6) {
+      if (len > 1e-6 && !e.immovable) {
         /* ⚠ 대각선을 정규화하지 않으면 **대각이 1.41배 빠르다.** 그러면 모두가
          *   지그재그로만 다닌다(실제로 많은 게임이 이 버그를 달고 나왔다). */
         if (len > 1) { mx /= len; my /= len; }
@@ -631,7 +635,8 @@
 
     /* ④ 서로 겹치지 않게 살짝 밀어낸다.
      * ⚠ 안 하면 몬스터 다섯이 **완전히 같은 자리**에 포개져 한 마리로 보인다.
-     *   벽 충돌과 달리 여기는 부드러워야 한다 — 딱 떼어 놓으면 튕긴다. */
+     *   벽 충돌과 달리 여기는 부드러워야 한다 — 딱 떼어 놓으면 튕긴다.
+     * ⚠ 훈련용 허수아비 등 고정 개체(immovable)는 밀리지 않고 상대만 밀어낸다. */
     for (i = 0; i < this.ents.length; i++) {
       var a = this.ents[i];
       if (a.dead) continue;
@@ -654,8 +659,23 @@
           ux = dx / dd; uy = dy / dd;
         }
         var pushAmt = (want - dd) * 0.5 * 0.35;   /* 0.35 = 한 번에 다 밀지 않는다 */
-        moveBy(this.level, a, -ux * pushAmt, -uy * pushAmt);
-        moveBy(this.level, b, ux * pushAmt, uy * pushAmt);
+        if (a.immovable) {
+          moveBy(this.level, b, ux * pushAmt * 2, uy * pushAmt * 2);
+        } else if (b.immovable) {
+          moveBy(this.level, a, -ux * pushAmt * 2, -uy * pushAmt * 2);
+        } else {
+          moveBy(this.level, a, -ux * pushAmt, -uy * pushAmt);
+          moveBy(this.level, b, ux * pushAmt, uy * pushAmt);
+        }
+      }
+    }
+
+    /* 고정 개체는 원래 좌표(startX, startY)에 쐐기를 박아 둔다 */
+    for (i = 0; i < this.ents.length; i++) {
+      var fixE = this.ents[i];
+      if (fixE.immovable && fixE.startX !== undefined) {
+        fixE.x = fixE.startX; fixE.y = fixE.startY;
+        fixE.px = fixE.startX; fixE.py = fixE.startY;
       }
     }
 
