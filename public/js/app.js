@@ -94,28 +94,50 @@
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
   }
 
-  /* 마우스나 터치 조이스틱/이동 방향이 가리키는 **월드 좌표**. */
+  /* 마우스나 8방향 이동/조이스틱/타겟 방향이 가리키는 **월드 좌표**. */
   function aim() {
     var p = world.player;
-    /* 모바일/터치 조이스틱으로 조작 중일 때는 조이스틱 이동 방향으로 바로 조준 */
+    /* 1) 키보드(WASD 8방향) 또는 터치 조이스틱(8방향/360도) 이동 중일 때 */
+    var ix = p.mx || 0, iy = p.my || 0;
     if (touchMove.x || touchMove.y) {
-      var tlen = Math.hypot(touchMove.x, touchMove.y);
-      if (tlen > 0.05) {
-        var tdx = touchMove.x / tlen, tdy = touchMove.y / tlen;
-        p.dirX = tdx; p.dirY = tdy;
-        if (Math.abs(tdx) > 0.05) p.face = tdx > 0 ? 1 : -1;
-        return { x: p.x + tdx * 2, y: p.y + tdy * 2 };
+      ix = touchMove.x; iy = touchMove.y;
+    }
+    var ilen = Math.hypot(ix, iy);
+    if (ilen > 0.05) {
+      var idx = ix / ilen, idy = iy / ilen;
+      p.dirX = idx; p.dirY = idy;
+      if (Math.abs(idx) > 0.05) p.face = idx > 0 ? 1 : -1;
+      return { x: p.x + idx * 2, y: p.y + idy * 2 };
+    }
+
+    /* 2) 서 있는 상태일 때 — 주변 8방향 적 자동 스마트 타게팅 (최우선) */
+    if (world && world.ents) {
+      var nearestFoe = null, minD = 3.5;
+      for (var ei = 0; ei < world.ents.length; ei++) {
+        var ent = world.ents[ei];
+        if (ent.dead || ent === p || ent.team === p.team || ent.kind === "dummy") continue;
+        var ed = Math.hypot(ent.x - p.x, ent.y - p.y);
+        if (ed < minD) { minD = ed; nearestFoe = ent; }
+      }
+      if (nearestFoe) {
+        var fdx = nearestFoe.x - p.x, fdy = nearestFoe.y - p.y;
+        var flen = Math.hypot(fdx, fdy) || 1;
+        p.dirX = fdx / flen; p.dirY = fdy / flen;
+        if (Math.abs(p.dirX) > 0.05) p.face = p.dirX > 0 ? 1 : -1;
+        return { x: p.x + (fdx / flen) * 2, y: p.y + (fdy / flen) * 2 };
       }
     }
-    /* 데스크톱 마우스 커서 기반 조준 */
-    if (mouse.has && !touchAttacking) {
-      return view.toWorld(mouse.cx, mouse.cy);
+
+    /* 3) 터치 조작 / 8방향 유지 조준 (마지막 이동 8방향 벡터) */
+    if (touchAttacking || !mouse.has) {
+      var dx = p.dirX !== undefined ? p.dirX : (p.face || 1);
+      var dy = p.dirY !== undefined ? p.dirY : 0;
+      var dlen = Math.hypot(dx, dy) || 1;
+      return { x: p.x + (dx / dlen) * 2, y: p.y + (dy / dlen) * 2 };
     }
-    /* 서 있는 상태 / 모바일 터치 액션 버튼 조작 시 마지막 360도 이동·바라보기 방향 */
-    var dx = p.dirX !== undefined ? p.dirX : (p.face || 1);
-    var dy = p.dirY !== undefined ? p.dirY : 0;
-    var dlen = Math.hypot(dx, dy) || 1;
-    return { x: p.x + (dx / dlen) * 2, y: p.y + (dy / dlen) * 2 };
+
+    /* 4) 데스크톱 마우스 커서 기반 조준 */
+    return view.toWorld(mouse.cx, mouse.cy);
   }
 
   /* 마을로. 체력은 마을에 들어가면 알아서 다 찬다(World 안에서). */
