@@ -104,7 +104,9 @@
     closePanel();
     /* ⚠ 되사기는 **이번 방문 동안만**이다. 계속 쌓아 두면 무한 보관함이 된다. */
     buyback.length = 0;
-    d = Math.max(1, Math.min(hero.maxDepth, Math.floor(d) || 1));
+    /* ⚠ 테스트 모드에서도 **상한은 지킨다.** 31층은 구역이 없어 빈 층이 된다. */
+    var cap = devOn() ? (global.DATA ? global.DATA.MAX_DEPTH : 30) : hero.maxDepth;
+    d = Math.max(1, Math.min(cap, Math.floor(d) || 1));
     start({ depth: d });
     global.SAVE.save(hero);
   }
@@ -215,12 +217,36 @@
 
   /* 층 선택 창. 캔버스가 아니라 **DOM** 이다 — 글자를 고르는 자리는
    * 브라우저가 이미 잘하는 일이고, 캔버스로 만들면 키보드로 못 고른다. */
+  /* ── 테스트 모드 ─────────────────────────────────────
+   * 주소에 **?dev=1** 을 붙이면 심연의 문이 1~30층을 다 연다.
+   * ⚠ 한 번 켜면 남는다(localStorage). 테스트할 때마다 주소를 고쳐 넣는 건
+   *   금방 귀찮아진다 — 끌 때는 ?dev=0.
+   * ⚠ 잠금을 **아예 없애지 않는다.** 없애면 "가 본 곳까지" 라는 성장이 통째로
+   *   사라지고, 그걸 지키는 검사도 무의미해진다.
+   * ⚠ 화면에 **켜져 있다고 적는다.** 안 적으면 나중에 "왜 30층이 다 열려 있지"
+   *   를 버그로 오해한다. */
+  var DEVKEY = "ABYSS_DEV";
+  function devOn() {
+    try {
+      var q = (global.location.search || "").match(/[?&]dev=([01])/);
+      if (q) {
+        if (q[1] === "1") localStorage.setItem(DEVKEY, "1");
+        else localStorage.removeItem(DEVKEY);
+      }
+      return localStorage.getItem(DEVKEY) === "1";
+    } catch (e) { return false; }     /* 저장소가 막혀 있어도 게임은 돌아야 한다 */
+  }
+
   function openPortal() {
     var box = document.getElementById("panel");
     if (!box) return;
-    var html = '<h2>심연의 문</h2><p class="sub">가 본 곳까지 열린다 — 지금 ' +
-      hero.maxDepth + '층</p><div class="floors">';
-    for (var d = 1; d <= hero.maxDepth; d++)
+    var dev = devOn();
+    var top = dev ? (global.DATA ? global.DATA.MAX_DEPTH : 30) : hero.maxDepth;
+    var html = '<h2>심연의 문</h2><p class="sub">' +
+      (dev ? '<b>테스트 모드</b> — 1~' + top + '층이 다 열려 있다 (끄려면 주소에 ?dev=0)'
+           : '가 본 곳까지 열린다 — 지금 ' + hero.maxDepth + '층') +
+      '</p><div class="floors">';
+    for (var d = 1; d <= top; d++)
       html += '<button data-depth="' + d + '">' + d + '층</button>';
     html += '</div><p class="sub">Esc 로 닫는다</p>';
     box.innerHTML = html;
@@ -1069,6 +1095,13 @@
     global.__resetsk = resetSkills;
     global.__shop = openShop;
     global.__stash = openStash;
+    global.__dev = function (on) {
+      try {
+        if (on === undefined) return devOn();
+        if (on) localStorage.setItem(DEVKEY, "1"); else localStorage.removeItem(DEVKEY);
+      } catch (e) { /* 막혀 있으면 그만 */ }
+      return devOn();
+    };
     global.__smith = openSmith;
     global.__buyback = function () { return buyback.length; };
     global.__drink = drink;
