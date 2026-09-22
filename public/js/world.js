@@ -103,6 +103,8 @@
     this.r = o.r === undefined ? BODY : o.r;
     this.spd = o.spd === undefined ? 4.2 : o.spd;   /* 초당 칸 */
     this.face = o.face === undefined ? 1 : o.face;  /* -1 왼쪽 · 1 오른쪽 */
+    this.dirX = o.dirX === undefined ? (this.face || 1) : o.dirX; /* 360도 이동·바라보기 조준 방향 X (-1~1) */
+    this.dirY = o.dirY === undefined ? 0 : o.dirY;                /* 360도 이동·바라보기 조준 방향 Y (-1~1) */
     this.sprite = o.sprite || "warrior";
     this.kind = o.kind || "mob";
     this.walked = 0;                   /* 걸은 거리(칸) — 걷는 그림을 고를 때 쓴다 */
@@ -700,11 +702,13 @@
         /* ⚠ 대각선을 정규화하지 않으면 **대각이 1.41배 빠르다.** 그러면 모두가
          *   지그재그로만 다닌다(실제로 많은 게임이 이 버그를 달고 나왔다). */
         if (len > 1) { mx /= len; my /= len; }
+        e.dirX = mx;
+        e.dirY = my;
         var d = e.spd * slow * SIM_DT;
         moveBy(this.level, e, mx * d, my * d);
         var went = Math.abs(e.x - e.px) + Math.abs(e.y - e.py);
         e.walked += went;
-        if (Math.abs(mx) > 0.2) e.face = mx > 0 ? 1 : -1;
+        if (Math.abs(mx) > 0.05) e.face = mx > 0 ? 1 : -1;
       }
     }
 

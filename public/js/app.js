@@ -94,11 +94,28 @@
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
   }
 
-  /* 마우스가 가리키는 **월드 좌표**. 아직 움직인 적이 없으면 바라보는 쪽으로. */
+  /* 마우스나 터치 조이스틱/이동 방향이 가리키는 **월드 좌표**. */
   function aim() {
     var p = world.player;
-    if (!mouse.has) return { x: p.x + p.face, y: p.y };
-    return view.toWorld(mouse.cx, mouse.cy);
+    /* 모바일/터치 조이스틱으로 조작 중일 때는 조이스틱 이동 방향으로 바로 조준 */
+    if (touchMove.x || touchMove.y) {
+      var tlen = Math.hypot(touchMove.x, touchMove.y);
+      if (tlen > 0.05) {
+        var tdx = touchMove.x / tlen, tdy = touchMove.y / tlen;
+        p.dirX = tdx; p.dirY = tdy;
+        if (Math.abs(tdx) > 0.05) p.face = tdx > 0 ? 1 : -1;
+        return { x: p.x + tdx * 2, y: p.y + tdy * 2 };
+      }
+    }
+    /* 데스크톱 마우스 커서 기반 조준 */
+    if (mouse.has && !touchAttacking) {
+      return view.toWorld(mouse.cx, mouse.cy);
+    }
+    /* 서 있는 상태 / 모바일 터치 액션 버튼 조작 시 마지막 360도 이동·바라보기 방향 */
+    var dx = p.dirX !== undefined ? p.dirX : (p.face || 1);
+    var dy = p.dirY !== undefined ? p.dirY : 0;
+    var dlen = Math.hypot(dx, dy) || 1;
+    return { x: p.x + (dx / dlen) * 2, y: p.y + (dy / dlen) * 2 };
   }
 
   /* 마을로. 체력은 마을에 들어가면 알아서 다 찬다(World 안에서). */
@@ -1111,8 +1128,15 @@
           var power = clampR / maxR;
           touchMove.x = nx * power;
           touchMove.y = ny * power;
-          if (Math.abs(touchMove.x) > 0.05 && world && world.player) {
-            world.player.face = touchMove.x > 0 ? 1 : -1;
+          if (world && world.player) {
+            var tlen = Math.hypot(touchMove.x, touchMove.y);
+            if (tlen > 0.05) {
+              world.player.dirX = touchMove.x / tlen;
+              world.player.dirY = touchMove.y / tlen;
+              if (Math.abs(touchMove.x) > 0.05) {
+                world.player.face = touchMove.x > 0 ? 1 : -1;
+              }
+            }
           }
         } else {
           mouse.cx = t.clientX; mouse.cy = t.clientY; mouse.has = true;
