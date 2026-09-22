@@ -53,9 +53,13 @@
     this.plan = { mx: 0, my: 0, ax: 0, ay: 0, swing: false, skill: null,
                   drink: false, take: null };
     /* ⚠ 포기 목록은 **그 판 동안만**이다. 세계마다 새 봇을 만드니 저절로 비워진다. */
+    /* 못 줍겠다고 판단한 전리품. **빈 배열로 시작해야** 한다 —
+     * 없으면 loot() 에서 undefined.indexOf 로 죽는다(조용히 안 죽고 판이 통째로
+     * 멈추는 쪽이 더 나쁘다). */
+    this.skip = [];
     this.stats = {
       time: 0, kills: 0, taken: 0, dealt: 0, potions: 0,
-      swings: 0, skills: 0, dodges: 0, deaths: 0, picked: 0,
+      swings: 0, skills: 0, dodges: 0, deaths: 0, picked: 0, gaveup: 0,
       hpLow: 1                        /* 가장 위험했던 순간(체력 비율) */
     };
     this._lastHp = world.player.hp;
@@ -166,6 +170,20 @@
   };
 
   /* 주울 만한 것이 가까이 있는가. ⚠ 너무 멀면 쫓아가느라 판이 늘어진다. */
+  /* 못 줍겠다고 판단한 전리품 — 다시 쳐다보지 않는다.
+   * ⚠ 없으면 같은 것에 영원히 매달린다(실측으로 겪었다). */
+  Bot.prototype.skipDrop = function () {
+    var w = this.w, p = w.player;
+    var best = null, bd = 1e9;
+    for (var i = 0; i < w.drops.length; i++) {
+      var d = w.drops[i];
+      if (!d.item || this.skip.indexOf(d) >= 0) continue;
+      var dd = Math.hypot(d.x - p.x, d.y - p.y);
+      if (dd < bd) { bd = dd; best = d; }
+    }
+    if (best) { this.skip.push(best); this.stats.gaveup++; }
+  };
+
   Bot.prototype.loot = function () {
     var w = this.w, p = w.player;
     if (!this.hero || !global.SAVE) return null;
@@ -173,7 +191,7 @@
     var best = null, bd = 1e9;
     for (var i = 0; i < w.drops.length; i++) {
       var d = w.drops[i];
-      if (!d.item) continue;
+      if (!d.item || this.skip.indexOf(d) >= 0) continue;
       var dd = Math.hypot(d.x - p.x, d.y - p.y);
       if (dd > 12) continue;
       if (dd < bd) { bd = dd; best = d; }
@@ -191,7 +209,9 @@
   Bot.prototype.decide = function () {
     var w = this.w, p = w.player, o = this.o;
     var pl = this.plan;
-    pl.swing = false; pl.skill = null; pl.drink = false; pl.take = null;
+    /* ⚠ goto 도 **매 결정마다 지운다.** 안 지우면 전리품으로 가다 적이
+     *   다가와 다른 일을 하기로 해도 step() 의 도착 판정이 계속 발을 묶는다. */
+    pl.swing = false; pl.skill = null; pl.drink = false; pl.take = null; pl.goto = null;
     pl.mx = 0; pl.my = 0;
 
     if (p.dead) return;
@@ -219,8 +239,13 @@
      * ⚠ 가까운 적이 있으면 줍지 않는다 — 전투 중에 바닥을 보는 사람은 없다. */
     var loot = (!near || near.d > 5.5) ? this.loot() : null;
     if (loot) {
-      if (loot.d < 1.0) { pl.take = loot.drop; pl.mx = 0; pl.my = 0; }
-      else this.walkTo(loot.drop.x, loot.drop.y);
+      /* ⚠ 거리 판정을 **여기서만** 하면 안 된다. 생각은 0.22초마다인데 빠른
+       *   캐릭터는 그 사이 1.1칸 넘게 움직여 **결정 시점마다 늘 반경 밖**이다 —
+       *   지나치고 되돌아오기를 영원히 반복한다(실측: 270초 동안 하나도 못 줍고
+       *   남은 적 10마리를 방치. 장비가 좋을수록 빨라 더 심했다).
+       *   목표만 남기고 **도착 판정과 줍기는 step() 이 매 걸음** 한다. */
+      pl.goto = { x: loot.drop.x, y: loot.drop.y, at: this.w.time };
+      this.walkTo(loot.drop.x, loot.drop.y);
       return;
     }
 
@@ -332,6 +357,21 @@
     if (this.think <= 0) { this.think = this.o.react; this.decide(); }
 
     var pl = this.plan;
+    /* 전리품으로 가는 중이면 **매 걸음** 도착을 확인한다. 반경은 사람과 같은
+     * 것(world.nearDrop)을 쓴다 — 넓게 잡아 주우면 봇이 사람보다 유리해져
+     * 측정이 거짓이 된다. */
+    if (pl.goto) {
+      var nd = w.nearDrop();
+      if (nd) { pl.take = nd; pl.goto = null; pl.mx = 0; pl.my = 0; }
+      else {
+        var gd = Math.hypot(pl.goto.x - p.x, pl.goto.y - p.y);
+        /* 코앞이면 멈춘다 — 안 멈추면 지나친다 */
+        if (gd < 0.30) { pl.mx = 0; pl.my = 0; }
+        /* ⚠ 안전장치: 한 전리품에 4초를 넘기면 **포기한다.** 원인이 무엇이든
+         *   전리품 하나가 판 하나를 통째로 삼키는 일이 다시 없어야 한다. */
+        else if (w.time - pl.goto.at > 4) { pl.goto = null; this.skipDrop(nd); }
+      }
+    }
     p.mx = pl.mx; p.my = pl.my;
 
     if (pl.drink && this.drink) { if (this.drink()) this.stats.potions++; pl.drink = false; }

@@ -87,11 +87,24 @@ window.__runFloor = function (cfg) {
    *   전사 재주를 들고 나가 아무것도 못 쓴다(그리고 "마법사가 약하다" 로 읽힌다). */
   hero.bar = cfg.bar || window.CLASSES.skillsOf(hero.cls).slice(0, 4);
   if (cfg.gear !== "none") {
-    var grng = window.DUNGEON.makeRng(cfg.seed ^ 0x51ed270b);
-    var ilvl = Math.max(1, Math.min(30, cfg.level));
+    /* ⚠ 칸마다 **따로** 굴린다. 하나의 흐름으로 일곱 칸을 지나가면 앞 칸의
+     *   뽑기 횟수가 달라질 때 뒤 칸이 통째로 바뀐다 — 등급만 바꿨는데 무기
+     *   종류까지 바뀌어 "희귀가 마법보다 약하다" 는 거짓 결과가 나왔다. */
+    var gseed = function (k) {
+      return window.DUNGEON.makeRng((cfg.seed ^ 0x51ed270b) + k * 0x9e3779b1);
+    };
+    /* 장비 수준·등급·강화를 **레벨과 따로** 줄 수 있어야 한다.
+     * ⚠ 안 그러면 "레벨을 올려도 안 나아진다" 를 봐도 그게 레벨 탓인지
+     *   장비 탓인지 가를 수 없다(실제로 못 갈랐다).
+     * ⚠ cfg.tier 는 전에 **읽히지도 않았다.** 넘겨도 조용히 무시됐다. */
+    var ilvl = Math.max(1, Math.min(30,
+      cfg.ilvl === undefined ? cfg.level : cfg.ilvl));
+    var enh = Math.max(0, Math.min(I.ENH_MAX, Math.floor(cfg.enh || 0)));
     for (var si = 0; si < I.SLOTS.length; si++) {
+      var grng = gseed(si + 1);
       var slot = I.SLOTS[si];
-      var tier = cfg.gear === "best" ? "rare" : (cfg.gear === "poor" ? "common" : null);
+      var tier = cfg.tier ||
+        (cfg.gear === "best" ? "rare" : (cfg.gear === "poor" ? "common" : null));
       /* ⚠ 무기는 **그 직업이 잘 쓰는 것**으로 굴린다. 아무 무기나 주면
        *   마법사가 도끼를 들고 나가 적성 보너스도 원거리도 못 받는다 —
        *   실제 사람은 자기 무기를 찾아 든다. */
@@ -102,7 +115,10 @@ window.__runFloor = function (cfg) {
       }
       var it = I.roll(grng, opt2);
       /* ⚠ 못 쓰는 것은 안 입는다 — 레벨 제한이 있는데 무시하면 과대평가된다 */
-      if (I.canEquip(it, hero.level)) hero.equip[slot] = I.pack(it);
+      if (!I.canEquip(it, hero.level)) continue;
+      var pk = I.pack(it);
+      if (enh) pk.e = enh;               /* 대장간에서 강화해 둔 상태 */
+      hero.equip[slot] = pk;
     }
   }
 
@@ -123,6 +139,16 @@ window.__runFloor = function (cfg) {
     p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * 0.5));
     return true;
   };
+
+  /* 재기만 하는 호출 — **돌리지 않는다.** 장비가 실제로 무엇이 됐는지만 본다. */
+  if (cfg.peek) {
+    var sw0 = w.player.swing || {};
+    return { peek: {
+      dps: Math.round((sw0.dmg || 0) * (sw0.aps || 1)),
+      wep: (hero.equip.weapon && I.rebuild(hero.equip.weapon))
+             ? I.rebuild(hero.equip.weapon).name : "맨손",
+      hp: w.player.maxHp, def: w.player.baseDef } };
+  }
 
   var limit = cfg.limit || 300;                /* 게임 시간 상한(초) */
   var steps = Math.round(limit * 60);
@@ -145,6 +171,15 @@ window.__runFloor = function (cfg) {
     lvUp: hero.level - startLv, gold: hero.gold - startGold,
     hpEnd: Math.max(0, Math.round(w.player.hp)), hpMax: w.player.maxHp
   };
+};
+
+/* 그 조건의 장비가 실제로 어떤 것인지 — **시행과 같은 길**로 만들어 본다.
+ * ⚠ 표에 적을 화력을 따로 굴려 재면 다른 물건이 나온다. 같은 함수를 쓴다. */
+window.__peekGear = function (cfg) {
+  var c = {}; for (var k in cfg) c[k] = cfg[k];
+  c.peek = true;
+  var r = window.__runFloor(c);
+  return r.peek;
 };
 
 /* 같은 조건을 여러 번 돌려 평균을 낸다 */
@@ -224,6 +259,60 @@ for (const d of CURVE) {
     (show.r.died ? "  죽음 " + show.r.died : "") +
     (show.r.slow ? "  시간초과 " + show.r.slow : "") +
     (found ? "" : "  ⚠ Lv+10 에도 못 깬다"));
+}
+
+/* ── ①-b 적정 **장비** 곡선 ────────────────────────────
+ * 층마다 "이 장비면 70% 이상 깬다" 를 찾는다.
+ *
+ * ⚠ 레벨이 아니라 장비다. **레벨은 체력만 준다**(applyHero 에서 lv 가 maxHp
+ *   한 줄에만 나온다) — 화력·방어는 전부 장비에서 온다. 그래서 스펙 컷을 둘
+ *   자리를 찾으려면 이 축으로 재야 한다.
+ * ⚠ 레벨은 층에 맞춰 고정한다. 그러면 장비만 변수다.
+ * ⚠ 등급·수준·강화를 **따로** 줄 수 있어야 한다. 전에는 장비 수준이 레벨에
+ *   묶여 있어 둘을 가를 수 없었고, cfg.tier 는 읽히지도 않았다.
+ */
+const LADDER = [
+  { t: "common", dl: -8, e: 0,  n: "일반(낡음)" },
+  { t: "common", dl: 0,  e: 0,  n: "일반" },
+  { t: "magic",  dl: -8, e: 0,  n: "마법(낡음)" },
+  { t: "magic",  dl: 0,  e: 0,  n: "마법" },
+  { t: "magic",  dl: 0,  e: 5,  n: "마법 +5" },
+  { t: "rare",   dl: -8, e: 0,  n: "희귀(낡음)" },
+  { t: "rare",   dl: 0,  e: 0,  n: "희귀" },
+  { t: "rare",   dl: 0,  e: 5,  n: "희귀 +5" },
+  { t: "rare",   dl: 0,  e: 10, n: "희귀 +10" }
+];
+console.log("\n①-b 적정 장비 곡선 — 층마다 70% 이상 깨는 가장 낮은 장비 (레벨 = 층)\n");
+console.log("  층   필요한 장비      깸     시간   받은피해  피해출력  무기");
+const gcurve = [];
+for (const d of [5, 10, 15, 20, 25, 30]) {
+  let found = null; const tried = [];
+  for (const g of LADDER) {
+    const r = await ev(`(function(){
+      var c = { depth: ${d}, level: ${d}, seed: ${d * 131 + 6100},
+                tier: "${g.t}", ilvl: Math.max(1, ${d} + ${g.dl}), enh: ${g.e} };
+      var t = window.__trials(c, ${N});
+      /* 화력은 **같은 길로 만든 장비**에서 읽는다 — 따로 굴리면 다른 물건이
+       * 나와 표와 실제가 어긋난다(실제로 어긋났다). */
+      var pk = window.__peekGear(c);
+      t.dps = pk.dps; t.wep = pk.wep;
+      return t;
+    })()`);
+    tried.push({ g, r });
+    /* ⚠ 문턱을 **넉넉히** 넘었을 때만 찾았다고 한다 — 딱 걸친 값에서 멈추면
+     *   실행마다 곡선이 뒤집힌다(①번과 같은 규칙). */
+    if (r.clear - 1.0 * r.se >= 0.7) { found = { g, r }; break; }
+  }
+  const show = found || tried[tried.length - 1];
+  gcurve.push({ d, g: show.g, ok: !!found, r: show.r });
+  console.log("  " + String(d).padStart(2) + "층 " + show.g.n.padStart(11) +
+    "  " + (show.r.clear * 100).toFixed(0).padStart(3) + "%  " +
+    String(show.r.time).padStart(6) + "초" +
+    String(show.r.taken).padStart(9) +
+    String(show.r.dps).padStart(9) + "/초  " + show.r.wep +
+    (show.r.died ? "  죽음 " + show.r.died : "") +
+    (show.r.slow ? "  시간초과 " + show.r.slow : "") +
+    (found ? "" : "  ⚠ 최고 장비로도 못 깬다"));
 }
 
 /* ── ② 보스 벽 ───────────────────────────────────────── */
@@ -503,6 +592,16 @@ const VR = (name, rate, se, want, note, higherIsBetter = true) => {
     (shaky ? "  ⚠ 문턱(" + (want * 100).toFixed(0) + "%)이 오차 안이라 이 판수로는 못 가린다" : ""),
     shaky]);
 };
+
+/* ── 장비 요구가 층마다 **오르는가** ──
+ * ⚠ 평평하면 파밍·강화를 할 이유가 없다. 낮은 층 장비로 끝까지 가면
+ *   대장간도 전리품도 장식이 된다. */
+const rungOf = g => LADDER.findIndex(x => x.n === g.n);
+const rungs = gcurve.map(x => rungOf(x.g));
+const rise = rungs[rungs.length - 1] - rungs[0];
+V("장비 요구가 층마다 오르는가", rise >= 3,
+  gcurve.map(x => x.d + "층 " + x.g.n).join(" · ") + " → 사다리 " + rise + "칸" +
+  (rise < 3 ? "  ⚠ 평평하다 — 낮은 층 장비로 끝까지 간다(파밍·강화할 이유가 없다)" : ""));
 
 const curveOK = curve.every(c => c.ok);
 const overLevel = curve.filter(c => c.ok && c.lv > c.d + 4);
