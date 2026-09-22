@@ -325,8 +325,58 @@
     e.mx = ax / al; e.my = ay / al;
   }
 
+  /* 사령술사 — **해골을 불러낸다.**
+   *
+   * 이 행동이 다른 것들과 다른 점: 스스로는 거의 안 싸운다. 위협은 부른 것에서
+   * 나온다. 그래서 **먼저 잡아야 하는 것**이 생긴다 — 치유사와 같은 자리이되,
+   * 치유사는 남을 살리고 이쪽은 수를 늘린다.
+   *
+   * ⚠ 한 번에 살아 있을 수 있는 수를 **못 박는다**(sm.max). 안 두면 화면이
+   *   해골로 덮여 프레임이 죽고 피할 자리가 사라진다 — countAt 에 상한을 둔
+   *   것과 같은 이유다.
+   * ⚠ 부른 것에는 경험치·금화가 없다(world.summon). 있으면 술사 하나를 놔두고
+   *   무한히 잡는 것이 최고의 사냥터가 된다.
+   * ⚠ 때릴 수단이 있으면(보스) 못 부르는 동안 근접한다. 없으면(잡몹) 물러선다 —
+   *   술사가 앞에 서서 맞고 있으면 술사가 아니다.
+   * ⚠ 시전 중에는 움직이지 않는다. 그래야 예고를 보고 달려들 값어치가 있다. */
+  function summoner(world, e, dt) {
+    var p = world.player;
+    if (p.dead) { e.mx = 0; e.my = 0; return; }
+    var sm = e.mob.summon;
+    var d = dist(e, p);
+    var see = canSee(world, e, p) && clearLine(world, e, p.x, p.y);
+
+    var done = tickCast(world, e, dt);
+    if (done) {
+      var made = 0;
+      for (var i = 0; i < (sm.count || 1); i++)
+        if (world.summon(sm.id, e.x, e.y, e)) made++;
+      e.summonAt = world.time;
+      if (made && global.SFX) global.SFX.play("trap");
+    }
+    if (e.cast) { e.mx = 0; e.my = 0; return; }
+
+    if (!see) { melee(world, e, dt); return; }
+    e.lastX = p.x; e.lastY = p.y; e.memory = FORGET;
+
+    /* 내가 부른 것이 몇이나 살아 있나 */
+    var alive = 0;
+    for (var k = 0; k < world.ents.length; k++) {
+      var m = world.ents[k];
+      if (m.summoned && m.owner === e && !m.dead) alive++;
+    }
+    var ready = (world.time - (e.summonAt || -99)) >= sm.cd && alive < sm.max;
+
+    if (d > sm.range) { chase(world, e, p.x, p.y); return; }
+    if (ready) { e.mx = 0; e.my = 0; beginCast(world, e, sm.cast, "summon", e.x, e.y); return; }
+    /* 못 부르는 동안 */
+    if (e.swing) { melee(world, e, dt); return; }
+    if (d < (sm.keep || 3.4)) { backAway(world, e, p.x, p.y); return; }
+    e.mx = 0; e.my = 0;
+  }
+
   var BRAIN = { melee: melee, archer: archer, mage: mage,
-                healer: healer, breaker: breaker };
+                healer: healer, breaker: breaker, summoner: summoner };
 
   function run(world, e, dt) {
     var f = BRAIN[e.brain || "melee"];

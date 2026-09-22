@@ -617,6 +617,11 @@
       return { total: total, worst: worst, name: worstName };
     },
     hasFrames: hasFrames,
+    /* 이 이름으로 등록된 그림이 있는가.
+     * ⚠ 없으면 placeAt 이 **조용히 아무것도 안 그린다**(오류도 안 난다) —
+     *   30층 최종 보스가 그렇게 보이지 않는 채로 배포돼 있었다.
+     *   부르는 쪽(data.js 의 audit)이 확인할 수 있어야 한다. */
+    has: function (name) { return !!SPR[name]; },
     framesOf: framesOf, hasFrame: hasFrame,
     sizeOf: sizeOf,          /* 그리는 쪽이 바닥을 맞추려면 크기를 알아야 한다 */
     terrain: terrain,

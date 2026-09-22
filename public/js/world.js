@@ -305,12 +305,67 @@
   };
 
   /* 누가 죽었다. */
+  /* ── 소환 ───────────────────────────────────────────────
+   * 사령술사·무덤지기가 해골을 부른다.
+   *
+   * ⚠ **경험치와 금화를 0 으로 둔다.** 안 그러면 술사 하나를 놔두고 무한히
+   *   불러내 잡는 것이 이 게임 최고의 사냥터가 된다 — 레벨도 돈도 다 거기서
+   *   나온다. (몬스터끼리 싸움에 보상을 안 주는 것과 같은 이유다.)
+   * ⚠ 벽 안에 놓지 않는다. 자리를 못 찾으면 **안 부른다** — 빈손으로 돌아가는
+   *   편이 벽에 박힌 몬스터보다 낫다. 그건 판을 못 깨게 만든다.
+   * ⚠ 겹쳐 놓지 않는다. 같은 자리에 둘을 놓으면 서로 밀어내며 떨린다
+   *   (겹친 개체를 흩는 jitter 가 있지만 애초에 안 겹치는 편이 낫다). */
+  World.prototype.summon = function (defId, x, y, owner) {
+    var DT = global.DATA;
+    if (!DT) return null;
+    var def = null;
+    for (var i = 0; i < DT.MOBS.length; i++)
+      if (DT.MOBS[i].id === defId) { def = DT.MOBS[i]; break; }
+    if (!def) return null;
+    var r = def.r === undefined ? BODY : def.r;
+    /* 술사 주변을 황금각으로 돌며 빈 자리를 찾는다 — 한쪽으로 뭉치지 않는다 */
+    for (var k = 0; k < 12; k++) {
+      var a = k * 2.399963;
+      var rr = 1.0 + k * 0.16;
+      var sx = x + Math.cos(a) * rr, sy = y + Math.sin(a) * rr;
+      if (!boxFree(this.level, sx, sy, r)) continue;
+      var taken = false;
+      for (var j = 0; j < this.ents.length; j++) {
+        var o = this.ents[j];
+        if (o.dead) continue;
+        if (Math.hypot(o.x - sx, o.y - sy) < r + o.r) { taken = true; break; }
+      }
+      if (taken) continue;
+      var e = makeMob(def, this.depth, sx, sy, false);
+      e.xp = 0; e.gold = 0;              /* 무한 사냥터가 되지 않게 */
+      e.summoned = true;
+      e.owner = owner || null;
+      e.bornAt = this.time;              /* 나타나는 티 — 화면이 이걸 읽는다 */
+      this.ents.push(e);
+      return e;
+    }
+    return null;
+  };
+
   World.prototype.onDeath = function (who, by) {
     this.log.push({ t: this.time, what: "death", who: who.name || who.sprite });
+    /* 소환자가 죽으면 **부른 것도 함께 무너진다.**
+     * ⚠ 이게 "먼저 술사를 잡아라" 를 가르치는 유일한 자리다. 남겨 두면 술사를
+     *   먼저 잡을 이유가 없고, 부른 것이 바닥에 쌓여 판이 안 끝난다.
+     * ⚠ dead 를 직접 찍는다 — onDeath 를 다시 부르면 보상이 돌고 재귀가 된다. */
+    for (var si = 0; si < this.ents.length; si++) {
+      var mn = this.ents[si];
+      if (mn.summoned && mn.owner === who && !mn.dead) {
+        mn.dead = true; mn.deadAt = this.time; mn.hp = 0;
+      }
+    }
     if (who === this.player) { this.playerDeadAt = this.time; return; }
     /* ⚠ 보상은 **주인공이 잡았을 때만.** 안 걸면 몬스터끼리 싸움 붙였을 때나
      *   함정에 죽었을 때도 경험치가 들어온다(무한 파밍 통로다). */
     if (!this.hero || by !== this.player) return;
+    /* ⚠ **부른 것에는 보상이 없다.** 경험치도 전리품도. 위의 xp=0 만으로는
+     *   전리품(dropFrom)이 그대로 나와 여전히 무한 사냥터가 된다. */
+    if (who.summoned) return;
     var S = global.SAVE;
     if (!S) return;
     /* 경험치 보너스는 **여기서 한 번만** 곱한다 */

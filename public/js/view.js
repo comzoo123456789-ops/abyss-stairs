@@ -323,6 +323,24 @@
       ctx.beginPath();
       ctx.arc(mx0, my0, 13, -Math.PI / 2, -Math.PI / 2 + ck * Math.PI * 2);
       ctx.stroke();
+      /* 소환 예고 — **발밑에 고리**가 차오른다.
+       * ⚠ 이게 없으면 해골이 어디서 나오는지 모른다. 술사를 먼저 잡으라고
+       *   가르치려면 "지금 부르고 있다" 가 보여야 한다. */
+      if (ce.cast.what === "summon") {
+        var sr = (2.0 + 0.8 * ck) * TILE;
+        var scx = lerp(ce.px, ce.x, alpha) * TILE + ox;
+        var scy = lerp(ce.py, ce.y, alpha) * TILE + oy;
+        ctx.strokeStyle = "rgba(126,231,135," + (0.30 + 0.45 * ck).toFixed(2) + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(scx, scy, sr, 0, Math.PI * 2); ctx.stroke();
+        /* 고리 위의 점 — 부를 자리를 미리 보여 준다 */
+        for (var sk = 0; sk < 3; sk++) {
+          var sa = world.time * 1.6 + sk * 2.094;
+          ctx.fillStyle = "rgba(126,231,135,.75)";
+          ctx.fillRect(Math.round(scx + Math.cos(sa) * sr) - 1,
+                       Math.round(scy + Math.sin(sa) * sr * 0.6) - 1, 3, 3);
+        }
+      }
       /* 겨눈 자리도 보여 준다 — 술사의 장판이 어디 깔릴지 */
       if (ce.cast.what === "field") {
         var fr2 = (ce.mob && ce.mob.field ? ce.mob.field.r : 2) * TILE;

@@ -20,15 +20,18 @@
   "use strict";
 
   var ZONES = [
-    { id: "office", from: 1, to: 6, boss: "b_warden",
-      name: "관리소 아래", tag: "아직 사람 손이 닿은 곳",
-      enter: "관리소 아래. 벽에 아직 등불 자국이 남아 있다.",
-      props: ["crate", "lantern", "torch"],
-      floor: { mortar: "#16131b", face: "#231f2a", lit: "#2a2532", dim: "#1c1825",
-               grain1: "#27232e", grain2: "#1e1b25", crack: "#1a1621",
-               peb1: "#302a38", peb2: "#35303f", peb3: "#25202d" },
-      wall:  { mortar: "#4a4b5f", face: "#6c6c88", lit: "#8c8ba0", dim: "#51526a",
-               grain1: "#7a7a94", grain2: "#5f5f79", moss: "#5a6d53" } },
+    /* ⚠ 1구역은 전에 "관리소 아래"(보스 관리인) 였다. 사용자 결정으로
+     *   **묘지**로 바꿨다. 색은 던전 기본(자주빛 돌)이 아니라 **흙과 이끼**다 —
+     *   같은 돌을 쓰면 아무리 꾸며도 아래 구역과 같은 곳으로 보인다. */
+    { id: "grave", from: 1, to: 6, boss: "b_gravekeeper",
+      name: "묘지", tag: "여기서부터 아래로 내려간다",
+      enter: "묘지. 비뚤어진 묘비 사이로 계단이 아래로 뚫려 있다.",
+      props: ["grave", "deadtree", "torch"],
+      floor: { mortar: "#14120d", face: "#211d15", lit: "#2a2419", dim: "#1a1711",
+               grain1: "#262117", grain2: "#1d1912", crack: "#17140e",
+               peb1: "#332d20", peb2: "#3a3325", peb3: "#292418" },
+      wall:  { mortar: "#3f4436", face: "#5f6650", lit: "#7c8468", dim: "#484e3d",
+               grain1: "#6d745b", grain2: "#545b47", moss: "#6d8a4a" } },
 
     { id: "flood", from: 7, to: 12, boss: "b_drowned",
       name: "물이 든 계단실", tag: "어딘가에서 물이 새어 든다",
@@ -123,25 +126,28 @@
       from: 19, hp: 60, dmg: 18, spd: 3.1, xp: 60, gold: 18, w: 18, r: 0.40,
       swing: { aps: 0.70, windup: 0.40, recover: 0.34, reach: 1.30, arc: 130, push: 0.70 } },
 
-    /* ── 언데드 셋 — **뼈 무덤 구역(19~24층)**.
-     * ⚠ 사용자 메모는 "1구역 묘지" 였지만 1구역은 지금 **관리소 아래**(1~6층)다.
-     *   언데드가 사는 곳은 4구역 뼈 무덤이라 그쪽에 넣었다. 묘지를 1구역에 새로
-     *   만들 생각이면 구역 표(ZONES)와 보스까지 함께 손대야 한다.
-     * ⚠ 사령술사는 **소환을 안 한다.** 지금 있는 행동(AI)은 melee·archer·mage·
-     *   healer·breaker 다섯뿐이고 소환하는 것이 없다 — 영혼염 지팡이에 맞춰
-     *   mage(장판)로 두었다. 소환을 붙이려면 새 행동을 만들어야 한다. */
+    /* ── 언데드 셋 — **묘지(1구역) 주민.**
+     * ⚠ hp·dmg 는 **1층 기준**이다. from 을 앞으로 당기면 수치도 함께 내려야
+     *   한다 — 19층 기준(55/16)을 그대로 두면 2층에서 만나 죽는다.
+     *   깊은 층에서는 scaleAt 이 알아서 올려 준다(22층에서 체력 ×4.4).
+     * ⚠ 사령술사는 **해골 전사를 부른다.** 그래서 전사보다 뒤(5층)에 나온다 —
+     *   부를 것이 아직 안 나온 층에 술사를 두면 이상하다. */
+    /* ⚠ **1층부터** 나온다. 묘지인데 첫 층에 해골이 없으면 구역 이름이
+     *   거짓말이 된다(전에 1층은 쥐 한 종뿐이었다). 쥐보다 질기고 느리므로
+     *   첫 전투에서 "피하고 때린다" 를 배우기에 맞다. */
     { id: "skel_warrior", name: "해골 전사", sprite: "m_skel_warrior", brain: "melee",
-      from: 19, hp: 55, dmg: 16, spd: 3.2, xp: 58, gold: 17, w: 16,
-      /* 방패를 들었으니 느리게·무겁게 — 오크와 해골 사이 */
+      from: 1, hp: 22, dmg: 6, spd: 2.9, xp: 12, gold: 3, w: 24,
+      /* 방패를 들었으니 느리게·무겁게 — 고블린보다 질기고 느리다 */
       swing: { aps: 0.78, windup: 0.34, recover: 0.30, reach: 1.20, arc: 115, push: 0.55 } },
 
     { id: "skel_archer", name: "해골 궁수", sprite: "m_skel_archer", brain: "archer",
-      from: 19, hp: 34, dmg: 13, spd: 3.3, xp: 48, gold: 14, w: 14,
-      shot: { cd: 1.6, cast: 0.42, speed: 14, range: 10.0, keep: 5.5 } },
+      from: 3, hp: 16, dmg: 5, spd: 3.1, xp: 14, gold: 4, w: 18,
+      shot: { cd: 1.9, cast: 0.48, speed: 12, range: 8.5, keep: 5.0 } },
 
-    { id: "necro", name: "사령술사", sprite: "m_necro", brain: "mage",
-      from: 21, hp: 44, dmg: 10, spd: 2.8, xp: 70, gold: 22, w: 9,
-      field: { cd: 4.0, cast: 0.75, r: 2.6, dur: 5.5, tick: 0.50, range: 7.5 } },
+    /* 사령술사 — **부하를 부른다.** 먼저 잡지 않으면 끝이 안 난다. */
+    { id: "necro", name: "사령술사", sprite: "m_necro", brain: "summoner",
+      from: 5, hp: 20, dmg: 4, spd: 2.5, xp: 22, gold: 6, w: 10,
+      summon: { id: "skel_warrior", cd: 7.0, cast: 0.9, count: 1, max: 2, range: 8.0, keep: 3.4 } },
     { id: "troll", name: "트롤", sprite: "troll", brain: "melee",
       from: 24, hp: 110, dmg: 26, spd: 2.8, xp: 95, gold: 28, w: 12, r: 0.46,
       swing: { aps: 0.55, windup: 0.55, recover: 0.42, reach: 1.55, arc: 150, push: 1.10 } }
@@ -150,6 +156,20 @@
   /* 보스 — 구역의 마지막 층에 하나.
    * ⚠ 잡몹과 **행동이 달라야** 한다. 체력만 큰 잡몹은 보스가 아니라 긴 잡몹이다. */
   var BOSSES = {
+    /* 무덤지기 — **묘지(1구역) 보스.** 해골을 불러낸다.
+     * ⚠ 체력을 크게 두지 않았다. 위협은 **부른 것**에서 나와야 한다 —
+     *   체력만 큰 것은 보스가 아니라 긴 잡몹이다.
+     * ⚠ 부르는 것은 **해골 전사 하나짜리**다. 궁수를 부르게 두면 1구역에서
+     *   원거리 둘에 갇혀 피할 자리가 없다(첫 보스다).
+     * ⚠ 때릴 수단(swing)도 준다. 안 주면 못 부르는 동안 아무것도 안 해
+     *   허수아비가 된다 — summoner 행동이 swing 이 있으면 근접한다. */
+    b_gravekeeper: { name: "무덤지기", brain: "summoner", hp: 230, dmg: 14, spd: 3.0, r: 0.44,
+      xp: 380, gold: 130,
+      summon: { id: "skel_warrior", cd: 6.0, cast: 1.0, count: 1, max: 3, range: 9.0, keep: 3.0 },
+      swing: { aps: 0.75, windup: 0.40, recover: 0.32, reach: 1.7, arc: 140, push: 0.9 } },
+
+    /* ⚠ 관리인은 **지금 아무 구역도 쓰지 않는다**(1구역이 묘지가 됐다).
+     *   스프라이트(b_warden)와 함께 남겨 두었다 — 지울지는 물어볼 것. */
     b_warden: { name: "관리인", brain: "melee", hp: 260, dmg: 16, spd: 3.4, r: 0.44,
       xp: 420, gold: 140,
       swing: { aps: 0.8, windup: 0.42, recover: 0.30, reach: 1.9, arc: 150, push: 1.0 } },
@@ -219,12 +239,37 @@
       var m = MOBS[i];
       if (seen[m.id]) bad.push("몬스터 id 가 겹친다: " + m.id);
       seen[m.id] = 1;
-      if (!m.swing && !m.shot && !m.field && !m.heal && !m.strip)
+      if (!m.swing && !m.shot && !m.field && !m.heal && !m.strip && !m.summon)
         bad.push(m.id + " 이 아무것도 못 한다");
       if (m.brain === "archer" && !m.shot) bad.push(m.id + " 은 사수인데 쏠 것이 없다");
       if (m.brain === "mage" && !m.field) bad.push(m.id + " 은 술사인데 깔 것이 없다");
       if (m.brain === "healer" && !m.heal) bad.push(m.id + " 은 치유사인데 고칠 것이 없다");
       if (m.brain === "breaker" && !m.strip) bad.push(m.id + " 은 파괴자인데 걷을 것이 없다");
+      /* ⚠ 소환할 것이 **표에 실제로 있는 id** 여야 한다. 없는 이름을 적으면
+       *   world.summon 이 조용히 null 을 돌려주고 술사가 영원히 빈손이 된다
+       *   (오류도 안 난다 — 그냥 아무 일도 안 일어난다). */
+      if (m.brain === "summoner" && !m.summon) bad.push(m.id + " 은 술사인데 부를 것이 없다");
+      if (m.summon && !MOBS.some(function (x) { return x.id === m.summon.id; }))
+        bad.push(m.id + " 이 부르려는 " + m.summon.id + " 가 표에 없다");
+    }
+    /* 보스도 같은 규칙으로 본다.
+     * ⚠ 전에는 **보스를 아예 안 봤다.** 그래서 b_lord(30층 최종 보스)에
+     *   스프라이트가 없는 것을 아무도 못 잡았고, 회원은 **보이지 않는 보스**와
+     *   싸웠다(placeAt 은 그림이 없으면 조용히 return 한다). */
+    for (var bid in BOSSES) {
+      var b = BOSSES[bid];
+      if (!b.swing && !b.shot && !b.field && !b.strip && !b.summon)
+        bad.push("보스 " + bid + " 이 아무것도 못 한다");
+      if (b.brain === "archer" && !b.shot) bad.push("보스 " + bid + " 은 사수인데 쏠 것이 없다");
+      if (b.brain === "mage" && !b.field) bad.push("보스 " + bid + " 은 술사인데 깔 것이 없다");
+      if (b.brain === "breaker" && !b.strip) bad.push("보스 " + bid + " 은 파괴자인데 걷을 것이 없다");
+      if (b.brain === "summoner" && !b.summon) bad.push("보스 " + bid + " 은 술사인데 부를 것이 없다");
+      if (b.summon && !MOBS.some(function (x) { return x.id === b.summon.id; }))
+        bad.push("보스 " + bid + " 이 부르려는 " + b.summon.id + " 가 표에 없다");
+      /* ⚠ 스프라이트는 **보스 id 가 그대로 이름**이다(makeMob 이 그렇게 쓴다).
+       *   SPRITES 가 있을 때만 본다 — data.js 는 혼자서도 돌아야 한다. */
+      if (global.SPRITES && global.SPRITES.has && !global.SPRITES.has(bid))
+        bad.push("보스 " + bid + " 의 그림이 없다 — 보이지 않는 보스가 된다");
     }
     for (var d = 1; d <= 30; d++)
       if (!poolAt(d).length) bad.push(d + "층에 나올 몬스터가 없다");
