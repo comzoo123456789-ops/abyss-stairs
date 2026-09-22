@@ -386,7 +386,21 @@
       /* ⚠ 그림이 정면을 보는 도트라 좌우 반전은 쓰지 않는다(뒤집어도 같아 보이고,
        *   무기 든 손만 반대로 간다). face 는 공격 방향에만 쓴다. */
       var fr = this.frameOf(e);
+      /* 흔들림을 얹는다 — 걸음·공격·피격 */
+      var mo = this.motionOf(e);
+      sx += mo.x; sy += mo.y;
+      /* 갓 불려 나온 것은 **떠오르며 나타난다.** 툭 생기면 어디서 왔는지
+       * 모르고, 사령술사가 부른 것인지 원래 있던 것인지 구별이 안 된다. */
+      var bornK = 1;
+      if (e.summoned && e.bornAt !== undefined) {
+        bornK = Math.min(1, (world.time - e.bornAt) / 0.35);
+        if (bornK < 1) {
+          ctx.globalAlpha = bornK;
+          sy += Math.round((1 - bornK) * 5);
+        }
+      }
       placeAt(ctx, S.bake(e.sprite, fr), e.sprite, sx, sy);
+      if (bornK < 1) ctx.globalAlpha = 1;
       /* 맞은 티 — **덧칠**이다. 색을 통째로 바꾸면(실측) 몸이 빨간 실루엣이 되어
        * 누가 누구인지 안 보인다. 원래 그림 위에 옅게 얹고 금방 뺀다. */
       if (e.hurt > 0) {
@@ -465,6 +479,50 @@
     var moving = (e.mx || e.my) && (Math.abs(e.x - e.px) + Math.abs(e.y - e.py)) > 1e-5;
     if (!moving) return 0;
     return 1 + (Math.floor(e.walked / STRIDE) % 2);
+  };
+
+  /* ── 그리는 자리의 흔들림 ─────────────────────────────
+   * **도트에 프레임이 없어도 살아 있게 한다.**
+   *
+   * 잡몹 14종·보스 6종이 전부 프레임 0 이다 — 서 있는 조각상이었다. 그림을
+   * 스무 장 더 그리는 대신 **그리는 자리**를 흔든다.
+   *   얻는 것: 한 곳만 고치면 전부 살아난다.
+   *   잃는 것: 팔다리는 여전히 안 움직인다(그건 프레임이 있어야 한다).
+   *
+   * ⚠ 걸음 들썩임은 **프레임이 없는 것에만** 건다. 주인공은 다리가 이미
+   *   움직이는데 몸까지 들썩이면 걷는 게 아니라 뛰는 것처럼 보인다.
+   * ⚠ 흔들림은 **정수 픽셀**이어야 한다. 소수로 밀면 도트 가장자리가 지글거린다.
+   * ⚠ 걸음은 **걸은 거리**로 센다(e.walked). 시간으로 하면 벽에 막혀 제자리
+   *   걸음 할 때도 흔들려 미끄러지는 것처럼 보인다.
+   * ⚠ 공격은 **모두에게** 건다. 예고(windup)에 뒤로 움츠리고 내려칠 때 앞으로
+   *   뻗는다 — 예고를 몸으로 보여 주면 원형 게이지를 안 봐도 피할 수 있다. */
+  View.prototype.motionOf = function (e) {
+    var bx = 0, by = 0;
+    if (e.dead) return { x: 0, y: 0 };
+
+    if (!S.hasFrames(e.sprite)) {
+      var moved = Math.abs(e.x - e.px) + Math.abs(e.y - e.py);
+      if (moved > 1e-5) {
+        var ph = Math.floor((e.walked || 0) / 0.30);
+        by = (ph % 2) ? -1 : 0;                    /* 한 걸음마다 1px 들썩 */
+        bx = (Math.floor(ph / 2) % 2) ? 1 : -1;    /* 두 걸음마다 좌우 1px */
+      }
+    }
+
+    var a = e.atk;
+    if (a && a.m) {
+      var w = a.m.windup || 0.2, r = a.m.recover || 0.2;
+      var push = (a.t < w)
+        ? -2 * (a.t / w)                                  /* 뒤로 최대 2px */
+        : 3 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));  /* 앞으로 3px → 0 */
+      bx += Math.round(Math.cos(a.ang) * push);
+      by += Math.round(Math.sin(a.ang) * push);
+    }
+
+    /* 맞은 순간 1px 떨림 — 덧칠만으로는 "맞았다" 가 약하다 */
+    if (e.hurt > 0) bx += (Math.floor(e.hurt * 140) % 2) ? 1 : -1;
+
+    return { x: bx, y: by };
   };
 
   /* 화면 좌표 → 월드 칸 좌표. 마우스 조준이 이것을 쓴다. */
