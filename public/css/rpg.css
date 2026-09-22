@@ -397,7 +397,7 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 
 /* 대형 메인 공격 버튼 */
 .act-atk {
-  right: 10px; bottom: 10px;
+  right: 15px; bottom: 15px;
   width: 68px; height: 68px;
   background: radial-gradient(circle at 35% 35%, #9c2f2a, #4a1210) !important;
   border: 3px solid #ff6a52 !important;
@@ -427,19 +427,19 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 }
 .act-sk.cooling { border-color: #4a4254; opacity: 0.85; }
 
-/* 부채꼴 좌표 */
-#btnSkill1 { right: 88px; bottom: 10px; }
-#btnSkill2 { right: 82px; bottom: 62px; }
-#btnSkill3 { right: 50px; bottom: 94px; }
-#btnSkill4 { right: 0px;  bottom: 88px; }
+/* 부채꼴 좌표 (공격 버튼 right: 15px, bottom: 15px / 68x68 기준) */
+#btnSkill1 { right: 146px; bottom: 15px; }
+#btnSkill2 { right: 120px; bottom: 68px; }
+#btnSkill3 { right: 72px; bottom: 108px; }
+#btnSkill4 { right: 15px; bottom: 105px; }
 
-/* E 상호작용 버튼 */
+/* E 상호작용 (줍기) 버튼 */
 .act-e {
-  right: -2px; bottom: 14px;
-  width: 42px; height: 42px;
+  right: 90px; bottom: 15px;
+  width: 48px; height: 48px;
   background: #36281b !important; border-color: #ffd24a !important;
 }
-.act-e .act-ico-txt { font-size: 18px; pointer-events: none; }
+.act-e .act-ico-txt { font-size: 20px; pointer-events: none; }
 .act-e .lbl { font-size: 9px; font-weight: bold; color: #ffd24a; pointer-events: none; }
 .act-e.highlight {
   animation: actPulse 0.9s infinite alternate;
@@ -457,8 +457,12 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   .bottom .skillbar { display: none; } /* 모바일에서는 우측 액션 패드가 대신함 */
   .orb-hp { position: absolute; left: 14px; bottom: 12px; width: 52px; height: 52px; }
   .orb-st { position: absolute; left: 74px; bottom: 12px; width: 52px; height: 52px; }
-  .top-bar { top: 6px; left: 6px; right: 6px; }
-  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; }
+  .top-bar { top: 6px; left: 6px; right: 6px; gap: 4px; align-items: center; }
+  .diag { font-size: 10px; padding: 4px 6px; gap: 4px; max-width: 60%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .diag .d-info { gap: 4px; font-size: 10px; }
+  .diag .d-fps { display: none; }
+  .top-menu { gap: 3px; }
   .tbtn kbd { display: none; }
-  .tbtn { padding: 4px 6px; font-size: 11px; }
+  .tbtn .t-lbl { display: none; }
+  .tbtn { padding: 4px 6px; font-size: 11px; height: 32px; }
 }
