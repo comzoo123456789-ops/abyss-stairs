@@ -959,18 +959,18 @@
     var p = world.player;
     var alive = 0;
     for (var i = 0; i < world.ents.length; i++)
-      if (!world.ents[i].dead && world.ents[i].team !== 0) alive++;
+      if (!world.ents[i].dead && world.ents[i].team !== 0 && world.ents[i].kind !== "dummy") alive++;
     var need = global.SAVE.needFor(hero.level);
-    el.textContent =
-      (world.cls ? world.cls.name + " " : "") +
-      "Lv." + hero.level + " " + hero.xp + "/" + need + "xp" +
-      " · 체력 " + p.hp + "/" + p.maxHp +
-      " · 금화 " + hero.gold + " · 물약 " + hero.potions +
-      " · " + (world.inTown ? "마을" : world.depth + "층") +
-      "(최고 " + hero.maxDepth + ")" +
-      " · 적 " + alive +
-      " · " + fps.v + "fps" +
-      (p.dead ? " · 쓰러졌다…" : "");
+    var place = world.inTown ? "마을" : world.depth + "층";
+    el.innerHTML =
+      '<div class="d-badge">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></div>' +
+      '<div class="d-info">' +
+        '<span>' + place + '</span>' +
+        '<span>금화 <b>' + hero.gold + '</b></span>' +
+        '<span>물약 <b>' + hero.potions + '</b></span>' +
+        (alive > 0 ? '<span class="d-foe">적 <b>' + alive + '</b></span>' : '') +
+      '</div>' +
+      '<div class="d-fps">' + fps.v + 'fps</div>';
   }
 
   function start(opt) {
@@ -1050,6 +1050,36 @@
 
     canvas.addEventListener("mousemove", function (e) {
       mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
+      if (view && world) {
+        var wpos = view.toWorld(e.clientX, e.clientY);
+        var targetFoe = false, targetProp = false;
+        for (var ei = 0; ei < world.ents.length; ei++) {
+          var ent = world.ents[ei];
+          if (ent.dead || ent === world.player) continue;
+          if (ent.team !== 0 || ent.kind === "dummy") {
+            if (Math.hypot(wpos.x - ent.x, wpos.y - ent.y) < ent.r + 0.35) {
+              targetFoe = true; break;
+            }
+          }
+        }
+        if (!targetFoe && world.props) {
+          for (var pi = 0; pi < world.props.length; pi++) {
+            var pr = world.props[pi];
+            if (Math.hypot(wpos.x - pr.x, wpos.y - pr.y) < (pr.def.reach || 1.5)) {
+              targetProp = true; break;
+            }
+          }
+        }
+        if (targetFoe) {
+          canvas.classList.add("cursor-attack");
+          canvas.classList.remove("cursor-interact");
+        } else if (targetProp) {
+          canvas.classList.add("cursor-interact");
+          canvas.classList.remove("cursor-attack");
+        } else {
+          canvas.classList.remove("cursor-attack", "cursor-interact");
+        }
+      }
     });
     canvas.addEventListener("mousedown", function (e) {
       mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
