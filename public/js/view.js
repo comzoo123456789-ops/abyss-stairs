@@ -49,17 +49,23 @@
   function View(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
-    /* 화면 배율.
-     * ⚠ 마을과 던전의 크기가 서로 다르면 위화감이 생기므로 같은 배율을 쓴다.
-     * ⚠ 도트가 가장 고르고 선명한 것은 정수 배율(2.0)이다. */
-    this.baseZoom = 2.0;
-    this.zoom = 2.0;
     this.dpr = 1;
     this.viewW = 0; this.viewH = 0;
     this.zone = null;
     this._ao = null;
+    this.baseZoom = 1.35;
+    this.zoom = 1.35;
     this.resize();
   }
+
+  View.prototype.calcBaseZoom = function () {
+    var w = this.cssW || (this.canvas && this.canvas.parentNode ? this.canvas.parentNode.getBoundingClientRect().width : 1280);
+    /* ⚠ PC(큰 화면)에서는 1.35배로 시야를 넓히고 도트가 너무 거대해지는 것을 방지,
+     *   태블릿은 1.5배, 모바일(좁은 화면)에서는 1.8배로 캐릭터 가독성 확보. */
+    if (w < 600) return 1.8;
+    if (w < 1100) return 1.5;
+    return 1.35;
+  };
 
   View.prototype.resize = function () {
     var box = this.canvas.parentNode.getBoundingClientRect();
@@ -72,6 +78,8 @@
     this.canvas.height = Math.floor(h * dpr);
     this.dpr = dpr;
     this.cssW = w; this.cssH = h;
+    this.baseZoom = this.calcBaseZoom();
+    this.zoom = this.baseZoom;
     this.viewW = w / this.zoom;     /* 화면에 들어오는 월드 픽셀 */
     this.viewH = h / this.zoom;
     this.ctx.imageSmoothingEnabled = false;   /* 도트는 흐리면 안 된다 */
