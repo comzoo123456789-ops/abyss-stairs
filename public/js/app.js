@@ -442,37 +442,6 @@
     el.addEventListener("click", handler);
   }
 
-  function giveTestItems() {
-    var I = global.ITEMS, S = global.SAVE;
-    if (!hero) return;
-    var itemSpecs = [
-      { slot: "weapon", base: "excalibur" },
-      { slot: "weapon", base: "dragonslayer" },
-      { slot: "weapon", base: "arcanestaff" },
-      { slot: "weapon", base: "shadowdagger" },
-      { slot: "weapon", base: "celestialbow" },
-      { slot: "weapon", base: "titanspear" },
-      { slot: "head", base: "crown_kings" },
-      { slot: "head", base: "archmage_hat" },
-      { slot: "head", base: "dragon_helm" },
-      { slot: "body", base: "dragon_plate" },
-      { slot: "body", base: "arcane_robe" },
-      { slot: "body", base: "shadow_coat" },
-      { slot: "shield", base: "aegis_shield" },
-      { slot: "shield", base: "dragon_shield" }
-    ];
-
-    hero.level = Math.max(hero.level, 15);
-    hero.bag = [];
-    for (var i = 0; i < itemSpecs.length; i++) {
-      var sp = itemSpecs[i];
-      var rolled = I.roll(Math.random, { slot: sp.slot, base: sp.base, ilvl: 15, tier: "relic" });
-      if (rolled) hero.bag.push(rolled);
-    }
-    if (world && world.applyHero) world.applyHero();
-    S.save(hero);
-    toast("🎁 전설/신화 장비 14종이 가방에 준비되었습니다! (Lv.15 해금)");
-  }
 
   function closePanel() {
     var box = document.getElementById("panel");
@@ -812,6 +781,12 @@
             toast(I.SLOT_NAME[sl] + " 슬롯이 비어 있습니다.");
           }
         });
+        /* 오른쪽 단추 — 해제 · 분해하기 */
+        el.addEventListener("contextmenu", function (ev2) {
+          ev2.preventDefault();
+          var sl = el.getAttribute("data-eq-slot");
+          if (eq[sl]) openCtxMenu(ev2, eq[sl], true, sl);
+        });
       });
 
       /* Click listener on bag slots */
@@ -822,6 +797,12 @@
           if (bit) {
             openItemModal(bit, false, bIdx);
           }
+        });
+        /* 오른쪽 단추 — 장착 · 분해하기 */
+        el.addEventListener("contextmenu", function (ev2) {
+          ev2.preventDefault();
+          var bIdx = Number(el.getAttribute("data-bag-idx"));
+          if (bag[bIdx]) openCtxMenu(ev2, bag[bIdx], false, bIdx);
         });
       });
 
@@ -928,6 +909,103 @@
     if (global.SFX) global.SFX.play("pickup");
     openBag();
   }
+
+  /* 하나만 분해한다 — 금화와 재료로 바꾼다.
+   *
+   * ⚠ 값 셈은 일괄 분해(salvageJunk)와 **같은 식**이다. 두 벌로 두면 한쪽만
+   *   고쳐져 "일괄로 하면 더 받는" 이상한 일이 생긴다.
+   * ⚠ 일괄 분해는 일반·마법만 건드린다. 여기서는 사람이 하나를 **고른** 것이라
+   *   희귀·유물도 받아 준다. 대신 **되돌릴 수 없으니** 한 번 더 묻는다.
+   * ⚠ 세트는 안 받는다 — 모으는 물건을 실수로 녹이면 되돌릴 방법이 없다. */
+  var DUST_BY_TIER = { common: 1, magic: 2, rare: 4, relic: 8 };
+
+  function salvageOne(where) {
+    var I = global.ITEMS, S = global.SAVE;
+    var eqSlot = (typeof where === "string") ? where : null;
+    var it = eqSlot ? S.liveEquip(hero)[eqSlot] : S.liveBag(hero)[where];
+    if (!it) return;
+    if (it.set) return toast("세트 장비는 분해할 수 없다");
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+
+    var gold = Math.max(5, Math.round((it.val || 0) * 0.6));
+    var dust = DUST_BY_TIER[it.tier] || 1;
+    if (eqSlot) delete hero.equip[eqSlot];
+    else hero.bag.splice(where, 1);
+    hero.gold += gold;
+    hero.mats.m_dust = (hero.mats.m_dust || 0) + dust;
+    if (world && world.applyHero) world.applyHero();
+    S.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    toast(it.name + " 분해: +" + gold + "금 · 영혼의 가루 +" + dust);
+    openBag();
+  }
+
+  /* 오른쪽 단추로 여는 작은 차림표 — 장착 / 해제 / 분해하기.
+   *
+   * ⚠ 브라우저 기본 메뉴를 막는다. 안 막으면 그 위에 겹쳐 뜬다.
+   * ⚠ 화면 밖으로 나가지 않게 민다. 오른쪽 끝 칸에서 열면 잘린다.
+   * ⚠ 희귀·유물 분해는 **한 번 더 묻는다.** 오른쪽 단추는 잘못 눌리기 쉬운데
+   *   분해는 되돌릴 수 없다. 글자가 바뀌고, 다시 눌러야 실행된다. */
+  function openCtxMenu(ev2, it, equipped, where) {
+    if (!it) return;
+    var I = global.ITEMS;
+    closeCtxMenu();
+
+    var el = document.createElement("div");
+    el.id = "itemCtx";
+    el.className = "item-ctx";
+    var rows = [];
+    if (equipped) {
+      rows.push('<button class="ctx-row" data-do="unequip">해제</button>');
+    } else if (I.canEquip(it, hero.level)) {
+      rows.push('<button class="ctx-row" data-do="equip">장착</button>');
+    } else {
+      rows.push('<button class="ctx-row" disabled>장착 <b>Lv.' + I.reqLevel(it) + ' 필요</b></button>');
+    }
+    rows.push('<button class="ctx-row danger" data-do="salvage">분해하기</button>');
+    rows.push('<button class="ctx-row" data-do="close">닫기</button>');
+    el.innerHTML = '<div class="ctx-head">' + esc(it.name) + '</div>' + rows.join("");
+    document.body.appendChild(el);
+
+    var r = el.getBoundingClientRect();
+    var x = Math.min(ev2.clientX, window.innerWidth - r.width - 8);
+    var y = Math.min(ev2.clientY, window.innerHeight - r.height - 8);
+    el.style.left = Math.max(8, x) + "px";
+    el.style.top = Math.max(8, y) + "px";
+
+    el.querySelectorAll("[data-do]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var d = b.getAttribute("data-do");
+        if (d === "close") return closeCtxMenu();
+        if (d === "salvage") {
+          var hard = (it.tier === "rare" || it.tier === "relic");
+          if (hard && b.getAttribute("data-sure") !== "1") {
+            b.setAttribute("data-sure", "1");
+            b.textContent = "정말 분해한다 (되돌릴 수 없다)";
+            return;
+          }
+          closeCtxMenu();
+          return salvageOne(where);
+        }
+        closeCtxMenu();
+        if (d === "equip") equipFromBag(where);
+        else if (d === "unequip") unequip(where);
+      });
+    });
+  }
+
+  function closeCtxMenu() {
+    var old = document.getElementById("itemCtx");
+    if (old && old.parentNode) old.parentNode.removeChild(old);
+  }
+  /* 바깥을 누르거나 Esc 를 누르면 닫는다 */
+  document.addEventListener("mousedown", function (e) {
+    var m = document.getElementById("itemCtx");
+    if (m && !m.contains(e.target)) closeCtxMenu();
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeCtxMenu();
+  });
 
   function unequip(slot) {
     var S = global.SAVE;
@@ -1218,9 +1296,17 @@
     if (!count) return toast("가방이 가득 찼습니다.");
     hero.potions = Math.min(99, (hero.potions || 0) + 5);
     hero.gold += 5000;
+    /* ⚠ **레벨도 같이 올린다.** 주는 것이 ilvl 15 유물이라 Lv.1 로는 하나도
+     *   못 낀다 — 가방만 가득 차고 시험이 안 된다. 실측으로 일곱 개 전부
+     *   "Lv.x 부터 입을 수 있다" 로 막혔다.
+     * ⚠ 내리지는 않는다(Math.max). 이미 더 높은 사람의 레벨을 깎으면 안 된다. */
+    var before = hero.level;
+    hero.level = Math.max(hero.level || 1, 15);
+    if (world && world.applyHero) world.applyHero();
     S.save(hero);
     if (global.SFX) global.SFX.play("pickup");
-    toast("🎁 테스트 장비 " + count + "개 + 물약 5개 + 금화 5000 지급!");
+    toast("🎁 테스트 장비 " + count + "개 + 물약 5개 + 금화 5000" +
+          (hero.level > before ? " · Lv." + hero.level + " 로 올림" : "") + "!");
   }
 
   /* ── 연금술사 / 제작 ─────────────────────────────────── */

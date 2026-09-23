@@ -203,6 +203,33 @@ function View(canvas) {
     }
     this.ox = ox; this.oy = oy;
 
+    /* 지도가 화면 **어디에** 놓였는지 CSS 에 알린다.
+     *
+     * 마을은 30x22칸 = 960x704px 로 고정이다. 창이 그보다 크면 남는 곳은
+     * 전부 검은 바깥이다 — 실측으로 1916x945 에서 그려진 픽셀이 37% 였고,
+     * 위 메뉴는 캐릭터에서 898px 떨어져 있었다. 창 가장자리에 붙어 있어서다.
+     *
+     * UI 를 **창이 아니라 지도에** 붙이면 그 거리가 절반으로 준다(1024x700,
+     * 즉 창과 지도가 같은 크기일 때가 465px 이다). 그래서 지도의 네 변까지의
+     * 여백을 그대로 내보내고, CSS 가 거기에 붙인다.
+     *
+     * ⚠ 매 프레임 쓰면 안 된다. CSS 변수를 바꾸면 그때마다 다시 계산한다.
+     *   **값이 바뀔 때만** 쓴다.
+     * ⚠ 흔들림(shake)은 뺀 값으로 쓴다. 맞을 때마다 UI 가 같이 떨면 멀미가 난다. */
+    var sw = Math.min(mapW, this.viewW), sh = Math.min(mapH, this.viewH);
+    var sl = Math.max(0, Math.round(mapW <= this.viewW ? (this.viewW - mapW) / 2 : 0));
+    var st = Math.max(0, Math.round(mapH <= this.viewH ? (this.viewH - mapH) / 2 : 0));
+    var sr = Math.max(0, Math.round(this.viewW - sl - sw));
+    var sb = Math.max(0, Math.round(this.viewH - st - sh));
+    if (sl !== this._sl || st !== this._st || sr !== this._sr || sb !== this._sb) {
+      this._sl = sl; this._st = st; this._sr = sr; this._sb = sb;
+      var root = document.documentElement.style;
+      root.setProperty("--stage-l", sl + "px");
+      root.setProperty("--stage-t", st + "px");
+      root.setProperty("--stage-r", sr + "px");
+      root.setProperty("--stage-b", sb + "px");
+    }
+
     /* 보이는 범위만 — 한 칸씩 넉넉히 잡는다(가장자리 잘림 방지).
      * ⚠ 키 큰 그림이 위 칸에서 넘어오므로 위쪽은 두 칸 더 본다. */
     var x0 = Math.max(0, Math.floor(-ox / TILE) - 1);
