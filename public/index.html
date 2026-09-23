@@ -37,6 +37,8 @@
       <button id="btnSkills" class="tbtn" title="재주책 / 스킬트리 (K)"><span class="t-ico">📜</span><span class="t-lbl">스킬</span><kbd>K</kbd></button>
       <button id="btnClass" class="tbtn" title="직업 선택 / 캐릭터 변경"><span class="t-ico">👤</span><span class="t-lbl">직업</span></button>
       <button id="btnPotion" class="tbtn" title="생명력 물약 마시기 (Q)"><span class="t-ico">🧪</span><span class="t-lbl">물약</span><b class="t-badge" id="potNum">0</b><kbd>Q</kbd></button>
+      <!-- 계정. ⚠ 게임은 로그인 없이도 그대로 된다 — 저장을 서버에도 남기기 위한 것뿐이다. -->
+      <button id="btnAcct" class="tbtn" title="계정 — 저장을 서버에도 남긴다"><span class="t-ico">🔑</span><span class="t-lbl">계정</span></button>
     </div>
   </div>
 
@@ -121,6 +123,8 @@
 <script src="js/ai.js?v=75"></script>
 <script src="js/view.js?v=75"></script>
 <script src="js/app.js?v=75"></script>
+<!-- 계정·동기화. ⚠ app.js 뒤에 둔다 — SAVE 를 감싸므로 그것이 먼저 있어야 한다. -->
+<script src="js/cloud.js?v=75"></script>
 
   <div id="mobileDropdown" class="mobile-dropdown">
     <button id="mBtnTest" class="mitem" style="color:#ffd700;font-weight:bold;"><span class="ico">🎁</span><span>전설 장비 받기 (테스트)</span></button>

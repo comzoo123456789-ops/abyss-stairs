@@ -1775,3 +1775,39 @@ td.cmp-best b { color: #86e6ad; }
   }
   .dm-v b { font-size: 21px; }
 }
+
+/* ── 계정 ─────────────────────────────────────────────
+ * ⚠ 게임은 로그인 없이도 그대로 된다. 이 창은 **저장을 서버에도 남기기
+ *   위한 것**이고, 그 말이 창 안에 적혀 있어야 한다 — 안 적으면 로그인이
+ *   있어야 노는 줄 안다. */
+.ac-card { width: min(92vw, 420px); }
+.ac-head { font-size: 16px; font-weight: 800; color: #e8e6f0; margin-bottom: 10px; }
+.ac-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+.ac-l {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; font-weight: 700; color: #9a93c8; margin-bottom: 10px;
+}
+.ac-l .bd-input { width: 100%; }
+.ac-row { display: flex; gap: 8px; margin-top: 4px; }
+.ac-who {
+  font-size: 15px; font-weight: 800; color: #86e6ad;
+  padding: 8px 10px; margin-bottom: 8px;
+  background: rgba(94, 214, 140, .10);
+  border: 1px solid rgba(94, 214, 140, .28); border-radius: 8px;
+}
+.ac-p { font-size: 12px; color: #b9b5c9; margin: 0 0 10px; line-height: 1.6; }
+.ac-note, .ac-err {
+  font-size: 11px; line-height: 1.6; padding: 7px 9px; margin-bottom: 10px;
+  border-radius: 7px; white-space: pre-wrap;
+}
+.ac-note { color: #9fd29a; background: rgba(94, 214, 140, .08); border: 1px solid rgba(94, 214, 140, .22); }
+.ac-err  { color: #e2685f; background: rgba(226, 104, 95, .09); border: 1px solid rgba(226, 104, 95, .28); }
+.ac-warn {
+  font-size: 10px; color: #7d7a92; line-height: 1.7;
+  margin: 12px 0 0; padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+}
+.ac-warn b { color: #b9b5c9; }
+/* 로그인해 있으면 단추에 표가 난다 — 안 나면 된 줄 모른다 */
+.tbtn.is-on { border-color: rgba(94, 214, 140, .55); }
+.tbtn.is-on .t-lbl { color: #86e6ad; }

@@ -12,10 +12,21 @@
 #   (공간잇다에서 directory="." 때문에 `wrangler dev` 가 무한 리로드했던 적도 있다)
 
 name = "abyss-arpg"
+main = "src/index.js"
 compatibility_date = "2026-09-18"
 
+# ⚠ 자산에 **binding 을 준다.** main 이 생기면 Worker 가 모든 요청을 먼저
+#   받으므로, `/api/` 가 아닌 것을 우리가 다시 자산으로 넘겨야 한다.
+#   binding 이 없으면 env.ASSETS 가 undefined 라 화면이 통째로 안 뜬다.
 [assets]
 directory = "./public"
+binding = "ASSETS"
+
+# 계정과 저장. ⚠ 게임은 여전히 localStorage 로 돈다 — 여기는 **사본**이다.
+[[d1_databases]]
+binding = "DB"
+database_name = "abyss-arpg-db"
+database_id = "4c94a251-94af-43b6-85e6-a6a1ea60c276"
 
 # 없는 경로는 404 를 준다. 이 게임은 한 페이지짜리라 SPA 폴백이 필요 없다 —
 # 폴백을 켜면 오타 난 주소가 조용히 게임 화면으로 열려 오해를 만든다.

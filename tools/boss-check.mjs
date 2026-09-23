@@ -226,7 +226,17 @@ const opened = await ev(`(function(){
   var w = window.__w();
   var g = w.ents.filter(function (e) { return e.guardian; })[0];
   if (g) { g.hp = 0; g.dead = true; }
-  return { guard: !!w.stairGuard(), depth: w.depth };
+  return { guard: !!w.stairGuard(), depth: w.depth,
+           onStairs: !!w.onStairs() };
+})()`);
+/* ⚠ **다시 계단 위에 세운다.** 살아 있는 수문장이 바로 옆에 서서 앞 판정
+ *   동안 주인공을 계단 밖으로 **밀어낸다** — 그러면 눌러도 안 내려가고
+ *   "죽었는데 안 열린다" 로 읽힌다(드물게 그렇게 빨갰다). 여기서 재려는
+ *   것은 밀림이 아니라 "죽으면 열리는가" 다. */
+await ev(`(function(){
+  var w = window.__w();
+  w.player.x = w.level.downAt.x + 0.5; w.player.y = w.level.downAt.y + 0.5;
+  w.player.px = w.player.x; w.player.py = w.player.y;
 })()`);
 await sleep(400);
 const promptOpen = await ev(`(document.getElementById("act") || {}).textContent || ""`);
