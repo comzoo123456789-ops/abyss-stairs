@@ -63,6 +63,29 @@ function hero(cls, level, maxDepth, gold) {
   return { cls, level, maxDepth, gold, name: "시험", bag: [], equip: {}, skills: {}, bar: [] };
 }
 
+/* 배포본이 **반영될 때까지** 기다린다.
+ * ⚠ 배포 직후 바로 재면 엣지가 옛 HTML 을 준다. 이것 때문에 멀쩡한 코드가
+ *   두 번 빨갰다("항목 안 보임"). 내 파일의 ?v= 와 같아질 때까지 기다린다 —
+ *   고정 대기로 때우면 느린 날 또 같은 일이 난다. */
+async function waitDeployed() {
+  let want = "";
+  try {
+    const m = fs.readFileSync(path.join(REPO, "public", "index.html"), "utf8").match(/\?v=(\d+)/);
+    if (m) want = m[1];
+  } catch (e) { return "(내 파일을 못 읽음)"; }
+  if (!want) return "(?v= 없음)";
+  for (let i = 0; i < 40; i++) {
+    try {
+      const r = await fetch(BASE + "/?cb=" + Math.random().toString(36).slice(2), { cache: "no-store" });
+      const t = await r.text();
+      if (t.indexOf("?v=" + want) >= 0) return "v" + want + (i ? " (" + (i * 3) + "초 기다림)" : "");
+    } catch (e) { /* 다시 */ }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  return "⚠ v" + want + " 가 2분 안에 안 올라왔다";
+}
+const deployed = await waitDeployed();
+
 try {
   /* ── ① 로그인 없이도 그대로 ─────────────────────────
    * ⚠ 이것이 제일 중요하다. 계정을 붙이며 게임을 못 하게 만들면 본말전도다. */
@@ -114,6 +137,63 @@ try {
     anon.cloud && anon.login === null && anon.lv === 12 && anon.gold === 345 && anon.btn,
     "계정 창 " + (anon.btn ? "있음" : "없음") + " · 로그인 " + anon.login +
     " · 로컬 저장 Lv." + anon.lv + " " + anon.gold + "금 (그대로 돌아야 한다)");
+  /* ── 휴대폰에서 계정을 여는 길이 있는가 ─────────────
+   * ⚠ 680px 아래에서는 위 줄 단추가 통째로 감춰진다
+   *   (`.top-menu button:not(#btnHamb) { display: none !important }`).
+   *   붙여만 놓고 이 길을 안 재서 **휴대폰에서 계정을 여는 길이 하나도
+   *   없는 채로 배포됐다**(사용자 신고). 진짜로 눌러서 연다. */
+  async function tap(sel) {
+    const at = await ev(`(function(){
+      var e = document.querySelector(${JSON.stringify(sel)});
+      if (!e) return null;
+      e.scrollIntoView({ block: "center" });
+      var r = e.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return { hidden: true };
+      var x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+      var hit = document.elementFromPoint(x, y);
+      return { x: x, y: y, mine: !!(hit && (hit === e || e.contains(hit))) };
+    })()`);
+    if (!at || at.hidden || !at.mine) return at;
+    await S("Input.dispatchMouseEvent", { type: "mousePressed", x: at.x, y: at.y, button: "left", buttons: 1, clickCount: 1 });
+    await S("Input.dispatchMouseEvent", { type: "mouseReleased", x: at.x, y: at.y, button: "left", buttons: 0, clickCount: 1 });
+    await sleep(320);
+    return at;
+  }
+  await S("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+  await sleep(400);
+  const hid = await ev(`(function(){
+    function vis(s) {
+      var e = document.querySelector(s); if (!e) return "없음";
+      var r = e.getBoundingClientRect();
+      return (r.width > 0 && r.height > 0) ? "보임" : "감춤";
+    }
+    return { top: vis("#btnAcct"), hamb: vis("#btnHamb"), item: vis("#mBtnAcct") };
+  })()`);
+  await tap("#btnHamb");
+  const opened = await ev(`(function(){
+    var d = document.getElementById("mobileDropdown");
+    var e = document.getElementById("mBtnAcct");
+    var r = e ? e.getBoundingClientRect() : null;
+    return { drop: !!(d && d.classList.contains("open")),
+             item: !!(r && r.width > 0 && r.height > 0),
+             txt: e ? e.textContent.trim() : "" };
+  })()`);
+  await tap("#mBtnAcct");
+  const modal = await ev(`(function(){
+    var d = document.getElementById("mobileDropdown");
+    var m = document.getElementById("acctModal");
+    return { modal: !!m, dropStillOpen: !!(d && d.classList.contains("open")),
+             hasId: !!document.getElementById("acId") };
+  })()`);
+  add("휴대폰에서 연다",
+    hid.top === "감춤" && hid.hamb === "보임" && opened.drop && opened.item &&
+    modal.modal && modal.hasId && !modal.dropStillOpen,
+    "390px · 위 줄 단추 " + hid.top + " · 햄버거 " + hid.hamb +
+    " → 차림표 " + (opened.drop ? "열림" : "안 열림") + " · 항목 " +
+    (opened.item ? "보임" : "안 보임") + " “" + opened.txt + "”" +
+    " → 계정 창 " + (modal.modal ? "열림" : "안 열림") +
+    " · 차림표 " + (modal.dropStillOpen ? "⚠ 남음" : "닫힘"));
+
   add("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 2).join(" / ") : "0건");
   try { ws.close(); } catch (e) {}
   ch.kill();
@@ -219,7 +299,7 @@ try {
     fails++;
   }
   console.log("── 계정과 서버 저장 ──");
-  console.log("   " + BASE + " · 시험 계정 " + tag + "* · " + cleaned);
+  console.log("   " + BASE + " · " + deployed + " · 시험 계정 " + tag + "* · " + cleaned);
   for (const [n, ok, note] of out) console.log((ok ? "✔ " : "✘ ") + n.padEnd(16) + " " + note);
   console.log();
   console.log(fails ? "✘ 문제 " + fails + "건" : "✔ 전부 통과");

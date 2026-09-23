@@ -1811,3 +1811,5 @@ td.cmp-best b { color: #86e6ad; }
 /* 로그인해 있으면 단추에 표가 난다 — 안 나면 된 줄 모른다 */
 .tbtn.is-on { border-color: rgba(94, 214, 140, .55); }
 .tbtn.is-on .t-lbl { color: #86e6ad; }
+.mitem.is-on { color: #86e6ad; }
+.mitem.is-on .ico { filter: none; }

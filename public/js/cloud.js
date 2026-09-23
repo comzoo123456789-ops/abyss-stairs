@@ -133,6 +133,13 @@
       if (lbl) lbl.textContent = state.login ? state.login : "계정";
       b.classList.toggle("is-on", !!state.login);
     }
+    /* 차림표 항목에도 누구인지 적는다 — 휴대폰에서는 이것이 유일한 표시다 */
+    var m = document.getElementById("mBtnAcct");
+    if (m) {
+      var t = m.querySelector("span:not(.ico)");
+      if (t) t.textContent = state.login ? ("계정 · " + state.login) : "계정 · 저장 남기기";
+      m.classList.toggle("is-on", !!state.login);
+    }
     var box = document.getElementById("acctBody");
     if (box) box.innerHTML = bodyHtml();
   }
@@ -252,6 +259,29 @@
   function boot() {
     var b = document.getElementById("btnAcct");
     if (b) b.addEventListener("click", open);
+
+    /* 햄버거 차림표에서도 연다.
+     * ⚠ 680px 아래에서는 위 줄 단추가 통째로 감춰진다 — 여기 없으면
+     *   휴대폰에서 계정을 여는 길이 **하나도 없다**(사용자 신고).
+     * ⚠ 열기 전에 차림표를 닫는다. 안 닫으면 계정 창 위에 차림표가
+     *   그대로 남아 어느 것을 누르는지 알 수 없다.
+     * ⚠ `touchstart` 도 받는다. 다른 항목은 app.js 의 bindTap 이 그렇게
+     *   걸어 두었는데, 여기만 click 만 걸면 휴대폰에서 한 박자 늦는다. */
+    var m = document.getElementById("mBtnAcct");
+    if (m) {
+      var tapped = 0;
+      var onTap = function (e) {
+        var now = Date.now();
+        if (now - tapped < 350) { if (e && e.preventDefault) e.preventDefault(); return; }
+        tapped = now;
+        if (e && e.preventDefault && e.type === "touchstart") e.preventDefault();
+        var drop = document.getElementById("mobileDropdown");
+        if (drop) drop.classList.remove("open");
+        open();
+      };
+      m.addEventListener("touchstart", onTap, { passive: false });
+      m.addEventListener("click", onTap);
+    }
 
     /* 저장할 때마다 몰아서 올린다.
      * ⚠ save.js 를 고치지 않고 **감싼다.** 저장을 부르는 곳이 스무 곳이 넘어
