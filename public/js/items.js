@@ -80,7 +80,10 @@
     ],
     head:   [{ id: "cap",   name: "가죽모자", sprite: "armor", lvl: 1, armor: 1, val: 10 },
              { id: "helm",  name: "쇠투구",   sprite: "armor", lvl: 3, armor: 3, hp: 6, val: 22, spdPct: -3 },
-             { id: "hood",  name: "두건",     sprite: "armor", lvl: 2, armor: 1, apsPct: 4, val: 18 }],
+             { id: "hood",  name: "두건",     sprite: "armor", lvl: 2, armor: 1, apsPct: 4, val: 18 },
+             { id: "crown_kings", name: "국왕의 면갑 크라운", sprite: "armor", lvl: 10, armor: 12, hp: 45, val: 320 },
+             { id: "archmage_hat", name: "대마법사의 깃털모", sprite: "armor", lvl: 9, armor: 8, apsPct: 12, val: 280 },
+             { id: "dragon_helm", name: "용비늘 면갑 투구", sprite: "armor", lvl: 12, armor: 16, hp: 60, val: 410 }],
     body:   [{ id: "tunic", name: "누비옷",   sprite: "armor", lvl: 1, armor: 2, val: 14 },
              { id: "mail",  name: "사슬갑옷", sprite: "armor", lvl: 4, armor: 6, hp: 12, val: 34, spdPct: -6 },
              { id: "robe",  name: "긴 옷",    sprite: "armor", lvl: 2, armor: 1, hp: 8, apsPct: 5, val: 24 }],
@@ -222,8 +225,8 @@
     }
   }
 
-  function scaleStat(v, t, mult, ilvl) {
-    var grow = 1 + Math.max(0, (ilvl || 1) - 1) * ILVL_GROW;
+  function scaleStat(v, t, mult, ilvl, statKey) {
+    var grow = 1 + Math.max(0, (ilvl || 1) - 1) * (statKey === "spdPct" ? 0.04 : ILVL_GROW);
     /* 반올림은 **마지막에 한 번만** — 중간에 하면 작은 값이 계속 0 으로 깎인다. */
     return Math.max(1, Math.round(v * mult * grow));
   }
@@ -302,7 +305,7 @@
     it.affixes = pickAffixes(rng, tier, ilvl);
     for (var n = 0; n < it.affixes.length; n++) {
       var a = byId(it.affixes[n]);
-      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult, ilvl);
+      for (k in a.s) it.s[k] = (it.s[k] || 0) + scaleStat(a.s[k], a.t, tier.mult, ilvl, k);
     }
 
     /* ⚠ **접사를 다 얹은 뒤에** 강화를 건다. 앞에 두면 접사가 안 올라가
@@ -434,7 +437,7 @@
     }
     for (var n = 0; n < affixes.length; n++) {
       var af = byId(affixes[n]);
-      for (var kk in af.s) it.s[kk] = (it.s[kk] || 0) + scaleStat(af.s[kk], af.t, tier.mult, ilvl);
+      for (var kk in af.s) it.s[kk] = (it.s[kk] || 0) + scaleStat(af.s[kk], af.t, tier.mult, ilvl, kk);
     }
     applyEnh(it);                       /* ⚠ 접사 뒤 — roll 과 같은 순서여야 한다 */
     if (!it.set) it.name = affixName(it, base, tier);

@@ -120,7 +120,7 @@
 
   global.CLASSES = {
     LIST: CLASSES, SHARED: SHARED, ADEPT_BONUS: ADEPT_BONUS,
-    byId: byId, skillsOf: skillsOf, canUse: canUse, adept: adept, audit: audit,
+    byId: byId, skillsOf: skillsOf, skills: skillsOf, canUse: canUse, adept: adept, audit: audit,
     ids: function () { return CLASSES.map(function (c) { return c.id; }); }
   };
 })(window);

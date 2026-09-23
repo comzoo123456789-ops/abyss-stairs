@@ -345,6 +345,7 @@
       if (pr.id === "shop") return openShop();
       if (pr.id === "stash") return openStash();
       if (pr.id === "smith") return openSmith();
+      if (pr.id === "craft") return openCraft();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -402,6 +403,7 @@
     box.hidden = false;
     box.style.display = "";
     addCloseButton(box);
+
     var btns = box.querySelectorAll("button[data-depth]");
     for (var i = 0; i < btns.length; i++) {
       btns[i].addEventListener("click", function () {
@@ -420,6 +422,56 @@
     el.style.opacity = "1";
     clearTimeout(toastT);
     toastT = setTimeout(function () { el.style.opacity = "0"; }, 1600);
+  }
+
+  function bindTapUI(el, fn) {
+    if (!el) return;
+    var lastTap = 0;
+    var handler = function (e) {
+      var now = Date.now();
+      if (now - lastTap < 300) {
+        if (e && e.preventDefault) e.preventDefault();
+        return;
+      }
+      lastTap = now;
+      if (e && e.preventDefault && e.type === "touchstart") e.preventDefault();
+      if (typeof wakeAudio === "function") wakeAudio();
+      fn(e);
+    };
+    el.addEventListener("touchstart", handler, { passive: false });
+    el.addEventListener("click", handler);
+  }
+
+  function giveTestItems() {
+    var I = global.ITEMS, S = global.SAVE;
+    if (!hero) return;
+    var itemSpecs = [
+      { slot: "weapon", base: "excalibur" },
+      { slot: "weapon", base: "dragonslayer" },
+      { slot: "weapon", base: "arcanestaff" },
+      { slot: "weapon", base: "shadowdagger" },
+      { slot: "weapon", base: "celestialbow" },
+      { slot: "weapon", base: "titanspear" },
+      { slot: "head", base: "crown_kings" },
+      { slot: "head", base: "archmage_hat" },
+      { slot: "head", base: "dragon_helm" },
+      { slot: "body", base: "dragon_plate" },
+      { slot: "body", base: "arcane_robe" },
+      { slot: "body", base: "shadow_coat" },
+      { slot: "shield", base: "aegis_shield" },
+      { slot: "shield", base: "dragon_shield" }
+    ];
+
+    hero.level = Math.max(hero.level, 15);
+    hero.bag = [];
+    for (var i = 0; i < itemSpecs.length; i++) {
+      var sp = itemSpecs[i];
+      var rolled = I.roll(Math.random, { slot: sp.slot, base: sp.base, ilvl: 15, tier: "relic" });
+      if (rolled) hero.bag.push(rolled);
+    }
+    if (world && world.applyHero) world.applyHero();
+    S.save(hero);
+    toast("🎁 전설/신화 장비 14종이 가방에 준비되었습니다! (Lv.15 해금)");
   }
 
   function closePanel() {
@@ -448,7 +500,22 @@
     };
     btn.addEventListener("touchstart", doClose, { passive: false });
     btn.addEventListener("click", doClose);
-    box.appendChild(btn);
+    /* 닫기 버튼을 패널 맨 위에 삽입 (내용 겹침 방지) */
+    box.insertBefore(btn, box.firstChild);
+
+    /* 패널 바깥 클릭 시 닫기 — 한 번만 등록 */
+    var _outsideClose = function(e) {
+      if (!box.hidden && !box.contains(e.target)) {
+        closePanel();
+        document.removeEventListener("mousedown", _outsideClose, true);
+        document.removeEventListener("touchstart", _outsideClose, true);
+      }
+    };
+    /* nextTick 으로 등록: 지금 클릭이 패널 여는 클릭이라 즉시 닫히는 것을 막는다 */
+    setTimeout(function() {
+      document.addEventListener("mousedown", _outsideClose, true);
+      document.addEventListener("touchstart", _outsideClose, true);
+    }, 50);
   }
   /* ── 가방과 장착 ───────────────────────────────────────
    * ⚠ 수치는 **world.gear** 를 읽는다. 여기서 다시 더하면 두 벌이 되어
@@ -472,77 +539,255 @@
   function esc(t) {
     return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
+
+  function getItemSpriteName(it) {
+    if (!it) return null;
+    var id = it.base || it.id || "";
+    var slot = it.slot || "";
+    if (slot === "weapon") {
+      if (id === "dagger" || id === "w_dagger" || id === "shadowdagger") return "dagger";
+      if (id === "sword" || id === "w_sword" || id === "excalibur") return "sword";
+      if (id === "axe" || id === "w_axe" || id === "dragonslayer") return "axe";
+      if (id === "spear" || id === "w_spear") return "spear";
+      if (id === "staff" || id === "w_staff" || id === "arcanestaff") return "staff";
+      if (id === "bow" || id === "w_bow" || id === "celestialbow") return "bow";
+      if (id === "mace" || id === "w_fist") return "w_fist";
+      return "sword";
+    }
+    if (slot === "head") {
+      if (id === "crown_kings") return "i_crown";
+      if (id === "hood" || id === "shadow_hood") return "i_hood";
+      if (id === "helm" || id === "dragon_helm") return "i_helm";
+      return "i_helm";
+    }
+    if (slot === "body") {
+      if (id === "robe" || id === "arcane_robe") return "i_robe";
+      if (id === "mail" || id === "tunic" || id === "plate" || id === "shadow_coat") return "armor";
+      return "armor";
+    }
+    if (slot === "hands") return "i_gloves";
+    if (slot === "feet") return "i_boots";
+    if (slot === "ring") return "i_ring";
+    if (slot === "amulet") return "i_amulet";
+    if (id === "potion") return "potion";
+    if (id === "scroll") return "scroll";
+    if (it.sprite && global.SPRITES && global.SPRITES.has(it.sprite)) return it.sprite;
+    return "sword";
+  }
+
+  function getItemIconHtml(it) {
+    if (!it) return '';
+    var sName = getItemSpriteName(it);
+    if (!sName || !global.SPRITES || !global.SPRITES.has(sName)) return '⚔️';
+    var canvas = global.SPRITES.bake(sName);
+    if (!canvas) return '⚔️';
+    return '<img src="' + canvas.toDataURL() + '" class="item-sprite-img" alt="" />';
+  }
+
   function itemHTML(it, action, idx, wearable) {
     var ti = global.ITEMS.tierOf(it.tier);
+    var imgHtml = getItemIconHtml(it);
     return '<button class="itm" data-' + action + '="' + idx + '"' +
       (wearable === false ? ' data-locked="1"' : '') + '>' +
+      '<div class="itm-icon-box">' + imgHtml + '</div>' +
+      '<div class="itm-info-box">' +
       '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
       '<span class="mt">' + global.ITEMS.SLOT_NAME[it.slot] + ' · Lv.' + it.req +
       (wearable === false ? ' <b class="no">레벨 부족</b>' : '') + '</span>' +
       '<span class="st">' + esc(statsOf(it)) + '</span>' +
       (it.note ? '<span class="nt">' + esc(it.note) + '</span>' : '') +
-      '</button>';
+      '</div></button>';
   }
 
-  function openBag() {
+  function formatItemStats(it) {
+    if (!it) return '<div>선택된 아이템이 없습니다.</div>';
+    var res = [];
+    var st = it.s || it.stats || {};
+    var order = ["dmg", "hp", "armor", "apsPct", "critPct", "critDmgPct", "spdPct", "lifeOnHit", "goldPct", "xpPct"];
+    for (var i = 0; i < order.length; i++) {
+      var k = order[i];
+      if (st[k]) {
+        var line = statLine(k, st[k]);
+        if (line) res.push('<div class="stat-row">• ' + line + '</div>');
+      }
+    }
+    for (var k2 in st) {
+      if (order.indexOf(k2) === -1 && st[k2]) {
+        var line2 = statLine(k2, st[k2]);
+        if (line2) res.push('<div class="stat-row">• ' + line2 + '</div>');
+      }
+    }
+    if (it.note) {
+      res.push('<div class="stat-note">※ ' + esc(it.note) + '</div>');
+    }
+    if (it.set) {
+      var setObj = global.ITEMS.SETS ? global.ITEMS.SETS.filter(function(s){ return s.id === it.set; })[0] : null;
+      if (setObj) {
+        res.push('<div class="stat-set"><b>[ ' + esc(setObj.name) + ' 세트 ]</b></div>');
+        for (var si = 0; si < setObj.bonus.length; si++) {
+          res.push('<div class="stat-set-bonus">(' + setObj.bonus[si].at + '세트) ' + esc(setObj.bonus[si].text) + '</div>');
+        }
+      }
+    }
+    return res.join('') || '<div class="stat-row">• 기본 장비</div>';
+  }
+
+  function sortBag() {
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero);
+    if (!bag || bag.length <= 1) return toast("정렬할 아이템이 부족합니다.");
+
+    var TIER_ORDER = { set: 5, relic: 4, rare: 3, magic: 2, common: 1 };
+    var SLOT_ORDER = { weapon: 1, head: 2, body: 3, hands: 4, feet: 5, ring: 6, amulet: 7 };
+
+    hero.bag.sort(function(pA, pB) {
+      var a = I.rebuild(pA), b = I.rebuild(pB);
+      if (!a) return 1; if (!b) return -1;
+
+      var tA = TIER_ORDER[a.tier] || 0;
+      var tB = TIER_ORDER[b.tier] || 0;
+      if (tA !== tB) return tB - tA;
+
+      var sA = SLOT_ORDER[a.slot] || 99;
+      var sB = SLOT_ORDER[b.slot] || 99;
+      if (sA !== sB) return sA - sB;
+
+      var rA = a.req || 0, rB = b.req || 0;
+      if (rA !== rB) return rB - rA;
+
+      var eA = a.enh || 0, eB = b.enh || 0;
+      return eB - eA;
+    });
+
+    S.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    toast("⚡ 가방 아이템이 등급 및 종류별로 자동 정렬되었습니다!");
+    openBag();
+  }
+
+  var currentBagTab = "equip";
+
+  function openBag(forceTab) {
+    if (forceTab) currentBagTab = forceTab;
     var box = document.getElementById("panel");
     if (!box) return;
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    box.dataset.type = "bag";
     var I = global.ITEMS, S = global.SAVE;
     var eq = S.liveEquip(hero), bag = S.liveBag(hero);
     var t = world.gear || I.totals(eq);
 
-    var html = '<h2>장비와 가방</h2><div class="cols">';
+    var html = '<div class="inv-header"><h2>⚔️ 가방 및 보관함</h2>' +
+      '<div class="inv-header-btns">' +
+      '<div class="bag-tab-row">' +
+      '<button id="btnBagTabEquip" class="bag-tab-btn' + (currentBagTab === "equip" ? " active" : "") + '">⚔️ 장비 가방</button>' +
+      '<button id="btnBagTabMats" class="bag-tab-btn' + (currentBagTab === "mats" ? " active" : "") + '">🔮 재료 가방</button>' +
+      '</div>' +
+      (currentBagTab === "equip" ? '<div class="bag-action-row"><button id="btnSortBag" class="btn-sort-bag">⚡ 자동 정렬</button><button id="btnTestItems" class="btn-test-items">🎁 테스트 장비 획득</button></div>' : '') +
+      '</div></div>';
+    
+    if (currentBagTab === "mats") {
+      var m = hero.mats;
+      html += '<div class="mats-tab-container">' +
+        '<div class="mat-card-item">' +
+        '<div class="mat-card-ico">✨</div>' +
+        '<div class="mat-card-info">' +
+        '<div class="mat-card-title">영혼의 가루 <span class="mat-card-qty">' + (m.m_dust || 0) + '개</span></div>' +
+        '<div class="mat-card-desc">장비를 분해하거나 몬스터를 잡을 때 획득하는 기초 가루. 연금술 및 제작의 기본 재료입니다.</div>' +
+        '</div></div>' +
 
-    html += '<div class="col"><h3>입은 것</h3>';
-    for (var i = 0; i < I.SLOTS.length; i++) {
-      var sl = I.SLOTS[i], it = eq[sl];
-      html += it
-        ? itemHTML(it, "off", sl)
-        : '<div class="itm empty"><span class="nm">' + I.SLOT_NAME[sl] + '</span>' +
-          '<span class="mt">비어 있다</span></div>';
-    }
-    html += '</div>';
+        '<div class="mat-card-item">' +
+        '<div class="mat-card-ico">💎</div>' +
+        '<div class="mat-card-info">' +
+        '<div class="mat-card-title">마력 결정 <span class="mat-card-qty">' + (m.m_crystal || 0) + '개</span></div>' +
+        '<div class="mat-card-desc">마력이 응축된 정교한 결정체. 고급 유물/세트 제작 재료로 쓰입니다.</div>' +
+        '</div></div>' +
 
-    html += '<div class="col"><h3>가방 <span class="mt">' + bag.length + ' / ' + S.BAG + '</span></h3>';
-    if (!bag.length) html += '<p class="sub">아직 아무것도 없다.</p>';
-    for (var b = 0; b < bag.length; b++)
-      html += itemHTML(bag[b], "on", b, I.canEquip(bag[b], hero.level));
-    html += '</div>';
+        '<div class="mat-card-item">' +
+        '<div class="mat-card-ico">🔮</div>' +
+        '<div class="mat-card-info">' +
+        '<div class="mat-card-title">심연의 정수 <span class="mat-card-qty">' + (m.m_essence || 0) + '개</span></div>' +
+        '<div class="mat-card-desc">던전 보스 몬스터에게서만 드롭되는 귀한 정수. 신화 및 세트 제작의 핵심입니다.</div>' +
+        '</div></div>' +
 
-    /* 합계 — 세트 보너스까지 한 자리에 */
-    html += '<div class="col"><h3>지금 내 수치</h3><div class="tot">';
-    if (world.cls) {
-      html += '<div><b>' + esc(world.cls.name) + '</b> <span class="mt">' +
-        esc(world.cls.tag) + '</span></div>';
-      html += '<div class="mt">잘 쓰는 무기 ' + esc(world.cls.likesText) + '</div>';
-      /* ⚠ 적성이 **켜졌는지** 보여 준다. 안 보여 주면 +25% 가 붙었는지
-       *   알 길이 없어 "어떤 무기를 찾아야 하지" 가 안 생긴다. */
-      html += '<div>' + (world.player.adept
-        ? '<b style="color:#9fd29a">적성 무기 · 피해 +' + global.CLASSES.ADEPT_BONUS + '%</b>'
-        : '<span class="mt">적성 무기가 아니다</span>') + '</div>';
-      html += '<div class="hr"></div>';
+        '<div class="mat-card-item">' +
+        '<div class="mat-card-ico">🛡️</div>' +
+        '<div class="mat-card-info">' +
+        '<div class="mat-card-title">용의 비늘 <span class="mat-card-qty">' + (m.m_scale || 0) + '개</span></div>' +
+        '<div class="mat-card-desc">고층 몬스터나 강력한 보스가 드롭하는 비늘. 최상급 제작에 쓰입니다.</div>' +
+        '</div></div>' +
+        '</div>';
+    } else {
+      html += '<div class="inv-body-layout">';
+      
+      // Grids column: Equipment Rack & Bag Grid & Summary
+      html += '<div class="inv-grids-col">';
+      
+      // Equipment Rack
+      html += '<div class="inv-sec eq-section">';
+      html += '<div class="sec-title"><span>착용 장비</span><span class="sub-cnt">7 슬롯</span></div>';
+      html += '<div class="eq-rack-grid">';
+      var slotMeta = [
+        { sl: "head", label: "투구", ico: "🧢" },
+        { sl: "body", label: "갑옷", ico: "🥋" },
+        { sl: "weapon", label: "무기", ico: "⚔️" },
+        { sl: "hands", label: "장갑", ico: "🥊" },
+        { sl: "feet", label: "신발", ico: "👞" },
+        { sl: "ring", label: "반지", ico: "💍" },
+        { sl: "amulet", label: "목걸이", ico: "📿" }
+      ];
+      for (var i = 0; i < slotMeta.length; i++) {
+        var m = slotMeta[i], sl = m.sl, it = eq[sl];
+        var ti = it ? I.tierOf(it.tier) : null;
+        var tierCol = ti ? ti.color : '#3a3a50';
+        var enhBadge = (it && it.enh) ? '<span class="enh-badge">+' + it.enh + '</span>' : '';
+        var itemImg = it ? getItemIconHtml(it) : '<span class="slot-ph-ico">' + m.ico + '</span>';
+        
+        html += '<div class="arpg-slot eq-slot' + (it ? ' filled tier-' + (it.tier || 'common') : ' empty') + '" style="border-color:' + tierCol + '" data-eq-slot="' + sl + '" title="' + (it ? esc(it.name) : m.label + ' (비어있음)') + '">';
+        html += '<div class="slot-bg-label">' + m.label + '</div>';
+        html += itemImg;
+        html += enhBadge;
+        html += '</div>';
+      }
+      html += '</div></div>';
+
+      // Bag Grid (20 compact slots: 5x4)
+      html += '<div class="inv-sec bag-section">';
+      html += '<div class="sec-title"><span>가방</span><span class="sub-cnt">' + bag.length + ' / ' + S.BAG + '</span></div>';
+      html += '<div class="arpg-bag-grid">';
+      for (var b = 0; b < S.BAG; b++) {
+        var bit = bag[b];
+        if (bit) {
+          var bTi = I.tierOf(bit.tier);
+          var bTierCol = bTi ? bTi.color : '#b8b2a4';
+          var canEq = I.canEquip(bit, hero.level);
+          var bEnhBadge = bit.enh ? '<span class="enh-badge">+' + bit.enh + '</span>' : '';
+          var lockBadge = !canEq ? '<span class="lock-badge">🔒</span>' : '';
+          
+          html += '<div class="arpg-slot bag-slot filled tier-' + (bit.tier || 'common') + (!canEq ? ' req-fail' : '') + '" style="border-color:' + bTierCol + '" data-bag-idx="' + b + '" title="' + esc(bit.name) + '">';
+          html += getItemIconHtml(bit);
+          html += bEnhBadge;
+          html += lockBadge;
+          html += '</div>';
+        } else {
+          html += '<div class="arpg-slot bag-slot empty"><div class="empty-dot"></div></div>';
+        }
+      }
+      html += '</div></div>';
+
+      // Total Equipment Stats Summary
+      html += '<div class="tot-summary"><div class="sec-title"><span>장비 능력치 총합</span></div><div class="tot-grid">';
+      var order = ["dmg", "hp", "armor", "apsPct", "critPct", "critDmgPct", "spdPct", "lifeOnHit", "goldPct", "xpPct"];
+      for (var o = 0; o < order.length; o++) {
+        var line = statLine(order[o], t[order[o]]);
+        if (line) html += '<div>' + line + '</div>';
+      }
+      html += '</div></div>';
+      html += '</div>'; // End inv-grids-col
+      html += '</div>'; // End inv-body-layout
     }
-    var order = ["dmg", "hp", "armor", "apsPct", "critPct", "critDmgPct",
-                 "spdPct", "lifeOnHit", "goldPct", "xpPct"];
-    for (var o = 0; o < order.length; o++) {
-      var line = statLine(order[o], t[order[o]]);
-      if (line) html += '<div>' + line + '</div>';
-    }
-    var p = world.player;
-    html += '<div class="hr"></div>';
-    html += '<div>체력 ' + p.hp + ' / ' + p.maxHp + '</div>';
-    html += '<div>한 대 ' + (p.swing ? p.swing.dmg : global.COMBAT.SWING.dmg) +
-            ' · 초당 ' + (p.swing ? p.swing.aps : global.COMBAT.SWING.aps).toFixed(2) + '회</div>';
-    html += '<div>사거리 ' + (p.swing ? p.swing.reach : global.COMBAT.SWING.reach).toFixed(2) + '칸</div>';
-    html += '</div>';
-    for (var si2 = 0; si2 < (t._sets || []).length; si2++) {
-      var st = t._sets[si2];
-      html += '<div class="set"><b>' + esc(st.name) + '</b> ' + st.have + '/' + st.of;
-      for (var bo = 0; bo < st.on.length; bo++)
-        html += '<div class="on">' + st.on[bo].at + '피스 · ' + esc(st.on[bo].text) + '</div>';
-      html += '</div>';
-    }
-    html += '</div></div><p class="sub">I 또는 Esc 로 닫는다 · 눌러서 입거나 벗는다</p>';
+
+    html += '<p class="sub">I 또는 Esc 로 닫는다 · 아이템을 누르면 상세 모달 팝업이 열립니다</p>';
 
     box.innerHTML = html;
     box.hidden = false;
@@ -550,14 +795,52 @@
     box.className = "panel wide";
     addCloseButton(box);
 
-    box.querySelectorAll("[data-on]").forEach(function (el) {
-      el.addEventListener("click", function () { equipFromBag(Number(this.getAttribute("data-on"))); });
-    });
-    box.querySelectorAll("[data-off]").forEach(function (el) {
-      el.addEventListener("click", function () { unequip(this.getAttribute("data-off")); });
-    });
-  }
+    var btnTabEquip = document.getElementById("btnBagTabEquip");
+    var btnTabMats = document.getElementById("btnBagTabMats");
+    if (btnTabEquip) bindTapUI(btnTabEquip, function() { openBag("equip"); });
+    if (btnTabMats) bindTapUI(btnTabMats, function() { openBag("mats"); });
 
+    if (currentBagTab === "equip") {
+      /* Click listener on equipment slots */
+      box.querySelectorAll("[data-eq-slot]").forEach(function(el) {
+        bindTapUI(el, function() {
+          var sl = el.getAttribute("data-eq-slot");
+          var it = eq[sl];
+          if (it) {
+            openItemModal(it, true, sl);
+          } else {
+            toast(I.SLOT_NAME[sl] + " 슬롯이 비어 있습니다.");
+          }
+        });
+      });
+
+      /* Click listener on bag slots */
+      box.querySelectorAll("[data-bag-idx]").forEach(function(el) {
+        bindTapUI(el, function() {
+          var bIdx = Number(el.getAttribute("data-bag-idx"));
+          var bit = bag[bIdx];
+          if (bit) {
+            openItemModal(bit, false, bIdx);
+          }
+        });
+      });
+
+      var btnSort = document.getElementById("btnSortBag");
+      if (btnSort) {
+        bindTapUI(btnSort, function() {
+          sortBag();
+        });
+      }
+
+      var btnTest = document.getElementById("btnTestItems");
+      if (btnTest) {
+        bindTapUI(btnTest, function() {
+          giveTestItems();
+          openBag();
+        });
+      }
+    }
+  }
   /* 입는다. **자리에 있던 것은 가방으로 돌아간다** —
    * ⚠ 안 돌려주면 바꿔 끼는 순간 전에 쓰던 것이 사라진다(되돌릴 수 없다). */
   function equipFromBag(idx) {
@@ -607,33 +890,46 @@
 
     html += '<div class="col"><h3>산다</h3>' +
       '<button class="itm" data-buy="potion">' +
+      '<div class="itm-icon-box">' + (global.SPRITES && global.SPRITES.has("potion") ? '<img src="' + global.SPRITES.bake("potion").toDataURL() + '" class="item-sprite-img" alt="" />' : '🧪') + '</div>' +
+      '<div class="itm-info-box">' +
       '<span class="nm">회복 물약</span>' +
-      '<span class="mt">' + POTION_PRICE + '금 · 체력 절반을 채운다</span></button>' +
-      '<p class="sub">Q 로 마신다 · 8초에 한 번</p></div>';
+      '<span class="mt">' + POTION_PRICE + '금 · 체력 절반을 채운다</span></div></button>' +
+      '<p class="sub">Q 로 마신다 · 3초에 한 번</p></div>';
 
     html += '<div class="col"><h3>판다 <span class="mt">값의 절반</span></h3>';
     if (!bag.length) html += '<p class="sub">가방이 비었다.</p>';
     for (var b = 0; b < bag.length; b++) {
       var ti = I.tierOf(bag[b].tier);
+      var imgHtml = getItemIconHtml(bag[b]);
       html += '<button class="itm" data-sell="' + b + '">' +
+        '<div class="itm-icon-box" style="border-color:' + ti.color + '">' + imgHtml + '</div>' +
+        '<div class="itm-info-box">' +
         '<span class="nm" style="color:' + ti.color + '">' + esc(bag[b].name) + '</span>' +
         '<span class="mt">' + I.SLOT_NAME[bag[b].slot] + ' · Lv.' + bag[b].req +
         ' → <b>' + priceSell(bag[b]) + '금</b></span>' +
-        '<span class="st">' + esc(statsOf(bag[b])) + '</span></button>';
+        '<span class="st">' + esc(statsOf(bag[b])) + '</span></div></button>';
     }
-    if (bag.length > 1)
-      html += '<button class="itm" data-selljunk="1"><span class="nm">일반 등급 전부 팔기</span>' +
-        '<span class="mt">희귀·유물·세트는 안 판다</span></button>';
+    if (bag.length > 1) {
+      html += '<div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;">' +
+        '<button class="itm" data-selljunk="common"><span class="nm">⚪ 일반 등급 일괄 판매</span>' +
+        '<span class="mt">희귀·유물·세트는 안 판다</span></button>' +
+        '<button class="itm" data-selljunk="magic"><span class="nm">🔵 일반/마법 등급 일괄 판매</span>' +
+        '<span class="mt">희귀·유물·세트는 안 판다</span></button>' +
+        '</div>';
+    }
     html += '</div>';
 
     /* 되사기 — **실수로 판 것을 되찾는 자리.** 없으면 한 번의 오조작이 영구 손실이다. */
     html += '<div class="col"><h3>되산다 <span class="mt">판 값 그대로</span></h3>';
     if (!buyback.length) html += '<p class="sub">이번에 판 것이 없다.</p>';
     for (var k = 0; k < buyback.length; k++) {
-      var bk = I.rebuild(buyback[k].p), tk = I.tierOf(bk.tier);
+      var bk = I.rebuild(buyback[k].p), tk = I.tierOf(buyback[k].p ? buyback[k].p.tier : 'common');
+      var bImgHtml = getItemIconHtml(bk);
       html += '<button class="itm" data-buyback="' + k + '">' +
+        '<div class="itm-icon-box" style="border-color:' + tk.color + '">' + bImgHtml + '</div>' +
+        '<div class="itm-info-box">' +
         '<span class="nm" style="color:' + tk.color + '">' + esc(bk.name) + '</span>' +
-        '<span class="mt">' + buyback[k].price + '금에 되산다</span></button>';
+        '<span class="mt">' + buyback[k].price + '금에 되산다</span></div></button>';
     }
     html += '</div></div><p class="sub">Esc 로 닫는다</p>';
 
@@ -643,27 +939,24 @@
     addCloseButton(box);
     wire(box, "buy", function () { buyPotion(); });
     wire(box, "sell", function (v) { sellOne(Number(v)); });
-    wire(box, "selljunk", function () { sellJunk(); });
+    wire(box, "selljunk", function (v) { sellJunk(v); });
     wire(box, "buyback", function (v) { rebuy(Number(v)); });
   }
 
-  /* ── 대장간 ─────────────────────────────────────────────
-   * 강화는 물건의 **기본 수치**를 올리고, 재련은 접사를 다시 굴린다.
-   * ⚠ 값은 전부 items.js 가 정한다(enhCost·enhChance·reforgeCost).
-   *   화면에서 다시 계산하면 "표시는 120금인데 140금이 나간다" 가 된다.
-   * ⚠ 저장본(팩)을 직접 고친다 — 되살린 물건을 고쳐 봐야 다음 불러오기에
-   *   되돌아간다(수치는 전부 팩에서 계산된 것이다). */
   function smithRow(it, key) {
     var I = global.ITEMS, ti = I.tierOf(it.tier);
     var full = (it.enh || 0) >= I.ENH_MAX;
     var ch = Math.round(I.enhChance(it.enh || 0) * 100);
     var ec = I.enhCost(it), rc = I.reforgeCost(it);
     var set = it.set, common = ti.affixes[1] <= 0;
+    var imgHtml = getItemIconHtml(it);
     return '<div class="smrow">' +
+      '<div class="itm-icon-box" style="border-color:' + ti.color + '">' + imgHtml + '</div>' +
+      '<div class="itm-info-box">' +
       '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
       '<span class="mt">' + I.SLOT_NAME[it.slot] + ' · ' + ti.name +
         ' · 강화 +' + (it.enh || 0) + '/' + I.ENH_MAX + '</span>' +
-      '<span class="st">' + esc(statsOf(it)) + '</span>' +
+      '<span class="st">' + esc(statsOf(it)) + '</span></div>' +
       '<span class="sact">' +
         (full
           ? '<b class="no">강화 끝</b>'
@@ -680,8 +973,6 @@
     if (!box) return;
     var I = global.ITEMS, S = global.SAVE;
     var eq = S.liveEquip(hero), bag = S.liveBag(hero);
-    /* ⚠ 비율을 **여기 적지 않는다.** 설계를 바꾼 날 화면만 옛 말을 한다
-     *   (실제로 4% 로 바꾼 뒤에도 "기본 수치를 올린다" 고 적혀 있었다). */
     var per = Math.round(I.ENH_PER * 100);
     var html = '<h2>대장장이</h2><p class="sub">금화 ' + hero.gold +
       ' · 강화 한 단계마다 그 물건의 <b>좋은 수치가 모두 +' + per + '%</b>' +
@@ -696,7 +987,7 @@
       any++; html += smithRow(eq[sl], "eq:" + sl);
     }
     if (!any) html += '<p class="sub">입은 것이 없다.</p>';
-    html += '</div><div class="col"><h3>가방</h3>';
+    html += '</div><div class="col"><h3>가방 <button id="btnSalvageJunk" style="float:right; font-size:11px; padding:3px 8px; background:#4a3525; border:1px solid #d9a441; color:#ffd24a; border-radius:4px; cursor:pointer;">♻️ 일반/마법 일괄 분해</button></h3>';
     if (!bag.length) html += '<p class="sub">가방이 비었다.</p>';
     for (var b = 0; b < bag.length; b++) html += smithRow(bag[b], "bag:" + b);
     html += '</div></div><p class="sub">Esc 로 닫는다</p>';
@@ -707,6 +998,13 @@
     addCloseButton(box);
     wire(box, "enh", function (k) { doSmith(k, "enh"); });
     wire(box, "ref", function (k) { doSmith(k, "ref"); });
+
+    var salvageBtn = box.querySelector("#btnSalvageJunk");
+    if (salvageBtn) {
+      bindTapUI(salvageBtn, function() {
+        salvageJunk();
+      });
+    }
   }
 
   /* 팩을 가리키는 자리를 돌려준다. **객체를 그대로 고쳐야** 저장에 남는다 —
@@ -784,24 +1082,220 @@
     openShop();
   }
 
-  /* 일반 등급만 판다. ⚠ 희귀·유물·세트까지 쓸어 팔면 한 번의 실수로 다 잃는다. */
-  function sellJunk() {
+  function sellJunk(tierMax) {
+    tierMax = tierMax || "common";
     var I = global.ITEMS, S = global.SAVE;
     var bag = S.liveBag(hero), got = 0, sold = 0;
+    var allowed = ["common"];
+    if (tierMax === "magic") allowed.push("magic");
+
     for (var i = bag.length - 1; i >= 0; i--) {
-      if (bag[i].tier !== "common" || bag[i].set) continue;
+      if (allowed.indexOf(bag[i].tier) < 0 || bag[i].set) continue;
       var price = priceSell(bag[i]);
       got += price; sold++;
       buyback.unshift({ p: hero.bag[i], price: price });
       hero.bag.splice(i, 1);
     }
     if (buyback.length > 8) buyback.length = 8;
-    if (!sold) return toast("팔 일반 등급이 없다");
+    if (!sold) return toast("조건에 해당하는 팔 등급 아이템이 없다");
     hero.gold += got;
     if (global.SFX) global.SFX.play("gold");
     S.save(hero);
-    toast(sold + "개를 " + got + "금에 팔았다");
+    toast(sold + "개 아이템을 " + got + "금에 일괄 팔았다");
     openShop();
+  }
+
+  function salvageJunk() {
+    var I = global.ITEMS, S = global.SAVE;
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    var bag = S.liveBag(hero), gotGold = 0, gotDust = 0, count = 0;
+    for (var i = bag.length - 1; i >= 0; i--) {
+      if ((bag[i].tier === "common" || bag[i].tier === "magic") && !bag[i].set) {
+        var val = Math.max(5, Math.round(bag[i].val * 0.6));
+        gotGold += val;
+        gotDust += (bag[i].tier === "magic" ? 2 : 1);
+        count++;
+        hero.bag.splice(i, 1);
+      }
+    }
+    if (!count) return toast("분해할 일반/마법 등급 아이템이 없다");
+    hero.gold += gotGold;
+    hero.mats.m_dust = (hero.mats.m_dust || 0) + gotDust;
+    if (global.SFX) global.SFX.play("pickup");
+    S.save(hero);
+    toast(count + "개 아이템 분해: +" + gotGold + "금, ✨영혼의 가루 +" + gotDust + " 획득!");
+    openSmith();
+  }
+
+  /* ── 테스트 장비 지급 ─────────────────────────────────── */
+  function giveTestItems() {
+    var I = global.ITEMS, S = global.SAVE, D = global.DUNGEON;
+    if (!I || !D) return toast("아이템 모듈이 없습니다.");
+    var rng = D.makeRng(Date.now() & 0x7fffffff);
+    var count = 0;
+    var slots = ["weapon", "head", "body", "hands", "feet", "ring", "amulet"];
+    for (var i = 0; i < slots.length; i++) {
+      if (hero.bag.length >= S.BAG) break;
+      var sl = slots[i];
+      var bases = I.BASES[sl];
+      if (!bases || !bases.length) continue;
+      /* 가장 마지막 base(고급 기준) 또는 적성 기준으로 pick */
+      var base = bases[bases.length - 1];
+      var item = I.roll(rng, { slot: sl, base: base.id, tier: "relic", ilvl: 15 });
+      hero.bag.push(I.pack(item));
+      count++;
+    }
+    if (!count) return toast("가방이 가득 찼습니다.");
+    hero.potions = Math.min(99, (hero.potions || 0) + 5);
+    hero.gold += 5000;
+    S.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    toast("🎁 테스트 장비 " + count + "개 + 물약 5개 + 금화 5000 지급!");
+  }
+
+  /* ── 연금술사 / 제작 ─────────────────────────────────── */
+  var CRAFT_RECIPES = [
+    {
+      id: "craft_dragon_helm",
+      name: "용비늘 면갑 투구",
+      slot: "head",
+      base: "dragon_helm",
+      tier: "relic",
+      ilvl: 15,
+      gold: 500,
+      mats: { m_dust: 10, m_crystal: 5, m_scale: 3 },
+      note: "방어력 +16, 체력 +60 최고 등급 면갑"
+    },
+    {
+      id: "craft_archmage_hat",
+      name: "대마법사의 깃털모",
+      slot: "head",
+      base: "archmage_hat",
+      tier: "relic",
+      ilvl: 15,
+      gold: 500,
+      mats: { m_dust: 10, m_crystal: 5, m_essence: 2 },
+      note: "방어력 +8, 공격속도 +12% 마법사 모자"
+    },
+    {
+      id: "craft_crown_kings",
+      name: "국왕의 면갑 크라운",
+      slot: "head",
+      base: "crown_kings",
+      tier: "relic",
+      ilvl: 15,
+      gold: 800,
+      mats: { m_dust: 15, m_crystal: 8, m_essence: 3 },
+      note: "방어력 +12, 체력 +45 명품 왕관"
+    },
+    {
+      id: "craft_set_pilgrim_robe",
+      name: "순례자의 긴 옷",
+      slot: "body",
+      base: "robe",
+      tier: "relic",
+      ilvl: 15,
+      gold: 750,
+      mats: { m_dust: 15, m_crystal: 8, m_essence: 2 },
+      note: "심연의 순례자 세트 갑옷 (3세트: 이속+10%, 공속+8%)"
+    },
+    {
+      id: "craft_set_pilgrim_pendant",
+      name: "순례자의 펜던트",
+      slot: "amulet",
+      base: "pendant",
+      tier: "relic",
+      ilvl: 15,
+      gold: 750,
+      mats: { m_dust: 15, m_crystal: 8, m_scale: 4 },
+      note: "심연의 순례자 세트 목걸이 (5세트: 치명+10%, 체력+40)"
+    }
+  ];
+
+  function openCraft() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    var m = hero.mats;
+    var I = global.ITEMS;
+
+    var html = '<h2>연금술사 (장비 제작)</h2>' +
+      '<p class="sub">몬스터 처치 및 장비 분해로 얻은 재료로 <b>최상위 유물/세트 장비</b>를 제작합니다</p>' +
+      '<div class="mats-bar">' +
+      '<span class="mat-badge">✨ 영혼의 가루: <b>' + (m.m_dust||0) + '</b></span>' +
+      '<span class="mat-badge">💎 마력 결정: <b>' + (m.m_crystal||0) + '</b></span>' +
+      '<span class="mat-badge">🔮 심연의 정수: <b>' + (m.m_essence||0) + '</b></span>' +
+      '<span class="mat-badge">🛡️ 용의 비늘: <b>' + (m.m_scale||0) + '</b></span>' +
+      '<span class="mat-badge gold">💰 금화: <b>' + hero.gold + '</b></span>' +
+      '</div>' +
+      '<div class="craft-recipes-list">';
+
+    for (var i = 0; i < CRAFT_RECIPES.length; i++) {
+      var r = CRAFT_RECIPES[i];
+      var ti = I.tierOf(r.tier);
+      var canGold = hero.gold >= r.gold;
+      var canDust = (m.m_dust||0) >= (r.mats.m_dust||0);
+      var canCrystal = (m.m_crystal||0) >= (r.mats.m_crystal||0);
+      var canEssence = (m.m_essence||0) >= (r.mats.m_essence||0);
+      var canScale = (m.m_scale||0) >= (r.mats.m_scale||0);
+      var allMats = canGold && canDust && canCrystal && canEssence && canScale;
+
+      var reqText = [];
+      if (r.mats.m_dust) reqText.push('<span class="' + (canDust ? 'ok' : 'no') + '">✨가루 ' + (m.m_dust||0) + '/' + r.mats.m_dust + '</span>');
+      if (r.mats.m_crystal) reqText.push('<span class="' + (canCrystal ? 'ok' : 'no') + '">💎결정 ' + (m.m_crystal||0) + '/' + r.mats.m_crystal + '</span>');
+      if (r.mats.m_essence) reqText.push('<span class="' + (canEssence ? 'ok' : 'no') + '">🔮정수 ' + (m.m_essence||0) + '/' + r.mats.m_essence + '</span>');
+      if (r.mats.m_scale) reqText.push('<span class="' + (canScale ? 'ok' : 'no') + '">🛡️비늘 ' + (m.m_scale||0) + '/' + r.mats.m_scale + '</span>');
+      reqText.push('<span class="' + (canGold ? 'ok' : 'no') + '">💰' + r.gold + '금</span>');
+
+      html += '<div class="craft-row">' +
+        '<div class="itm-info-box">' +
+        '<span class="nm" style="color:' + ti.color + '">' + esc(r.name) + ' (' + ti.name + ')</span>' +
+        '<span class="mt">' + I.SLOT_NAME[r.slot] + ' · Lv.' + r.ilvl + ' · ' + esc(r.note) + '</span>' +
+        '<div class="craft-reqs">' + reqText.join(' · ') + '</div>' +
+        '</div>' +
+        '<button class="sbtn craft-btn' + (allMats ? '' : ' disabled') + '" data-craft="' + i + '">' +
+        (allMats ? '🔨 제작하기' : '재료 부족') + '</button>' +
+        '</div>';
+    }
+
+    html += '</div><p class="sub">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    addCloseButton(box);
+
+    wire(box, "craft", function(v) { doCraft(Number(v)); });
+  }
+
+  function doCraft(idx) {
+    var r = CRAFT_RECIPES[idx];
+    if (!r) return;
+    var S = global.SAVE, I = global.ITEMS, D = global.DUNGEON;
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    var m = hero.mats;
+
+    if (hero.gold < r.gold) return toast("금화가 모자랍니다.");
+    if (hero.bag.length >= S.BAG) return toast("가방이 가득 찼습니다.");
+    if (r.mats.m_dust && (m.m_dust||0) < r.mats.m_dust) return toast("영혼의 가루가 부족합니다.");
+    if (r.mats.m_crystal && (m.m_crystal||0) < r.mats.m_crystal) return toast("마력 결정이 부족합니다.");
+    if (r.mats.m_essence && (m.m_essence||0) < r.mats.m_essence) return toast("심연의 정수가 부족합니다.");
+    if (r.mats.m_scale && (m.m_scale||0) < r.mats.m_scale) return toast("용의 비늘이 부족합니다.");
+
+    hero.gold -= r.gold;
+    if (r.mats.m_dust) m.m_dust -= r.mats.m_dust;
+    if (r.mats.m_crystal) m.m_crystal -= r.mats.m_crystal;
+    if (r.mats.m_essence) m.m_essence -= r.mats.m_essence;
+    if (r.mats.m_scale) m.m_scale -= r.mats.m_scale;
+
+    var rng = D.makeRng(Date.now() & 0x7fffffff);
+    var newItem = I.roll(rng, { slot: r.slot, base: r.base, tier: r.tier, ilvl: r.ilvl });
+    hero.bag.push(I.pack(newItem));
+
+    if (global.SFX) global.SFX.play("pickup");
+    S.save(hero);
+    toast("✨ [" + newItem.name + "] 제작에 성공했습니다!");
+    openCraft();
   }
 
   function rebuy(k) {
@@ -873,25 +1367,39 @@
     var box = document.getElementById("panel");
     if (!box) return;
     var SK = global.SKILLS;
-    var html = '<h2>재주</h2><p class="sub">남은 점수 <b>' + hero.points +
-      '</b> · 손잡이는 1·2·3·4</p><div class="cols">';
+    var html = '<h2>스킬북</h2><p class="sub">남은 점수 <b>' + hero.points +
+      '</b> · 스킬 슬롯 1·2·3·4 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
+      '<div class="skill-tabs">' +
+      '<button id="stabActive" class="stab-btn active">⚡ 액티브 스킬</button>' +
+      '<button id="stabPassive" class="stab-btn">🛡️ 패시브 / 버프</button>' +
+      '</div>' +
+      '<div class="cols-scroll-wrap">' +
+      '<button class="scroll-arrow left" id="btnSkillPrev" title="이전 스킬">◀</button>' +
+      '<div class="cols skill-cols" id="skillColsWrap">';
 
-    var mine = global.CLASSES ? global.CLASSES.skillsOf(hero.cls) : null;
-    for (var i = 0; i < SK.LIST.length; i++) {
-      var def = SK.LIST[i];
-      /* ⚠ 못 쓰는 재주는 **아예 안 보여 준다.** 회색으로 늘어놓으면 화면이
-       *   세 배로 길어지고, 무엇이 내 것인지 한눈에 안 들어온다. */
-      if (mine && mine.indexOf(def.id) < 0) continue;
-      var r = SK.resolve(def.id, hero.skills);
-      var barAt = hero.bar.indexOf(def.id);
-      html += '<div class="col skill">';
-      html += '<h3><canvas class="ico" data-ico="' + esc(def.icon) + '"></canvas>' +
-        esc(def.name) +
-        (barAt >= 0 ? ' <b class="key">' + (barAt + 1) + '</b>' : '') + '</h3>';
-      html += '<p class="sub">' + esc(def.text) + '</p>';
-      html += '<div class="tot">재사용 ' + r.cd.toFixed(1) + '초 · 시전 ' +
-        r.cast.toFixed(2) + '초 · 기력 ' + r.stam +
-        (r.mult ? ' · 위력 ' + r.mult.toFixed(1) + '배' : '') + '</div>';
+    var mine = global.CLASSES ? global.CLASSES.skills(hero.cls) : [];
+
+    for (var i = 0; i < mine.length; i++) {
+      var sId = mine[i];
+      var def = SK.by(sId);
+      if (!def) continue;
+
+      var barAt = (hero.bar || []).indexOf(def.id);
+      var pts = (hero.skills[def.id] || []).length;
+      var isPassive = (def.type === "passive" || def.kind === "buff");
+      var stype = isPassive ? "passive" : "active";
+
+      var r = SK.calc(def, pts);
+
+      html += '<div class="col skill" data-type="' + stype + '">' +
+        '<div class="head"><canvas width="34" height="34" data-ico="' + def.icon + '"></canvas>' +
+        '<div><h3>' + esc(def.name) + '</h3><p class="tag">' +
+        (isPassive ? '지속/버프 스킬' : ('재사용 ' + def.cd + '초 · 기력 ' + def.stam)) +
+        '</p></div></div>' +
+        '<p class="desc">' + esc(def.text) + '</p>' +
+        '<div class="sub-stat">단계 ' + pts + ' / ' + def.syn.length +
+        (r && r.mult ? ' · 위력 ' + r.mult.toFixed(1) + '배' : '') + '</div>';
+
       for (var j = 0; j < def.syn.length; j++) {
         var sy = def.syn[j];
         var got = (hero.skills[def.id] || []).indexOf(sy.id) >= 0;
@@ -902,14 +1410,23 @@
           '<span class="nm">' + (got ? "✔ " : "") + esc(sy.name) + '</span>' +
           '<span class="st">' + esc(sy.text) + '</span></button>';
       }
-      html += '<div class="bar-pick">';
-      for (var b = 0; b < 4; b++)
-        html += '<button class="slot' + (barAt === b ? " on" : "") +
-          '" data-bar="' + def.id + ':' + b + '">' + (b + 1) + '</button>';
-      html += '</div></div>';
+
+      if (!isPassive) {
+        html += '<div class="bar-pick">';
+        for (var b = 0; b < 4; b++)
+          html += '<button class="slot' + (barAt === b ? " on" : "") +
+            '" data-bar="' + def.id + ':' + b + '">' + (b + 1) + '</button>';
+        html += '</div>';
+      } else {
+        html += '<div class="bar-pick passive-tag"><span class="mt">자동 적용 지속 효과</span></div>';
+      }
+      html += '</div>';
     }
-    html += '</div>';
-    html += '<p class="sub"><button class="itm reset" data-reset="1">' +
+    html += '</div>' +
+      '<button class="scroll-arrow right" id="btnSkillNext" title="다음 스킬">▶</button>' +
+      '</div>';
+
+    html += '<p class="sub" style="margin-top:8px;"><button class="itm reset" data-reset="1">' +
       '<span class="nm">전부 되돌리기</span>' +
       '<span class="mt">점수를 돌려받는다 — 잘못 찍어도 캐릭터를 버리지 않게</span>' +
       '</button></p>';
@@ -919,7 +1436,41 @@
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
     addCloseButton(box);
-    /* ⚠ innerHTML 을 넣은 **뒤에** 그려야 한다 — 그 전에는 캔버스가 없다. */
+
+    var filterSkills = function(type) {
+      box.querySelectorAll(".col.skill").forEach(function(el) {
+        if (el.getAttribute("data-type") === type) {
+          el.style.display = "";
+        } else {
+          el.style.display = "none";
+        }
+      });
+    };
+
+    var stabA = document.getElementById("stabActive");
+    var stabP = document.getElementById("stabPassive");
+    if (stabA && stabP) {
+      stabA.addEventListener("click", function() {
+        stabA.classList.add("active");
+        stabP.classList.remove("active");
+        filterSkills("active");
+      });
+      stabP.addEventListener("click", function() {
+        stabP.classList.add("active");
+        stabA.classList.remove("active");
+        filterSkills("passive");
+      });
+      filterSkills("active");
+    }
+
+    var wrap = document.getElementById("skillColsWrap");
+    var btnP = document.getElementById("btnSkillPrev");
+    var btnN = document.getElementById("btnSkillNext");
+    if (wrap && btnP && btnN) {
+      btnP.addEventListener("click", function () { wrap.scrollBy({ left: -260, behavior: "smooth" }); });
+      btnN.addEventListener("click", function () { wrap.scrollBy({ left: 260, behavior: "smooth" }); });
+    }
+
     box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
       paintIcon(cv, cv.getAttribute("data-ico"), 34);
     });
@@ -927,7 +1478,6 @@
     wire(box, "bar", function (v) { setBar(v); });
     wire(box, "reset", function () { resetSkills(); });
   }
-
   function takeSyn(v) {
     var p = v.split(":"), id = p[0], sy = p[1];
     var have = hero.skills[id] || [];
@@ -1105,14 +1655,18 @@
     var box = document.getElementById("panel");
     if (!box) return;
     var CL = global.CLASSES, SK = global.SKILLS;
-    var html = '<h2>누구로 내려갈까</h2>' +
-      '<p class="sub">직업은 나중에 못 바꾼다 — 새로 만들어야 한다</p>' +
-      '<div class="cols">';
+    var html = '<h2>직업 선택 및 캐릭터 변경</h2>' +
+      '<p class="sub">전사, 도적, 마법사 중 원하는 직업을 선택하여 탐험을 시작하거나 바꿀 수 있습니다 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
+      '<div class="cols-scroll-wrap">' +
+      '<button class="scroll-arrow left" id="btnClsPrev" title="이전 직업">◀</button>' +
+      '<div class="cols cls-cols" id="clsColsWrap">';
     for (var i = 0; i < CL.LIST.length; i++) {
       var c = CL.LIST[i];
-      html += '<div class="col cls">';
+      var isCurrent = hero && hero.cls === c.id;
+      html += '<div class="col cls' + (isCurrent ? ' current' : '') + '">';
       html += '<canvas class="face" data-ico="' + esc(c.sprite) + '"></canvas>';
-      html += '<h3>' + esc(c.name) + ' <span class="mt">' + esc(c.tag) + '</span></h3>';
+      html += '<h3>' + esc(c.name) + ' <span class="mt">' + esc(c.tag) + '</span>' +
+        (isCurrent ? ' <b style="font-size:11px; color:#ffd24a;">[현재 직업]</b>' : '') + '</h3>';
       html += '<p class="sub">' + esc(c.text) + '</p>';
       html += '<div class="tot">' +
         '<div>체력 ' + c.hp + ' (레벨마다 +' + c.hpPer + ')</div>' +
@@ -1135,14 +1689,26 @@
           '"></canvas><b>' + esc(sh.name) + '</b><span>공용</span></div>';
       }
       html += '</div>';
-      html += '<button class="pick" data-cls="' + esc(c.id) + '">이걸로 시작</button>';
+      html += '<button class="pick" data-cls="' + esc(c.id) + '">' +
+        (isCurrent ? '이 직업으로 계속하기' : esc(c.name) + '(으)로 변경') + '</button>';
       html += '</div>';
     }
-    html += '</div>';
+    html += '</div>' +
+      '<button class="scroll-arrow right" id="btnClsNext" title="다음 직업">▶</button>' +
+      '</div>';
     box.innerHTML = html;
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
     addCloseButton(box);
+
+    var cwrap = document.getElementById("clsColsWrap");
+    var cbtnP = document.getElementById("btnClsPrev");
+    var cbtnN = document.getElementById("btnClsNext");
+    if (cwrap && cbtnP && cbtnN) {
+      cbtnP.addEventListener("click", function () { cwrap.scrollBy({ left: -260, behavior: "smooth" }); });
+      cbtnN.addEventListener("click", function () { cwrap.scrollBy({ left: 260, behavior: "smooth" }); });
+    }
+
     box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
       paintIcon(cv, cv.getAttribute("data-ico"),
         cv.className.indexOf("face") >= 0 ? 64 : 26);
@@ -1152,9 +1718,13 @@
 
   function createHero(cls) {
     var CL = global.CLASSES, I = global.ITEMS, S = global.SAVE, D = global.DUNGEON;
+    var prevGold = hero ? (hero.gold || 0) : 0;
+    var prevStash = hero ? (hero.stash || []) : [];
+    var prevMaxDepth = hero ? (hero.maxDepth || 1) : 1;
     var fresh = S.blank(cls);
-    /* 시작 장비 — **맨몸으로 내보내지 않는다.** 1층이라도 맨손이면 첫 5분이
-     * 지루하고, 무엇보다 "내 직업이 뭘 하는 직업인지" 를 못 느낀다. */
+    fresh.gold = Math.max(fresh.gold, prevGold);
+    fresh.stash = prevStash;
+    fresh.maxDepth = Math.max(1, prevMaxDepth);
     var c = CL.byId(cls);
     var rng = D.makeRng(Date.now() & 0x7fffffff);
     for (var slot in c.start)
@@ -1163,6 +1733,7 @@
     hero = S.sanitize(fresh);      /* 손잡이·시너지를 직업에 맞춰 정리시킨다 */
     S.save(hero);
     closePanel();
+    toast(c.name + "(으)로 직업이 선택되었습니다!");
     start({ depth: 0 });
   }
 
@@ -1185,7 +1756,7 @@
 
     var html = '<h2>캐릭터 정보</h2><div class="sub">현재 탐험 및 보유 상태</div>' +
       '<div class="cols" style="flex-direction:column; gap:8px;">' +
-        '<div class="col" style="width:100%; font-size:14px; line-height:1.9;">' +
+        '<div class="col" style="width:100%; font-size:13px; line-height:1.95; word-break:break-word;">' +
           '<div>• 직업 / 레벨: <b style="color:#ffd24a;">' + (world.cls ? world.cls.name : "방랑자") + ' (Lv.' + hero.level + ')</b></div>' +
           '<div>• 현재 위치: <b>' + place + '</b></div>' +
           '<div>• 보유 금화: <b style="color:#ffe9a8;">' + hero.gold + ' GOLD</b></div>' +
@@ -1214,7 +1785,7 @@
     var need = global.SAVE.needFor(hero.level);
     var place = world.inTown ? "마을" : world.depth + "층";
     el.innerHTML =
-      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></span> <b class="d-info-btn">ℹ️ 정보</b></div>' +
+      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></span></div>' +
       '<div class="d-info">' +
         '<span>' + place + '</span>' +
         '<span>금화 <b>' + hero.gold + '</b></span>' +
@@ -1249,66 +1820,118 @@
     if (global.MUSIC) global.MUSIC.zone("office");
   }
 
-  /* 상단 퀵 메뉴바 이벤트 등록 (가방·재주책·물약·귀환) */
+  /* 상단 퀵 메뉴바 이벤트 등록 (가방·재주책·직업선택·물약·귀환) */
   function setupTopMenu() {
     var bBag = document.getElementById("btnBag");
     var bSkills = document.getElementById("btnSkills");
+    var bClass = document.getElementById("btnClass");
     var bPot = document.getElementById("btnPotion");
     var bRec = document.getElementById("btnRecall");
     var elDiag = document.getElementById("diag");
 
-    if (elDiag) {
-      var doDiag = function (e) {
-        if (e) e.preventDefault();
-        wakeAudio();
-        if (panelOpen()) closePanel(); else openInfo();
-      };
-      elDiag.addEventListener("touchstart", doDiag, { passive: false });
-      elDiag.addEventListener("click", doDiag);
-    }
+    var bHamb = document.getElementById("btnHamb");
+    var drop = document.getElementById("mobileDropdown");
+    var mTest = document.getElementById("mBtnTest");
+    var mStat = document.getElementById("mBtnStat");
+    var mBag = document.getElementById("mBtnBag");
+    var mSkill = document.getElementById("mBtnSkills") || document.getElementById("mBtnSkill");
+    var mJob = document.getElementById("mBtnClass") || document.getElementById("mBtnJob");
+    var mPot = document.getElementById("mBtnPotion");
 
-    if (bBag) {
-      var doBag = function (e) {
-        if (e) e.preventDefault();
-        wakeAudio();
-        if (panelOpen()) closePanel(); else openBag();
-      };
-      bBag.addEventListener("touchstart", doBag, { passive: false });
-      bBag.addEventListener("click", doBag);
-    }
-    if (bSkills) {
-      var doSkills = function (e) {
-        if (e) e.preventDefault();
-        wakeAudio();
-        if (panelOpen()) closePanel(); else openBook();
-      };
-      bSkills.addEventListener("touchstart", doSkills, { passive: false });
-      bSkills.addEventListener("click", doSkills);
-    }
-    if (bPot) {
-      var doPot = function (e) {
-        if (e) e.preventDefault();
-        wakeAudio(); drink();
-      };
-      bPot.addEventListener("touchstart", doPot, { passive: false });
-      bPot.addEventListener("click", doPot);
-    }
-    if (bRec) {
-      var doRec = function (e) {
-        if (e) e.preventDefault();
-        wakeAudio();
-        if (panelOpen()) closePanel();
-        if (!world || world.inTown) {
-          toast("마을에서는 귀환할 수 없다 (이미 마을)");
+    var bindTap = function (el, fn) {
+      if (!el) return;
+      var lastTap = 0;
+      var handler = function (e) {
+        var now = Date.now();
+        if (now - lastTap < 350) {
+          if (e && e.preventDefault) e.preventDefault();
           return;
         }
-        world.recallStart();
+        lastTap = now;
+        if (e && e.preventDefault && e.type === "touchstart") e.preventDefault();
+        wakeAudio();
+        fn(e);
       };
-      bRec.addEventListener("touchstart", doRec, { passive: false });
-      bRec.addEventListener("click", doRec);
-    }
-  }
+      el.addEventListener("touchstart", handler, { passive: false });
+      el.addEventListener("click", handler);
+    };
 
+    var toggleDrop = function() {
+      if (drop) {
+        drop.style.display = "";
+        drop.classList.toggle("open");
+      }
+    };
+    var closeDrop = function() {
+      if (drop) drop.classList.remove("open");
+    };
+
+    bindTap(bHamb, function() {
+      toggleDrop();
+    });
+
+    bindTap(mTest, function() {
+      closeDrop();
+      giveTestItems();
+      openBag();
+    });
+
+    bindTap(elDiag, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openInfo();
+    });
+
+    bindTap(mStat, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openInfo();
+    });
+
+    bindTap(bBag, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openBag();
+    });
+    bindTap(mBag, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openBag();
+    });
+
+    bindTap(bSkills, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openBook();
+    });
+    bindTap(mSkill, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openBook();
+    });
+
+    bindTap(bClass, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openCreate();
+    });
+    bindTap(mJob, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openCreate();
+    });
+
+    bindTap(bPot, function() {
+      closeDrop();
+      drink();
+    });
+    bindTap(mPot, function() {
+      closeDrop();
+      drink();
+    });
+
+    bindTap(bRec, function() {
+      closeDrop();
+      if (panelOpen()) closePanel();
+      if (!world || world.inTown) {
+        toast("마을에서는 귀환할 수 없다 (이미 마을)");
+        return;
+      }
+      world.recallStart();
+    });
+  }
   /* 모바일 가상 조이스틱 & 우측 액션 패드 터치 이벤트 */
   function setupTouchControls(canvas) {
     var vstick = document.getElementById("vstick");
@@ -1596,6 +2219,7 @@
       return devOn();
     };
     global.__smith = openSmith;
+    global.__craft = openCraft;
     global.__buyback = function () { return buyback.length; };
     global.__drink = drink;
     global.__equip = equipFromBag;

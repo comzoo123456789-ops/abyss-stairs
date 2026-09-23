@@ -40,7 +40,7 @@
     "#....#####...,,,...######....#",
     "#......s.....,,,.....s.......#",
     "#..########..,,,..########...#",
-    "#..#a.o..B#,,,,,,,#M.r..v#...#",
+    "#..#a.o..B#,,,,,,,#M.C..v#...#",
     "#..#b.c...#,,,,,,,#..c..b#...#",
     "#..###s####..,,,..####s###...#",
     "#....l.......eKe.......l.....#",
@@ -65,6 +65,7 @@
     K: { id: "stash",  sprite: "t_stash",   label: "보관함",      verb: "연다",       reach: 1.6 },
     M: { id: "shop",   sprite: "merchant",  label: "잡화 상인",   verb: "거래한다",   reach: 1.5 },
     B: { id: "smith",  sprite: "blacksmith",label: "대장장이",    verb: "강화한다",   reach: 1.5 },
+    C: { id: "craft",  sprite: "t_stall",   label: "연금술사",    verb: "제작한다",   reach: 1.5 },
     W: { id: "well",   sprite: "t_well",    label: "회복의 샘",   verb: "마신다",     reach: 1.4 }
   };
 

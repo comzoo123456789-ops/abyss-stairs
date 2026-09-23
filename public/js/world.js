@@ -196,6 +196,7 @@
     this.castBroke = null;
     this.log = [];          /* 무슨 일이 있었나(검사가 읽는다) */
     this.time = 0;          /* 세계가 흐른 초 — 스킬 재사용도 전부 이 값이 기준이다 */
+    this.hitFreeze = 0;     /* 가이더스 스타일 히트 프리즈 (타격 순간 0.04초 프레임 멈춤) */
     this.steps = 0;
     this._acc = 0;
     this._fovAt = null;
@@ -468,6 +469,24 @@
     if (who.gold) {
       this.spawnOrbs(who.x, who.y, "gold", 3);
     }
+    /* 제작 재료 드롭 */
+    if (!this.hero.mats) this.hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    if (who.boss) {
+      this.hero.mats.m_essence = (this.hero.mats.m_essence || 0) + 2;
+      this.hero.mats.m_crystal = (this.hero.mats.m_crystal || 0) + 2;
+      this.hero.mats.m_scale = (this.hero.mats.m_scale || 0) + 2;
+      this.hero.mats.m_dust = (this.hero.mats.m_dust || 0) + 5;
+      this.floaters.push({ x: who.x, y: who.y - 1.6, text: "🔮 심연의 정수 +2 획득!", t: 0, life: 1.5, foe: false });
+    } else {
+      var rMat = Math.random();
+      if (rMat < 0.35) {
+        this.hero.mats.m_dust = (this.hero.mats.m_dust || 0) + 1;
+      } else if (rMat < 0.50) {
+        this.hero.mats.m_crystal = (this.hero.mats.m_crystal || 0) + 1;
+      } else if (rMat < 0.60 && this.depth >= 10) {
+        this.hero.mats.m_scale = (this.hero.mats.m_scale || 0) + 1;
+      }
+    }
     if (who.boss) {
       this.addShake(0.35, 6);
       this.log.push({ t: this.time, what: "boss", who: who.name });
@@ -516,8 +535,8 @@
     /* 버프가 얹히기 **전의** 값을 따로 둔다. 안 두면 버프가 끝날 때 무엇으로
      * 되돌릴지 몰라 방어가 계속 쌓인다(버프를 걸수록 세지는 고전 버그). */
     p.baseDef = (cls ? cls.armor : 0) + (t.armor || 0);
-    p.def = p.baseDef;
-    p.spd = (cls ? cls.spd : 4.2) * (1 + (t.spdPct || 0) / 100);
+    var spdBonus = Math.max(-0.25, Math.min(0.35, (t.spdPct || 0) / 100));
+    p.spd = (cls ? cls.spd : 4.0) * (1 + spdBonus);
     p.critPct = (cls ? cls.critPct : 0) + (t.critPct || 0);
     p.critDmgPct = t.critDmgPct || 0;
     p.lifeOnHit = t.lifeOnHit || 0;
@@ -991,6 +1010,10 @@
   World.prototype.advance = function (realDt) {
     if (!(realDt > 0)) realDt = 0;
     if (realDt > 0.25) realDt = 0.25;     /* 탭을 오래 감췄다 돌아온 경우 */
+    if (this.hitFreeze > 0) {
+      this.hitFreeze = Math.max(0, this.hitFreeze - realDt);
+      return { steps: 0, alpha: this._acc / SIM_DT };
+    }
     this._acc += realDt;
     var n = 0;
     while (this._acc >= SIM_DT && n < MAX_STEPS) {

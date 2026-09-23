@@ -75,6 +75,15 @@
       else if (f.str) out[k] = (typeof v === "string" && v.length) ? v.slice(0, f.str) : f.def;
       else out[k] = clampNum(v, f);
     }
+    /* ── 재료 ── */
+    var rawM = (raw.mats && typeof raw.mats === "object") ? raw.mats : {};
+    out.mats = {
+      m_dust: Math.max(0, Math.min(9999, Math.floor(Number(rawM.m_dust) || 0))),
+      m_crystal: Math.max(0, Math.min(9999, Math.floor(Number(rawM.m_crystal) || 0))),
+      m_essence: Math.max(0, Math.min(9999, Math.floor(Number(rawM.m_essence) || 0))),
+      m_scale: Math.max(0, Math.min(9999, Math.floor(Number(rawM.m_scale) || 0)))
+    };
+
     /* ── 물건. **다섯 칸으로 다시 만든다**(items.js 의 rebuild).
      * ⚠ 수치를 그대로 믿지 않는다. 표에 없는 베이스·접사는 애초에 만들어지지
      *   않으므로 구조 자체가 검증이다. */

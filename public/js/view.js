@@ -46,7 +46,66 @@
     ctx.drawImage(img, Math.round(sx - (z.w - TILE) / 2), Math.round(sy - (z.h - TILE)));
   }
 
-  function View(canvas) {
+  
+  function getPdHelmSprite(it) {
+    if (!it) return null;
+    var id = it.id || "";
+    if (id === "crown_kings") return "pd_helm_crown";
+    if (id === "hood" || id === "shadow_hood") return "pd_helm_hood";
+    if (id === "helm" || id === "dragon_helm") return "pd_helm_iron";
+    return "pd_helm_cap";
+  }
+
+  function getPdArmorSprite(it) {
+    if (!it) return null;
+    var id = it.id || "";
+    if (id === "arcane_robe" || id === "robe") return "pd_armor_robe";
+    if (id === "shadow_coat" || id === "coat") return "pd_armor_shadow";
+    return "pd_armor_plate";
+  }
+
+  function getPdShieldSprite(it) {
+    if (!it) return null;
+    return "pd_shield_aegis";
+  }
+
+  function getPdWeaponSprite(it) {
+    if (!it) return null;
+    var id = it.id || "";
+    if (id === "excalibur") return "pd_weapon_excalibur";
+    if (id === "dragonslayer") return "pd_weapon_dragonslayer";
+    if (id === "arcanestaff" || id === "staff") return "pd_weapon_arcanestaff";
+    if (id === "shadowdagger" || id === "dagger") return "pd_weapon_shadowdagger";
+    if (id === "celestialbow" || id === "bow") return "pd_weapon_celestialbow";
+    return "pd_weapon_excalibur";
+  }
+
+  function drawPaperdollOverlays(ctx, e, sx, sy, fr, world) {
+    if (e.kind !== "player" || !global.SAVE || !global.SAVE.liveEquip) return;
+    var hero = world.player ? world.player.hero : null;
+    if (!hero) return;
+    var eq = global.SAVE.liveEquip(hero);
+    if (!eq) return;
+
+    if (eq.body) {
+      var pdBody = getPdArmorSprite(eq.body);
+      if (pdBody && S.has(pdBody)) placeAt(ctx, S.bake(pdBody, fr), pdBody, sx, sy);
+    }
+    if (eq.head) {
+      var pdHead = getPdHelmSprite(eq.head);
+      if (pdHead && S.has(pdHead)) placeAt(ctx, S.bake(pdHead, fr), pdHead, sx, sy);
+    }
+    if (eq.shield) {
+      var pdShield = getPdShieldSprite(eq.shield);
+      if (pdShield && S.has(pdShield)) placeAt(ctx, S.bake(pdShield, fr), pdShield, sx, sy);
+    }
+    if (eq.weapon) {
+      var pdWeapon = getPdWeaponSprite(eq.weapon);
+      if (pdWeapon && S.has(pdWeapon)) placeAt(ctx, S.bake(pdWeapon, fr), pdWeapon, sx, sy);
+    }
+  }
+
+function View(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.dpr = 1;
@@ -61,7 +120,7 @@
   View.prototype.calcBaseZoom = function () {
     var w = this.cssW || (this.canvas && this.canvas.parentNode ? this.canvas.parentNode.getBoundingClientRect().width : 1280);
     /* 던전 및 마을 시야 확장 — 너무 크게 확대되면 좁아서 답답하므로 축소 (모바일 1.15배, 태블릿 1.1배, PC 1.0배) */
-    if (w < 600) return 1.15;
+    if (w < 600) return 1.30;
     if (w < 1100) return 1.1;
     return 1.0;
   };
@@ -485,6 +544,7 @@
       this.drawEntityAuras(ctx, e, ex, ey, ox, oy, world);
 
       placeAt(ctx, S.bake(e.sprite, fr), e.sprite, sx, sy);
+      drawPaperdollOverlays(ctx, e, sx, sy, fr, world);
       /* 캐릭터 몸체 전면 버프 오라 레이어 */
       this.drawEntityAurasOver(ctx, e, ex, ey, ox, oy, world);
       if (bornK < 1) ctx.globalAlpha = 1;
@@ -503,21 +563,40 @@
         this.hpBar(ctx, ex, ey, ox, oy, e.hp / e.maxHp, e.boss);
     }
 
-    /* 떠오르는 숫자 — 개체보다 **위에** 그린다(가려지면 없는 것과 같다) */
+    /* 떠오르는 숫자 — 개체보다 **위에** 그린다 (가이더스 스타일 팝업 연출) */
     for (i = 0; i < world.floaters.length; i++) {
       var f = world.floaters[i];
       var k = f.t / f.life;
-      ctx.globalAlpha = 1 - k * k;                 /* 끝에 가서 훅 사라진다 */
+      ctx.globalAlpha = Math.max(0, 1 - k * k);
       ctx.textAlign = "center";
-      /* ⚠ 치명타는 **한눈에 달라 보여야** 한다 — 같은 색·같은 크기면
-       *   치명타가 터졌는지 아무도 모르고, 그럼 치명타 옵션이 무의미해진다. */
-      ctx.font = (f.crit ? "bold 15px " : "bold 11px ") + (global.NUM_FONT || "monospace");
-      ctx.fillStyle = f.crit ? "#ffd34d" : (f.foe ? "#ffe9a8" : "#ff8d7a");
-      ctx.strokeStyle = "rgba(0,0,0,.85)";
-      ctx.lineWidth = 3;
-      var fx2 = f.x * TILE + ox, fy2 = (f.y - k * 0.7) * TILE + oy;
-      ctx.strokeText(f.text, fx2, fy2);
-      ctx.fillText(f.text, fx2, fy2);
+
+      var fx2 = f.x * TILE + ox;
+      var fy2 = (f.y - Math.sin(k * Math.PI * 0.85) * 0.85) * TILE + oy;
+
+      if (f.crit) {
+        var bounceScale = k < 0.2 ? 1 + (0.2 - k) * 2.2 : 1.0;
+        ctx.save();
+        ctx.translate(fx2, fy2);
+        ctx.scale(bounceScale, bounceScale);
+        ctx.font = "bold 16px " + (global.NUM_FONT || "monospace");
+        ctx.strokeStyle = "#6a0000";
+        ctx.lineWidth = 4;
+        ctx.strokeText(f.text, 0, 0);
+        ctx.fillStyle = "#ffea43";
+        ctx.fillText(f.text, 0, 0);
+        /* CRIT! 뱃지 팝업 */
+        ctx.font = "bold 9px " + (global.NUM_FONT || "monospace");
+        ctx.fillStyle = "#ff3344";
+        ctx.fillText("CRIT!", 0, -14);
+        ctx.restore();
+      } else {
+        ctx.font = "bold 12px " + (global.NUM_FONT || "monospace");
+        ctx.strokeStyle = "rgba(10,8,14,0.9)";
+        ctx.lineWidth = 3;
+        ctx.strokeText(f.text, fx2, fy2);
+        ctx.fillStyle = f.foe ? "#ffe9a8" : "#ff8d7a";
+        ctx.fillText(f.text, fx2, fy2);
+      }
     }
     ctx.globalAlpha = 1;
 
@@ -672,7 +751,7 @@
     }
   };
 
-  /* 굵은 검기 궤적 & 스킬 타격 불꽃 파티클 (Dynamic Slash Trail & Spark Bursts) */
+  /* 가이더스 스타일 픽셀 검기 궤적 & 무기별 이펙트 (Guidus Dynamic Slash Trail & Spark Bursts) */
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
     var k = a.t / Math.max(0.01, m.windup);
@@ -684,43 +763,83 @@
 
     if (live) {
       if (e.team === 0) {
-        /* 날카로운 픽셀 검기 초승달 궤적 (Sharpened Blade Slash Flare) */
+        var eq = e.equipped || (global.SAVE && e.hero ? global.SAVE.liveEquip(e.hero) : null);
+        var wId = (eq && eq.weapon) ? (eq.weapon.base || eq.weapon.id || "") : "";
+
+        if (wId === "dagger" || wId === "shadowdagger") {
+          /* 단검: 빠르고 날카로운 이중 민트/청록 픽셀 베기 궤적 */
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius * 1.05, a.ang - half, a.ang + half);
+          ctx.arc(cx, cy, radius * 0.35, a.ang + half, a.ang - half, true);
+          ctx.closePath();
+          var gD = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius * 1.05);
+          gD.addColorStop(0, "rgba(255, 255, 255, 0.98)");
+          gD.addColorStop(0.5, "rgba(100, 240, 255, 0.85)");
+          gD.addColorStop(1, "rgba(0, 180, 220, 0)");
+          ctx.fillStyle = gD;
+          ctx.fill();
+        } else if (wId === "axe" || wId === "mace" || wId === "dragonslayer") {
+          /* 도끼/철퇴: 무겁고 강렬한 붉은 화염 둔탁 폭발 궤적 */
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius * 1.25, a.ang - half, a.ang + half);
+          ctx.arc(cx, cy, radius * 0.25, a.ang + half, a.ang - half, true);
+          ctx.closePath();
+          var gA = ctx.createRadialGradient(cx, cy, radius * 0.25, cx, cy, radius * 1.25);
+          gA.addColorStop(0, "rgba(255, 255, 220, 0.98)");
+          gA.addColorStop(0.4, "rgba(255, 120, 30, 0.88)");
+          gA.addColorStop(1, "rgba(255, 30, 10, 0)");
+          ctx.fillStyle = gA;
+          ctx.fill();
+        } else if (wId === "spear") {
+          /* 장창: 원뿔형 찌르기 파동 & 직선 충격선 */
+          var tx = cx + Math.cos(a.ang) * radius * 1.25;
+          var ty = cy + Math.sin(a.ang) * radius * 1.25;
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(tx + Math.cos(a.ang + 1.57) * 14, ty + Math.sin(a.ang + 1.57) * 14);
+          ctx.lineTo(tx - Math.cos(a.ang + 1.57) * 14, ty - Math.sin(a.ang + 1.57) * 14);
+          ctx.closePath();
+          ctx.fillStyle = "rgba(255, 240, 160, 0.85)";
+          ctx.fill();
+        } else {
+          /* 장검/기본 무기: 가이더스풍 황금 초승달 픽셀 궤적 */
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
+          ctx.arc(cx, cy, radius * 0.4, a.ang + half, a.ang - half, true);
+          ctx.closePath();
+          var grad = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
+          grad.addColorStop(0, "rgba(255, 255, 240, 0.98)");
+          grad.addColorStop(0.55, "rgba(255, 210, 60, 0.85)");
+          grad.addColorStop(1, "rgba(255, 100, 20, 0)");
+          ctx.fillStyle = grad;
+          ctx.fill();
+        }
+
+        /* 검기 끝 스파크 입자 */
+        for (var spi = 0; spi < 8; spi++) {
+          var spAng = a.ang - half + (spi / 7) * (half * 2);
+          var spR = radius * (0.88 + (spi % 2 === 0 ? 0.18 : 0.06));
+          var spx = cx + Math.cos(spAng) * spR;
+          var spy = cy + Math.sin(spAng) * spR;
+          ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe060";
+          ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
+        }
+      } else {
+        /* 몬스터 위협적인 붉은 픽셀 클로 궤적 */
         ctx.beginPath();
         ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
         ctx.arc(cx, cy, radius * 0.45, a.ang + half, a.ang - half, true);
         ctx.closePath();
-        var grad = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
-        grad.addColorStop(0, "rgba(255, 255, 220, 0.95)");
-        grad.addColorStop(0.5, "rgba(255, 180, 50, 0.75)");
-        grad.addColorStop(1, "rgba(255, 80, 20, 0)");
-        ctx.fillStyle = grad;
-        ctx.fill();
-
-        /* 칼날 끝 스파크 입자 7개 */
-        for (var spi = 0; spi < 7; spi++) {
-          var spAng = a.ang - half + (spi / 6) * (half * 2);
-          var spR = radius * (0.85 + (spi % 2 === 0 ? 0.15 : 0.05));
-          var spx = cx + Math.cos(spAng) * spR;
-          var spy = cy + Math.sin(spAng) * spR;
-          ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe080";
-          ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
-        }
-      } else {
-        /* 몬스터 날카로운 붉은 손톱/위협적인 사선 베기 */
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-        ctx.arc(cx, cy, radius * 0.5, a.ang + half, a.ang - half, true);
-        ctx.closePath();
-        ctx.fillStyle = "rgba(255, 60, 40, 0.65)";
+        ctx.fillStyle = "rgba(255, 50, 40, 0.7)";
         ctx.fill();
       }
     } else {
-      /* 예고 — 다가오는 붉은/황금빛 사선 바닥 경고 파동 */
+      /* 예고 — 다가오는 바닥 경고 파동 */
       ctx.beginPath();
       ctx.arc(cx, cy, radius * Math.min(1, k), a.ang - half, a.ang + half);
       ctx.lineTo(cx, cy);
       ctx.closePath();
-      ctx.fillStyle = e.team === 0 ? "rgba(255,220,140,0.18)" : "rgba(255,70,50,0.22)";
+      ctx.fillStyle = e.team === 0 ? "rgba(255,220,140,0.22)" : "rgba(255,70,50,0.25)";
       ctx.fill();
     }
     ctx.restore();
@@ -773,17 +892,18 @@
     return { x: wx / TILE, y: wy / TILE };
   };
 
-  /* 개체 몸체/발밑 지속 효과 오라 — 단순 원형 선을 전면 삭제하고 피어오르는 붉은 불꽃/열기/입자로 표현 */
+  /* 개체 몸체/발밑 지속 효과 오라 — 드래곤볼 초사이언 스타일 에너지 폭발 오라 (Super Saiyan Energy Aura & Electrical Lightning) */
   View.prototype.drawEntityAuras = function (ctx, e, ex, ey, ox, oy, world) {
     if (e.dead) return;
     var bx = ex * TILE + ox, by = ey * TILE + oy;
     var cy = by - 16; /* 캐릭터 중심 높이 */
+    var t = world.time;
     ctx.save();
 
     /* 1) 둔화 상태 오라 (Slow Frost Shards under feet) */
-    if (e.slowUntil && e.slowUntil > world.time) {
+    if (e.slowUntil && e.slowUntil > t) {
       for (var sfi = 0; sfi < 6; sfi++) {
-        var sfa = sfi * (Math.PI / 3) + Math.sin(world.time * 2) * 0.2;
+        var sfa = sfi * (Math.PI / 3) + Math.sin(t * 2) * 0.2;
         var sfx = bx + Math.cos(sfa) * 14;
         var sfy = by - 4 + Math.sin(sfa) * 6;
         ctx.fillStyle = (sfi % 2 === 0) ? "#82d8ff" : "#ffffff";
@@ -796,86 +916,132 @@
       }
     }
 
-    /* 2) 플레이어 전신 붉은 불꽃 오라 / 황금 신성 별빛 / 독기 피어오름 */
-    if (e.kind === "player" && world.buffs && world.buffs.length) {
-      for (var bi = 0; bi < world.buffs.length; bi++) {
-        var bf = world.buffs[bi];
+    /* 2) 플레이어 초사이언 에너지 폭발 오라 & 전기 스파크 번개 */
+    if (e.kind === "player") {
+      var activeBuffs = world.buffs || [];
+      var hasShout = false, hasWard = false, hasVenom = false;
+      for (var bi = 0; bi < activeBuffs.length; bi++) {
+        var bf = activeBuffs[bi];
+        if (bf.id === "shout" || bf.dmgPct > 20) hasShout = true;
+        if (bf.id === "ward" || bf.armor > 0) hasWard = true;
+        if (bf.id === "venom") hasVenom = true;
+      }
 
-        if (bf.id === "shout" || bf.dmgPct > 20) {
-          /* 🔴 붉은 광폭/함성 — 14개의 진짜 피어오르는 불꽃 덩어리가 캐릭터 몸 전체를 감싸 올라감 */
-          for (var fi = 0; fi < 14; fi++) {
-            var phase = world.time * 12 + fi * 0.45;
-            var spreadX = Math.sin(phase * 1.3) * 13;
-            var flameH = (world.time * 30 + fi * 9) % 32;
-            var fx = bx + spreadX;
-            var fy = by + 2 - flameH;
-            var size = Math.max(1.5, (1 - flameH / 32) * 5.5);
+      /* 활성화된 버프가 있거나 플레이어 스킬 사용 중인 경우 초사이언 기 폭발 효과 */
+      if (hasShout || hasWard || hasVenom) {
+        var coreColor = "#ffffff";
+        var midColor = "#ffdb43";
+        var outerColor = "#d92418";
+        var elecColor = "#ffffff";
 
-            var fColor = "#d92418";
-            if (flameH < 8) fColor = "#ff4820";
-            else if (flameH < 18) fColor = "#ff9428";
-            else if (flameH < 26) fColor = "#ffdb43";
-            else fColor = "#ffffff";
+        if (hasVenom) {
+          midColor = "#8bff68";
+          outerColor = "#0e8538";
+          elecColor = "#c8ff9e";
+        } else if (hasWard && !hasShout) {
+          midColor = "#ffea75";
+          outerColor = "#d99b00";
+          elecColor = "#ffffff";
+        }
 
-            ctx.fillStyle = fColor;
+        /* (A) 발밑 지면 에너지 분출 충격파 파동 (Ground Energy Shockwave Ring) */
+        var waveK = (t * 2.8) % 1.0;
+        var waveR = 8 + waveK * 22;
+        ctx.strokeStyle = outerColor;
+        ctx.lineWidth = Math.max(1, (1 - waveK) * 3);
+        ctx.globalAlpha = (1 - waveK) * 0.75;
+        ctx.beginPath();
+        ctx.ellipse(bx, by - 2, waveR, waveR * 0.45, 0, 0, Math.PI * 2);
+        ctx.stroke();
+
+        /* (B) 뾰족한 초사이언 에너지 불기둥 오라 실루엣 (Spiky Upward Energy Aura Flare) */
+        ctx.globalAlpha = 0.85;
+        var spikeCount = 9;
+        ctx.beginPath();
+        for (var spi = 0; spi <= spikeCount; spi++) {
+          var angle = (spi / spikeCount) * Math.PI - Math.PI; // -PI ~ 0 (위쪽 반원)
+          var noise = Math.sin(t * 28 + spi * 3.7) * 4 + Math.cos(t * 20 - spi * 2.1) * 3;
+          var heightMult = 1.0 + Math.abs(Math.sin(angle)) * 0.85; // 중앙일수록 위로 높게 피어오름
+          var radX = (16 + noise) * Math.cos(angle);
+          var radY = (30 + noise) * heightMult * Math.sin(angle);
+          var ax = bx + radX;
+          var ay = by - 2 + radY;
+          if (spi === 0) ctx.moveTo(ax, ay);
+          else ctx.lineTo(ax, ay);
+        }
+        ctx.lineTo(bx + 18, by);
+        ctx.lineTo(bx - 18, by);
+        ctx.closePath();
+
+        var auraGrad = ctx.createRadialGradient(bx, cy, 4, bx, cy - 8, 32);
+        auraGrad.addColorStop(0, coreColor);
+        auraGrad.addColorStop(0.35, midColor);
+        auraGrad.addColorStop(0.8, outerColor);
+        auraGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
+        ctx.fillStyle = auraGrad;
+        ctx.fill();
+
+        /* (C) 초사이언 번개 전기 스파크 (Zig-zag Electrical Lightning Arcs) */
+        ctx.globalAlpha = 0.92;
+        ctx.strokeStyle = elecColor;
+        ctx.lineWidth = 1.5;
+        for (var li = 0; li < 3; li++) {
+          var lSeed = Math.floor(t * 16 + li * 7);
+          if ((lSeed % 3) === 0) {
+            var lx1 = bx + (Math.sin(lSeed * 1.3) * 18);
+            var ly1 = by - (lSeed % 32);
+            var lx2 = lx1 + (Math.cos(lSeed * 2.7) * 9);
+            var ly2 = ly1 - 7;
+            var lx3 = lx2 - (Math.sin(lSeed * 3.1) * 8);
+            var ly3 = ly2 - 8;
+
             ctx.beginPath();
-            ctx.arc(fx, fy, size, 0, Math.PI * 2);
-            ctx.fill();
-          }
+            ctx.moveTo(lx1, ly1);
+            ctx.lineTo(lx2, ly2);
+            ctx.lineTo(lx3, ly3);
+            ctx.stroke();
 
-          /* 피어오르는 붉은 열기 불티 파티클 8개 */
-          ctx.fillStyle = "#ffe480";
-          for (var pti = 0; pti < 8; pti++) {
-            var pta = world.time * 5 + pti * 0.8;
-            var ptx = bx + Math.sin(pta * 2.1) * 16;
-            var pty = cy + 14 - ((world.time * 28 + pti * 6) % 36);
-            ctx.fillRect(Math.round(ptx), Math.round(pty), 2, 2);
+            /* 스파크 지점에 강렬한 점 플래시 */
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(Math.round(lx3) - 1, Math.round(ly3) - 1, 3, 3);
           }
+        }
 
-        } else if (bf.id === "ward" || bf.armor > 0) {
-          /* 🟡 황금 신성 별 빛 수호 */
-          for (var wi = 0; wi < 6; wi++) {
-            var wa = world.time * 2.5 + wi * 1.047;
-            var wx = bx + Math.cos(wa) * 18;
-            var wy = cy + Math.sin(wa * 2) * 10;
-            ctx.fillStyle = (wi % 2 === 0) ? "#fff2a8" : "#ffd040";
-            ctx.fillRect(Math.round(wx) - 1, Math.round(wy) - 4, 3, 9);
-            ctx.fillRect(Math.round(wx) - 4, Math.round(wy) - 1, 9, 3);
-          }
-
-        } else if (bf.id === "venom") {
-          /* 🟢 짙은 초록 독기 구름 8개 */
-          for (var vi = 0; vi < 8; vi++) {
-            var vp = world.time * 8 + vi * 0.78;
-            var vx = bx + Math.sin(vp * 1.7) * 14;
-            var vy = by - ((world.time * 18 + vi * 5) % 28);
-            var vr = Math.max(1, (1 - ((world.time * 18 + vi * 5) % 28) / 28) * 4);
-            ctx.fillStyle = (vi % 2 === 0) ? "#4fbf6a" : "#9cf0a8";
-            ctx.beginPath(); ctx.arc(vx, vy, vr, 0, Math.PI * 2); ctx.fill();
-          }
+        /* (D) 위로 피어오르는 초사이언 입자 불티 (Rising Energy Embers) */
+        for (var pti = 0; pti < 12; pti++) {
+          var pPhase = t * 14 + pti * 0.7;
+          var ptx = bx + Math.sin(pPhase * 1.4) * (10 + (pti % 5) * 2);
+          var pLife = (t * 24 + pti * 7) % 36;
+          var pty = by + 2 - pLife;
+          var pSize = Math.max(1, (1 - pLife / 36) * 4);
+          ctx.fillStyle = (pti % 3 === 0) ? coreColor : (pti % 2 === 0 ? midColor : outerColor);
+          ctx.globalAlpha = (1 - pLife / 36) * 0.9;
+          ctx.fillRect(Math.round(ptx - pSize / 2), Math.round(pty - pSize / 2), Math.round(pSize), Math.round(pSize));
         }
       }
     }
     ctx.restore();
   };
 
-  /* 개체 전면 전신 불꽃 레이어 */
+  /* 개체 전면 입체 불꽃 레이어 */
   View.prototype.drawEntityAurasOver = function (ctx, e, ex, ey, ox, oy, world) {
     if (e.dead) return;
     var bx = ex * TILE + ox, by = ey * TILE + oy;
     var cy = by - 16;
+    var t = world.time;
     ctx.save();
     if (e.kind === "player" && world.buffs && world.buffs.length) {
       for (var bi = 0; bi < world.buffs.length; bi++) {
         var bf = world.buffs[bi];
-        if (bf.id === "shout" || bf.dmgPct > 20) {
-          /* 전면 불꽃 혀 6개 (캐릭터 몸 앞을 지나가며 붉은 불꽃이 입체적으로 피어오름) */
+        if (bf.id === "shout" || bf.dmgPct > 20 || bf.id === "ward" || bf.id === "venom") {
+          var fColor = bf.id === "venom" ? "#8bff68" : "#ffea75";
           for (var ffi = 0; ffi < 6; ffi++) {
-            var ffa = world.time * 10 + ffi * 1.04;
-            var ffx = bx + Math.cos(ffa) * 10;
-            var ffy = cy + 10 - ((world.time * 24 + ffi * 8) % 26);
-            ctx.fillStyle = (ffi % 2 === 0) ? "#ff4820" : "#ffdb43";
-            ctx.beginPath(); ctx.arc(ffx, ffy, 3, 0, Math.PI * 2); ctx.fill();
+            var ffa = t * 12 + ffi * 1.25;
+            var ffx = bx + Math.sin(ffa) * 12;
+            var ffy = cy + 12 - ((t * 26 + ffi * 7) % 28);
+            ctx.fillStyle = (ffi % 2 === 0) ? "#ffffff" : fColor;
+            ctx.globalAlpha = 0.75;
+            ctx.fillRect(Math.round(ffx) - 1.5, Math.round(ffy) - 1.5, 3, 3);
           }
         }
       }

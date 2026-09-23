@@ -43,7 +43,7 @@
    *   buff   자기에게 건다
    */
   var SKILLS = [
-    { id: "cleave", name: "베어넘기기", kind: "swing", icon: "s_cleave",
+    { id: "cleave", type: "active", name: "베어넘기기", kind: "swing", icon: "s_cleave",
       cd: 4.0, cast: 0.25, after: 0.20, stam: 18,
       mult: 1.9, reach: 1.9, arc: 170, push: 0.6,
       text: "앞을 넓게 벤다",
@@ -54,7 +54,7 @@
           s: { mult: 0.9, cast: 0.15 } }
       ] },
 
-    { id: "dash", name: "돌진", kind: "dash", icon: "s_dash",
+    { id: "dash", type: "active", name: "돌진", kind: "dash", icon: "s_dash",
       cd: 6.0, cast: 0.0, after: 0.18, stam: 22,
       mult: 1.2, dist: 4.2, speed: 22, reach: 0.9,
       text: "앞으로 뚫고 나가며 스치는 것을 벤다",
@@ -64,7 +64,7 @@
         { id: "chase", name: "연속",    text: "적을 맞히면 재사용이 2초 줄어든다", s: { refund: 2 } }
       ] },
 
-    { id: "nova", name: "충격파", kind: "nova", icon: "s_nova",
+    { id: "nova", type: "active", name: "충격파", kind: "nova", icon: "s_nova",
       cd: 8.0, cast: 0.40, after: 0.25, stam: 30,
       mult: 1.5, reach: 3.2, push: 1.4,
       text: "사방으로 밀어낸다",
@@ -74,7 +74,7 @@
         { id: "quick", name: "빠르게",  text: "시전 0.40 → 0.15초", s: { cast: -0.25 } }
       ] },
 
-    { id: "burn", name: "불바다", kind: "field", icon: "s_burn",
+    { id: "burn", type: "active", name: "불바다", kind: "field", icon: "s_burn",
       cd: 12.0, cast: 0.35, after: 0.25, stam: 34,
       mult: 0.45, reach: 2.4, dur: 6.0, tick: 0.6, range: 5.0,
       text: "가리킨 곳을 6초간 태운다",
@@ -85,7 +85,7 @@
       ] },
 
     /* ── 전사 전용 ── */
-    { id: "whirl", name: "회전베기", kind: "nova", icon: "s_whirl",
+    { id: "whirl", type: "active", name: "회전베기", kind: "nova", icon: "s_whirl",
       cd: 7.0, cast: 0.30, after: 0.30, stam: 26,
       mult: 1.6, reach: 2.2, push: 0.5,
       text: "제자리에서 사방을 쓸어 벤다",
@@ -96,7 +96,7 @@
         { id: "hold",  name: "버티기",  text: "쓴 뒤 3초간 방어 +6", s: { guard: 6 } }
       ] },
 
-    { id: "stomp", name: "대지발구르기", kind: "nova", icon: "s_stomp",
+    { id: "stomp", type: "active", name: "대지발구르기", kind: "nova", icon: "s_stomp",
       cd: 8.0, cast: 0.30, after: 0.25, stam: 28,
       mult: 1.4, reach: 2.8, push: 1.6, slow: 3,
       text: "발을 굴러 주위 적을 쳐내고 3초간 느리게 만든다",
@@ -106,7 +106,7 @@
         { id: "quick", name: "빠르게",  text: "재사용 8.0 → 5.5초", s: { cd: -2.5 } }
       ] },
 
-    { id: "shout", name: "전장의 함성", kind: "buff", icon: "s_shout",
+    { id: "shout", type: "passive", name: "전장의 함성", kind: "buff", icon: "s_shout",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 30,
       dur: 8.0, armor: 10, dmgPct: 20,
       text: "8초간 방어 +10 · 피해 +20% · 주변 적의 시선을 끈다",
@@ -117,7 +117,7 @@
       ] },
 
     /* ── 도적 전용 ── */
-    { id: "backstab", name: "급소찌르기", kind: "swing", icon: "s_backstab",
+    { id: "backstab", type: "active", name: "급소찌르기", kind: "swing", icon: "s_backstab",
       cd: 5.0, cast: 0.12, after: 0.18, stam: 20,
       mult: 2.2, reach: 1.3, arc: 60, push: 0.2, behind: 2.0,
       text: "한 명을 깊이 찌른다 — 등 뒤면 두 배",
@@ -127,7 +127,7 @@
         { id: "bleed", name: "출혈",    text: "맞은 것이 4초간 계속 아프다", s: { bleed: 4 } }
       ] },
 
-    { id: "venom", name: "독날", kind: "buff", icon: "s_venom",
+    { id: "venom", type: "passive", name: "독날", kind: "buff", icon: "s_venom",
       cd: 14.0, cast: 0.0, after: 0.10, stam: 28,
       dur: 8.0, apsPct: 15, lifeOnHit: 3, dmgPct: 20,
       text: "8초간 공격속도 +15% · 피해 +20% · 때릴 때마다 회복",
@@ -137,7 +137,7 @@
         { id: "swift", name: "날래게", text: "공격속도 +15% → +35%", s: { apsPct: 20 } }
       ] },
 
-    { id: "knives", name: "단검난무", kind: "knives", icon: "s_knives",
+    { id: "knives", type: "active", name: "단검난무", kind: "knives", icon: "s_knives",
       cd: 6.0, cast: 0.15, after: 0.20, stam: 24,
       mult: 1.3, reach: 4.5, count: 5,
       text: "전방 부채꼴로 단검 5개를 사격한다",
@@ -147,7 +147,7 @@
         { id: "pierce", name: "날카롭게", text: "위력 1.3 → 2.1배", s: { mult: 0.8 } }
       ] },
 
-    { id: "smoke", name: "연막탄", kind: "field", icon: "s_smoke",
+    { id: "smoke", type: "active", name: "연막탄", kind: "field", icon: "s_smoke",
       cd: 14.0, cast: 0.20, after: 0.20, stam: 32,
       mult: 0.2, reach: 2.8, dur: 5.0, tick: 0.5, range: 4.5, slow: 4,
       text: "지정한 곳에 5초간 회피·둔화 연막을 친다",
@@ -158,7 +158,7 @@
       ] },
 
     /* ── 마법사 전용 ── */
-    { id: "frost", name: "서리발", kind: "nova", icon: "s_frost",
+    { id: "frost", type: "active", name: "서리발", kind: "nova", icon: "s_frost",
       cd: 9.0, cast: 0.30, after: 0.20, stam: 32,
       mult: 1.5, reach: 3.5, push: 0.3, slow: 4,
       text: "사방으로 얼음 서리를 터뜨려 4초간 강하게 둔화시킨다",
@@ -168,7 +168,7 @@
         { id: "quick", name: "빠르게",  text: "재사용 9.0 → 5.5초", s: { cd: -3.5 } }
       ] },
 
-    { id: "lightning", name: "연쇄벼락", kind: "lightning", icon: "s_lightning",
+    { id: "lightning", type: "active", name: "연쇄벼락", kind: "lightning", icon: "s_lightning",
       cd: 7.0, cast: 0.35, after: 0.20, stam: 35,
       mult: 2.6, reach: 1.8, range: 6.0, push: 0.8,
       text: "목표 지점에 강력한 벼락을 내리친다",
@@ -222,8 +222,8 @@
     var p = world.player;
     if (p.dead) return "쓰러졌다";
     var sk = resolve(id, taken);
-    if (!sk) return "없는 재주";
-    /* ⚠ 직업이 못 쓰는 재주는 **애초에 손잡이에 안 들어가지만**, 저장을 손으로
+    if (!sk) return "없는 스킬";
+    /* ⚠ 직업이 못 쓰는 스킬는 **애초에 손잡이에 안 들어가지만**, 저장을 손으로
      *   고치면 들어올 수 있다. 여기서 한 번 더 막는다(관문은 한 곳에 걸면 샌다). */
     if (cls && global.CLASSES && !global.CLASSES.canUse(cls, id))
       return "이 직업은 못 쓴다";
@@ -470,7 +470,7 @@
         if (s.cast === 0 && s.kind !== "buff" && s.kind !== "dash")
           bad.push(s.id + " 이 시전 0 인데 남을 때린다 — 피할 방법이 없다");
         if (s.kind !== "buff" && !(s.mult > 0)) bad.push(s.id + " 에 위력(배수)이 없다");
-        /* ⚠ 아이콘이 없으면 손잡이가 빈 칸으로 보인다 — 이름만 있고 그림이 없는 재주 */
+        /* ⚠ 아이콘이 없으면 손잡이가 빈 칸으로 보인다 — 이름만 있고 그림이 없는 스킬 */
         if (!s.icon) bad.push(s.id + " 에 아이콘이 없다");
       }
       return bad;
