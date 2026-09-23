@@ -516,7 +516,7 @@
      *   그 둘 안에서 난 클릭은 건너뛴다.
      * ⚠ 새 창을 `body` 에 붙일 때마다 여기 이름을 더해야 한다. 안 더하면
      *   같은 증상이 조용히 되살아난다. */
-    var OVER_PANEL = "#itemModal, #itemCtx";
+    var OVER_PANEL = "#itemModal, #itemCtx, #cmpModal";
     var _outsideClose = function(e) {
       if (e.target && e.target.closest && e.target.closest(OVER_PANEL)) return;
       if (!box.hidden && !box.contains(e.target)) {
@@ -845,6 +845,8 @@
       html += '<div class="bag-seltools">' +
         '<button class="fchip" id="btnSelAll">전체 선택</button>' +
         '<button class="fchip" id="btnSelNone">선택 해제</button>' +
+        '<button class="fchip cmp" id="btnCompareSel"' + (selCount ? '' : ' disabled') + '>' +
+        '견주기' + (selCount ? ' (' + selCount + '개)' : '') + '</button>' +
         '<button class="fchip danger" id="btnSalvageSel"' + (selCount ? '' : ' disabled') + '>' +
         '분해하기' + (selCount ? ' (' + selCount + '개)' : '') + '</button>' +
         '<span class="selnote">' + shown.length + '개 보임' +
@@ -980,6 +982,17 @@
       if (bSelNone) bindTapUI(bSelNone, function () { bagSel = {}; openBag(); });
       var bSalv = document.getElementById("btnSalvageSel");
       if (bSalv) bindTapUI(bSalv, function () { salvageSelected(bSalv); });
+      /* 고른 것을 지금 낀 것과 견준다.
+       * ⚠ 번호는 **진짜 가방 번호**(bagSel 의 키)다. 보이는 차례로 매기면
+       *   걸러 놓고 견줄 때 엉뚱한 것이 올라온다 — 분해와 같은 함정이다. */
+      var bCmp = document.getElementById("btnCompareSel");
+      if (bCmp) bindTapUI(bCmp, function () {
+        var picks = [];
+        for (var ci = 0; ci < bag.length; ci++)
+          if (bagSel[ci] && bag[ci] && bag[ci].slot) picks.push({ it: bag[ci], where: ci });
+        if (!picks.length) return toast("견줄 장비를 고르십시오");
+        openCompare(picks);
+      });
 
       var btnSort = document.getElementById("btnSortBag");
       if (btnSort) {
@@ -1010,6 +1023,229 @@
    *   덮어써서, 닫았을 때 돌아갈 자리가 사라진다.
    * ⚠ 레벨이 모자라면 입기 단추를 **지우지 않고 막는다.** 없애 버리면
    *   왜 못 입는지 알 수가 없다(.req-warn 이 그 자리를 말해 준다). */
+  /* ── 견주기 ───────────────────────────────────────────
+   *
+   * 같은 장르(디아블로 3·4 · 라스트 에포크)가 푸는 방식이 하나로 모인다:
+   * **지금 낀 것을 옆에 세우고, 능력치마다 얼마나 오르내리는지**를 적는다.
+   * 물건의 능력치만 견주면 거짓말이 된다 — 활은 한 대가 14 인데 초당 0.85대고
+   * 단검은 그 반대다. 그래서 여기서 견주는 것은 물건이 아니라 **그것을 낀 몸**이다.
+   *
+   * ⚠ 셈은 `world.derive()` 한 곳이다. 여기서 다시 더하지 말 것 —
+   *   화면이 따로 더하면 "표시는 +30 인데 실제로는 +24" 가 된다.
+   * ⚠ 세트 보너스도 저절로 따라온다. `I.totals` 가 세트를 세므로, 세트 조각을
+   *   빼는 순간 잃는 보너스가 숫자에 그대로 나온다(그게 이 화면이 필요한 까닭이다). */
+
+  /* 지금 입은 것에서 **그 자리만 갈아 끼운** 한 벌. 원본은 안 건드린다. */
+  function eqWith(eq, it, slot) {
+    var out = {}, k;
+    for (k in eq) out[k] = eq[k];
+    if (it) out[it.slot] = it; else delete out[slot];
+    return out;
+  }
+
+  /* 견줄 줄. `always` 는 값이 같아도 늘 보인다(기준점이 없으면 읽을 수가 없다). */
+  var CMP_ROWS = [
+    { k: "dps",   name: "초당 피해",   always: true,  dec: 1 },
+    { k: "dmg",   name: "한 대 피해",  dec: 0, from: function (d) { return d.swing ? d.swing.dmg : 0; } },
+    { k: "aps",   name: "공격 속도",   dec: 2, unit: "타/초",
+      from: function (d) { return d.swing ? d.swing.aps : 0; } },
+    { k: "reach", name: "사거리",      dec: 2, unit: "칸",
+      from: function (d) { return d.swing ? d.swing.reach : 0; } },
+    { k: "maxHp", name: "최대 체력",   always: true,  dec: 0 },
+    { k: "def",   name: "방어",        always: true,  dec: 0 },
+    { k: "spd",   name: "이동 속도",   dec: 2 },
+    { k: "critPct",    name: "치명타",       dec: 0, unit: "%" },
+    { k: "critDmgPct", name: "치명타 피해",  dec: 0, unit: "%" },
+    { k: "lifeOnHit",  name: "타격 회복",    dec: 0 },
+    { k: "goldPct",    name: "금화",         dec: 0, unit: "%" },
+    { k: "xpPct",      name: "경험치",       dec: 0, unit: "%" }
+  ];
+  function cmpVal(row, d) {
+    var v = row.from ? row.from(d) : d[row.k];
+    return typeof v === "number" ? v : 0;
+  }
+  function cmpFmt(row, v) {
+    return (row.dec ? (Math.round(v * Math.pow(10, row.dec)) / Math.pow(10, row.dec)).toFixed(row.dec)
+                    : Math.round(v)) + (row.unit || "");
+  }
+  /* 증감 한 조각. ⚠ 0 을 빈칸으로 두지 않는다 — "안 바뀐다" 도 답이다. */
+  function cmpDelta(row, v, base) {
+    var d = v - base;
+    if (Math.abs(d) < (row.dec ? Math.pow(10, -row.dec) / 2 : 0.5))
+      return '<span class="cmp-d same">-</span>';
+    var up = d > 0;
+    var txt = (up ? "+" : "") +
+      (row.dec ? (Math.round(d * Math.pow(10, row.dec)) / Math.pow(10, row.dec)).toFixed(row.dec)
+               : Math.round(d));
+    return '<span class="cmp-d ' + (up ? "up" : "down") + '">' +
+      (up ? "▲" : "▼") + " " + txt + (row.unit || "") + '</span>';
+  }
+
+  /* 세트 조각 수가 어떻게 달라지는지 — "3/4 → 2/4" 처럼 적는다. */
+  function setsText(d) {
+    if (!d.sets || !d.sets.length) return "";
+    return d.sets.map(function (s2) { return s2.name + " " + s2.have + "/" + s2.of; }).join(" · ");
+  }
+
+  /* 한 자리(슬롯)를 견준다. 첫 칸은 **늘 지금 낀 것**이다.
+   * cands: [{ it, where }] — where 는 가방 번호이거나 슬롯 이름(장착 중)이다. */
+  function cmpTable(slot, cands) {
+    var I = global.ITEMS, S = global.SAVE;
+    var eq = S.liveEquip(hero);
+    var worn = eq[slot] || null;
+
+    /* 낀 것이 후보로도 들어와 있으면 첫 칸과 겹친다 — 뺀다. */
+    var list = cands.filter(function (c) { return !(worn && c.it === worn); });
+
+    var cols = [{ it: worn, where: slot, mine: true }].concat(list);
+    var ds = cols.map(function (c) { return world.derive(eqWith(eq, c.it, slot)); });
+    var base = ds[0];
+
+    var h = '<div class="cmp-grp"><div class="cmp-slot">' + esc(I.SLOT_NAME[slot]) + '</div>';
+    h += '<div class="cmp-scroll"><table class="cmp-t"><thead><tr><th class="cmp-rowh"></th>';
+    for (var i = 0; i < cols.length; i++) {
+      var c = cols[i], it = c.it;
+      var ti = it ? I.tierOf(it.tier) : null;
+      h += '<th class="' + (c.mine ? "cmp-mine" : "") + '">' +
+        '<span class="cmp-tag">' + (c.mine ? "지금 낀 것" : "고른 것") + '</span>' +
+        '<span class="cmp-nm" style="color:' + (ti ? ti.color : "#8a8aa0") + '">' +
+        (it ? esc(it.name) : "비어 있음") + '</span>' +
+        (it ? '<span class="cmp-sub">' + ti.name + ' · Lv.' + I.reqLevel(it) + '</span>' : '') +
+        '</th>';
+    }
+    h += '</tr></thead><tbody>';
+
+    for (var r = 0; r < CMP_ROWS.length; r++) {
+      var row = CMP_ROWS[r];
+      var vs = ds.map(function (d) { return cmpVal(row, d); });
+      /* ⚠ 안 달라지는 줄은 안 그린다. 열두 줄이 다 같은 숫자면 어느 줄을
+       *   봐야 하는지 알 수 없다 — 다만 기준이 되는 셋은 늘 남긴다. */
+      var differs = vs.some(function (v) { return Math.abs(v - vs[0]) > 1e-9; });
+      if (!row.always && !differs) continue;
+      /* 가장 좋은 값에 표시를 한다. 전부 같으면 아무 데도 안 한다. */
+      var best = Math.max.apply(null, vs);
+      var allSame = vs.every(function (v) { return Math.abs(v - vs[0]) < 1e-9; });
+      h += '<tr><th class="cmp-rowh">' + row.name + '</th>';
+      for (var ci = 0; ci < vs.length; ci++) {
+        var isBest = !allSame && Math.abs(vs[ci] - best) < 1e-9;
+        h += '<td class="' + (isBest ? "cmp-best " : "") + (ci === 0 ? "cmp-mine" : "") + '">' +
+          '<b>' + cmpFmt(row, vs[ci]) + '</b>' +
+          (ci === 0 ? '' : cmpDelta(row, vs[ci], cmpVal(row, base))) +
+          '</td>';
+      }
+      h += '</tr>';
+    }
+
+    /* 세트는 숫자로 못 재는 줄이라 따로 적는다 */
+    var setTxts = ds.map(setsText);
+    if (setTxts.some(function (t2) { return t2; })) {
+      h += '<tr><th class="cmp-rowh">세트</th>';
+      for (var si = 0; si < setTxts.length; si++)
+        h += '<td class="' + (si === 0 ? "cmp-mine" : "") + '"><span class="cmp-set">' +
+          esc(setTxts[si] || "없음") + '</span></td>';
+      h += '</tr>';
+    }
+
+    /* 입기 — 여기서 바로 갈아 끼울 수 있어야 견준 뜻이 있다 */
+    h += '<tr><th class="cmp-rowh"></th>';
+    for (var bi = 0; bi < cols.length; bi++) {
+      var c2 = cols[bi];
+      if (c2.mine) { h += '<td class="cmp-mine"><span class="cmp-now">착용 중</span></td>'; continue; }
+      var ok = global.ITEMS.canEquip(c2.it, hero.level);
+      h += '<td><button class="btn-card-act equip cmp-eq" data-cmpeq="' + c2.where + '"' +
+        (ok ? '' : ' disabled title="Lv.' + I.reqLevel(c2.it) + ' 부터"') + '>' +
+        (ok ? "입기" : "Lv." + I.reqLevel(c2.it)) + '</button></td>';
+    }
+    h += '</tr></tbody></table></div></div>';
+    return h;
+  }
+
+  /* 견주기 창. cands 가 여러 자리에 걸쳐 있으면 **자리마다 묶어서** 보여준다.
+   * ⚠ "같은 자리끼리만 고르라" 고 막지 않는다. 막는 것과 묻는 것은 다르고,
+   *   무엇을 견줄지는 쓰는 사람이 정한다. 우리는 묶어서 보여주기만 한다. */
+  function openCompare(cands) {
+    var I = global.ITEMS;
+    if (!cands || !cands.length) return toast("견줄 것을 고르십시오");
+
+    var bySlot = {}, order = [];
+    for (var i = 0; i < cands.length; i++) {
+      var sl = cands[i].it.slot;
+      if (!bySlot[sl]) { bySlot[sl] = []; order.push(sl); }
+      bySlot[sl].push(cands[i]);
+    }
+
+    var old = document.getElementById("cmpModal");
+    if (old) old.remove();
+
+    var ov = document.createElement("div");
+    ov.id = "cmpModal";
+    ov.className = "item-modal-overlay";
+    var body = "";
+    for (var o = 0; o < order.length; o++) body += cmpTable(order[o], bySlot[order[o]]);
+
+    ov.innerHTML =
+      '<div class="item-modal-card cmp-card">' +
+        '<button class="item-modal-close" data-act="close" aria-label="닫기">×</button>' +
+        '<div class="cmp-head">견주기' +
+          '<span class="cmp-hint">' + cands.length + '개 · 지금 낀 것과 견줍니다' +
+          (order.length > 1 ? ' · 자리 ' + order.length + '곳' : '') + '</span></div>' +
+        body +
+        '<div class="card-act-row"><button class="btn-card-act cancel" data-act="close">닫기</button></div>' +
+      '</div>';
+
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelectorAll("[data-act=close]").forEach(function (b) {
+      bindTapUI(b, close);
+    });
+    ov.querySelectorAll("[data-cmpeq]").forEach(function (b) {
+      bindTapUI(b, function () {
+        if (b.disabled) return;
+        var w = b.getAttribute("data-cmpeq");
+        close();
+        equipFromBag(Number(w));
+      });
+    });
+    document.body.appendChild(ov);
+  }
+
+  /* 물건 창에 붙는 **한 줄 요약.** 자세한 것은 [견주기] 로 넘긴다.
+   * ⚠ 가장 크게 달라지는 셋만 적는다. 열두 줄을 다 적으면 물건 창이 표가 된다. */
+  function cmpMini(it) {
+    var I = global.ITEMS, S = global.SAVE;
+    if (!it || !it.slot || !world) return "";
+    var eq = S.liveEquip(hero);
+    var worn = eq[it.slot] || null;
+    if (worn === it) return "";
+    var now = world.derive(eq);
+    var next = world.derive(eqWith(eq, it, it.slot));
+
+    var picks = [];
+    for (var r = 0; r < CMP_ROWS.length; r++) {
+      var row = CMP_ROWS[r];
+      var a = cmpVal(row, now), b = cmpVal(row, next);
+      var d = b - a;
+      if (Math.abs(d) < (row.dec ? Math.pow(10, -row.dec) / 2 : 0.5)) continue;
+      /* 크기는 **비율**로 견준다. 체력 +40 과 이동속도 +0.3 을 숫자로 견주면
+       * 늘 체력이 이긴다 — 무엇이 크게 달라졌는지가 안 보인다. */
+      picks.push({ row: row, b: b, a: a, w: a ? Math.abs(d / a) : 1 });
+    }
+    if (!picks.length)
+      return '<div class="cmp-mini"><span class="cmp-mini-t">지금 낀 것과 견주면</span>' +
+             '<span class="cmp-d same">달라지는 것이 없습니다</span></div>';
+    picks.sort(function (x, y) { return y.w - x.w; });
+    var h = '<div class="cmp-mini"><span class="cmp-mini-t">지금 낀 것' +
+      (worn ? ' (' + esc(worn.name) + ')' : ' (비어 있음)') + '과 견주면</span>';
+    for (var p = 0; p < Math.min(3, picks.length); p++) {
+      var pk = picks[p];
+      h += '<span class="cmp-mini-r">' + pk.row.name + ' ' +
+        cmpFmt(pk.row, pk.a) + ' → <b>' + cmpFmt(pk.row, pk.b) + '</b> ' +
+        cmpDelta(pk.row, pk.b, pk.a) + '</span>';
+    }
+    h += '<button class="cmp-more" data-act="compare">자세히 견주기</button></div>';
+    return h;
+  }
+
   function openItemModal(it, equipped, where) {
     if (!it) return;
     var I = global.ITEMS;
@@ -1053,6 +1289,8 @@
           }).join("") +
         '</div>' +
         (can ? '' : '<span class="req-warn">Lv.' + I.reqLevel(it) + ' 부터 입을 수 있다</span>') +
+        /* 낀 것과 견준 한 줄. 장착 중인 것을 열었을 때는 견줄 상대가 자기라 안 붙는다. */
+        (equipped ? '' : cmpMini(it)) +
         '<div class="card-act-row">' + acts + '</div>' +
       '</div>';
 
@@ -1066,6 +1304,7 @@
         var a = b.getAttribute("data-act");
         if (a === "close") return close();
         if (b.disabled) return;
+        if (a === "compare") { close(); return openCompare([{ it: it, where: where }]); }
         close();
         if (a === "equip") equipFromBag(where);
         else if (a === "unequip") unequip(where);
@@ -1196,6 +1435,8 @@
     } else {
       rows.push('<button class="ctx-row" disabled>장착 <b>Lv.' + I.reqLevel(it) + ' 필요</b></button>');
     }
+    /* 장착 중인 것은 견줄 상대가 자기라 안 넣는다 */
+    if (!equipped) rows.push('<button class="ctx-row" data-do="compare">견주기</button>');
     rows.push('<button class="ctx-row danger" data-do="salvage">분해하기</button>');
     rows.push('<button class="ctx-row" data-do="close">닫기</button>');
     el.innerHTML = '<div class="ctx-head">' + esc(it.name) + '</div>' + rows.join("");
@@ -1222,6 +1463,7 @@
           return salvageOne(where);
         }
         closeCtxMenu();
+        if (d === "compare") return openCompare([{ it: it, where: where }]);
         if (d === "equip") equipFromBag(where);
         else if (d === "unequip") unequip(where);
       });
@@ -2550,11 +2792,12 @@
        *   생긴 날부터 같은 증상이 조용히 돌아온다. */
       if (e.code === "Escape") {
         if (document.getElementById("itemCtx")) { closeCtxMenu(); return; }
-        if (document.getElementById("itemModal")) {
-          var ov = document.getElementById("itemModal");
-          if (ov.parentNode) ov.parentNode.removeChild(ov);
-          return;
-        }
+        /* 견주기 창이 물건 창보다 **위**다 — 물건 창에서 열고 들어간다.
+         * ⚠ 차례를 뒤집으면 견주다가 ESC 를 눌렀는데 뒤의 물건 창이 닫힌다. */
+        var ovC = document.getElementById("cmpModal");
+        if (ovC) { if (ovC.parentNode) ovC.parentNode.removeChild(ovC); return; }
+        var ov = document.getElementById("itemModal");
+        if (ov) { if (ov.parentNode) ov.parentNode.removeChild(ov); return; }
         closePanel();
         return;
       }
@@ -2676,6 +2919,7 @@
      * ⚠ 「활로 쏘면 커서로 가는가」 는 활이 없으면 못 잰다. 화면을 눌러
      *   장비를 끼우는 길만 두면, 그 길이 막히는 날 조준 검사까지 같이 죽는다. */
     global.__give = giveTestItems;
+    global.__openCompare = openCompare;
     global.__equipBag = equipFromBag;
     global.__findBag = function (kind) {
       /* ⚠ `hero.bag` 는 **눌러 담은 것**이다(`I.pack`). 거기서 `.base` 를

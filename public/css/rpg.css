@@ -1577,3 +1577,110 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   cursor: not-allowed;
 }
 
+/* ── 견주기 ───────────────────────────────────────────────
+ * 지금 낀 것을 첫 칸에 두고 고른 것들을 옆에 세운다.
+ * ⚠ 첫 칸(지금 낀 것)은 늘 보여야 한다 — 그것이 기준이다. 칸이 많아 옆으로
+ *   구를 때 기준이 함께 흘러가면 무엇과 견주는 중인지 알 수 없다(sticky).
+ * ⚠ 좋고 나쁨을 **색으로만** 말하지 않는다. 화살표를 함께 둔다 —
+ *   빨강과 초록을 못 가리는 사람에게는 색만으로는 아무 말도 안 한 것이다. */
+.cmp-card {
+  width: min(96vw, 860px);
+  max-width: 96vw;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.cmp-head {
+  font-size: 16px; font-weight: 800; color: #e8e6f0;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 10px; padding-right: 28px;
+}
+.cmp-hint { font-size: 11px; font-weight: 500; color: #8a8aa0; }
+
+.cmp-grp { margin-bottom: 14px; }
+.cmp-slot {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: #9a93c8; text-transform: none;
+  padding: 3px 8px; margin-bottom: 6px;
+  background: rgba(122, 108, 214, .14);
+  border-left: 2px solid #7a6cd6; border-radius: 0 4px 4px 0;
+}
+/* 칸이 많으면 옆으로 구른다. 줄바꿈으로 접으면 표가 표가 아니게 된다. */
+.cmp-scroll { overflow-x: auto; }
+.cmp-t {
+  width: 100%; border-collapse: collapse;
+  font-size: 12px; color: #d6d3e4;
+}
+.cmp-t th, .cmp-t td {
+  padding: 5px 8px; text-align: right;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+  white-space: nowrap;
+}
+.cmp-t thead th {
+  text-align: right; vertical-align: bottom;
+  border-bottom: 1px solid rgba(255, 255, 255, .16);
+  padding-bottom: 7px;
+}
+.cmp-t thead th > span { display: block; }
+.cmp-tag { font-size: 10px; color: #7d7a92; font-weight: 600; }
+.cmp-nm { font-size: 12px; font-weight: 700; }
+.cmp-sub { font-size: 10px; color: #7d7a92; font-weight: 500; }
+
+/* 줄 이름과 기준 칸은 옆으로 굴러도 붙어 있는다 */
+.cmp-rowh {
+  position: sticky; left: 0; z-index: 2;
+  text-align: left !important; font-weight: 600; color: #9b98ad;
+  background: #1b1a26; min-width: 74px;
+}
+.cmp-mine { background: rgba(255, 255, 255, .035); }
+thead .cmp-mine, tbody .cmp-mine { border-left: 1px solid rgba(255, 255, 255, .07); }
+
+.cmp-t td b { font-size: 13px; font-weight: 700; color: #ece9f6; display: block; }
+.cmp-best td, td.cmp-best { background: rgba(94, 214, 140, .10); }
+td.cmp-best b { color: #86e6ad; }
+
+.cmp-d { font-size: 10px; font-weight: 700; display: block; margin-top: 1px; }
+.cmp-d.up { color: #5ed68c; }
+.cmp-d.down { color: #e2685f; }
+.cmp-d.same { color: #6b6880; font-weight: 500; }
+.cmp-set { font-size: 11px; color: #c9a86a; white-space: normal; }
+.cmp-now { font-size: 11px; color: #7d7a92; }
+.cmp-eq { padding: 5px 12px; font-size: 12px; }
+
+/* 고르기 줄의 [견주기] — 분해(빨강) 옆이라 색으로 갈라 둔다 */
+.fchip.cmp {
+  border-color: rgba(122, 108, 214, .55);
+  color: #b4a9f0;
+}
+.fchip.cmp:disabled { opacity: .4; }
+
+/* 물건 창 안의 한 줄 요약 */
+.cmp-mini {
+  display: flex; flex-direction: column; gap: 3px;
+  margin: 9px 0 2px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 8px;
+}
+.cmp-mini-t { font-size: 10px; font-weight: 700; color: #8a8aa0; }
+.cmp-mini-r {
+  font-size: 12px; color: #b9b5c9;
+  display: flex; align-items: baseline; gap: 5px; flex-wrap: wrap;
+}
+.cmp-mini-r b { color: #ece9f6; font-weight: 700; }
+.cmp-mini .cmp-d { display: inline; margin: 0; }
+.cmp-more {
+  align-self: flex-start; margin-top: 4px;
+  padding: 4px 10px; font-size: 11px; font-weight: 700;
+  color: #b4a9f0; background: transparent;
+  border: 1px solid rgba(122, 108, 214, .55); border-radius: 6px;
+  cursor: pointer; font-family: inherit;
+}
+.cmp-more:hover { background: rgba(122, 108, 214, .16); }
+
+/* 좁은 화면 — 글자만 조인다. 칸을 접으면 견줄 수가 없다 */
+@media (max-width: 560px) {
+  .cmp-t { font-size: 11px; }
+  .cmp-t th, .cmp-t td { padding: 4px 6px; }
+  .cmp-rowh { min-width: 62px; }
+  .cmp-t td b { font-size: 12px; }
+}

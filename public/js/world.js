@@ -508,48 +508,46 @@
   /* 캐릭터 수치 → 몸. 레벨이 오르거나 불러온 직후에 부른다.
    * ⚠ 이 계산이 **한 곳**이어야 한다. 화면에 쓰는 값과 실제 몸이 갈리면
    *   "체력이 100인데 3대 맞고 죽는다" 가 된다. */
-  World.prototype.applyHero = function () {
-    if (!this.hero) return;
-    var p = this.player, h = this.hero;
-    var lv = h.level;
-    var I = global.ITEMS, S = global.SAVE;
-    /* 입은 것을 **여기서 한 번만** 합친다. 화면이 따로 더하면
-     * "표시는 +30 인데 실제로는 +24" 가 된다. */
-    var eq = (I && S) ? S.liveEquip(h) : {};
-    var t = I ? I.totals(eq) : { dmg:0, hp:0, armor:0, spdPct:0, apsPct:0,
-                                 critPct:0, critDmgPct:0, lifeOnHit:0, goldPct:0, xpPct:0 };
-    this.gear = t;
-    this.equipped = eq;
+  /* 입은 것 한 벌에서 **몸의 수치**를 뽑는다 — 값만 만들고 아무 것도 안 바꾼다.
+   *
+   * ⚠ 이것을 따로 만든 까닭은 **비교** 때문이다. "이걸 끼면 어떻게 되나" 를
+   *   보여주려면 아직 안 낀 것으로 같은 셈을 해봐야 하는데, 화면 쪽에서 그
+   *   셈을 다시 적으면 반드시 어긋난다(이 저장소에서 같은 사고를 여러 번 겪었다).
+   *   applyHero 도 이 함수를 쓴다 — 셈이 **한 곳**이라야 둘이 같은 말을 한다.
+   * ⚠ 버프는 안 얹는다. 버프는 지금 몸에 걸린 것이라 "이걸 끼면" 과 무관하고,
+   *   refreshBuffs 가 기준값 위에 따로 얹는다. */
+  World.prototype.derive = function (eq) {
+    var I = global.ITEMS, CL = global.CLASSES, h = this.hero;
+    var lv = h ? h.level : 1;
+    var t = I ? I.totals(eq) : { dmg: 0, hp: 0, armor: 0, spdPct: 0, apsPct: 0,
+                                 critPct: 0, critDmgPct: 0, lifeOnHit: 0,
+                                 goldPct: 0, xpPct: 0, _sets: [] };
+    var cls = CL && h ? CL.byId(h.cls) : null;
+    var o = { t: t, cls: cls, sets: t._sets || [] };
 
-    /* 직업 — 수치가 **여기 한 곳**에서만 들어온다(classes.js 의 표).
-     * ⚠ 화면 쪽에서 다시 더하면 "표시는 60인데 실제는 50" 이 된다. */
-    var CL = global.CLASSES;
-    var cls = CL ? CL.byId(h.cls) : null;
-    this.cls = cls;
-
-    var was = p.maxHp;
-    p.maxHp = (cls ? cls.hp + (lv - 1) * cls.hpPer : 50 + (lv - 1) * 12) + (t.hp || 0);
-    /* ⚠ 늘어난 **차이만큼만** 채운다. 새로 다 채우면 장비를 뺐다 끼는 것만으로
-     *   무한 회복이 된다(장비 바꾸기 = 물약). */
-    p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - was)));
-    /* 버프가 얹히기 **전의** 값을 따로 둔다. 안 두면 버프가 끝날 때 무엇으로
-     * 되돌릴지 몰라 방어가 계속 쌓인다(버프를 걸수록 세지는 고전 버그). */
-    p.baseDef = (cls ? cls.armor : 0) + (t.armor || 0);
+    o.maxHp = (cls ? cls.hp + (lv - 1) * cls.hpPer : 50 + (lv - 1) * 12) + (t.hp || 0);
+    o.def = (cls ? cls.armor : 0) + (t.armor || 0);
     var spdBonus = Math.max(-0.25, Math.min(0.35, (t.spdPct || 0) / 100));
-    p.spd = (cls ? cls.spd : 4.0) * (1 + spdBonus);
-    p.critPct = (cls ? cls.critPct : 0) + (t.critPct || 0);
-    p.critDmgPct = t.critDmgPct || 0;
-    p.lifeOnHit = t.lifeOnHit || 0;
-    /* 무기가 몸짓과 피해를 함께 정한다 — 없으면 맨손(COMBAT.SWING) */
+    o.spd = (cls ? cls.spd : 4.0) * (1 + spdBonus);
+    o.critPct = (cls ? cls.critPct : 0) + (t.critPct || 0);
+    o.critDmgPct = t.critDmgPct || 0;
+    o.lifeOnHit = t.lifeOnHit || 0;
+    o.goldPct = t.goldPct || 0;
+    o.xpPct = t.xpPct || 0;
+    o.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
+    o.stamRegen = cls ? cls.stamRegen : 12;
+
+    o.swing = null;
+    o.adept = false;
     var sw = I ? I.swingOf(eq, t) : null;
     if (sw) {
       var baseDmg = (eq.weapon && eq.weapon.s && eq.weapon.s.dmg) ? 0 : global.COMBAT.SWING.dmg;
       var raw = baseDmg + (t.dmg || 0);
       /* 무기 적성 — **보너스만** 준다. 안 맞는 무기에 벌을 주면 전리품 절반이
        * 쓰레기가 되어 줍는 재미가 사라진다. */
-      p.adept = !!(CL && eq.weapon && CL.adept(h.cls, eq.weapon));
-      if (p.adept) raw *= (1 + CL.ADEPT_BONUS / 100);
-      p.swing = {
+      o.adept = !!(CL && h && eq.weapon && CL.adept(h.cls, eq.weapon));
+      if (o.adept) raw *= (1 + CL.ADEPT_BONUS / 100);
+      o.swing = {
         aps: sw.aps, windup: sw.windup, recover: sw.recover,
         reach: sw.reach, arc: sw.arc, push: sw.push,
         dmg: Math.max(1, Math.round(raw)),
@@ -559,10 +557,50 @@
         pierce: (eq.weapon && eq.weapon.pierce) || 1
       };
     }
+    /* 초당 피해 — 무기를 견주는 **유일하게 정직한 한 수치**다.
+     * ⚠ 한 대 피해만 보면 활(14 · 0.85타/초)과 단검이 뒤집혀 보인다. */
+    o.dps = o.swing ? Math.round(o.swing.dmg * o.swing.aps * 10) / 10 : 0;
+    return o;
+  };
+
+  World.prototype.applyHero = function () {
+    if (!this.hero) return;
+    var p = this.player, h = this.hero;
+    var lv = h.level;
+    var I = global.ITEMS, S = global.SAVE;
+    /* 입은 것을 **여기서 한 번만** 합친다. 화면이 따로 더하면
+     * "표시는 +30 인데 실제로는 +24" 가 된다. */
+    var eq = (I && S) ? S.liveEquip(h) : {};
+    /* 셈은 **derive 한 곳**이다. 여기서 다시 적으면 비교 화면과 어긋난다. */
+    var d = this.derive(eq);
+    var t = d.t;
+    this.gear = t;
+    this.equipped = eq;
+
+    /* 직업 — 수치가 **여기 한 곳**에서만 들어온다(classes.js 의 표). */
+    var CL = global.CLASSES;
+    var cls = d.cls;
+    this.cls = cls;
+
+    var was = p.maxHp;
+    p.maxHp = d.maxHp;
+    /* ⚠ 늘어난 **차이만큼만** 채운다. 새로 다 채우면 장비를 뺐다 끼는 것만으로
+     *   무한 회복이 된다(장비 바꾸기 = 물약). */
+    p.hp = Math.max(1, Math.min(p.maxHp, p.hp + (p.maxHp - was)));
+    /* 버프가 얹히기 **전의** 값을 따로 둔다. 안 두면 버프가 끝날 때 무엇으로
+     * 되돌릴지 몰라 방어가 계속 쌓인다(버프를 걸수록 세지는 고전 버그). */
+    p.baseDef = d.def;
+    p.spd = d.spd;
+    p.critPct = d.critPct;
+    p.critDmgPct = d.critDmgPct;
+    p.lifeOnHit = d.lifeOnHit;
+    /* 무기가 몸짓과 피해를 함께 정한다 — 없으면 맨손(COMBAT.SWING) */
+    p.adept = d.adept;
+    if (d.swing) p.swing = d.swing;
     p.baseAps = p.swing ? p.swing.aps : null;
     p.baseDmg = p.swing ? p.swing.dmg : null;
-    p.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
-    p.stamRegen = cls ? cls.stamRegen : 12;
+    p.stamMax = d.stamMax;
+    p.stamRegen = d.stamRegen;
     if (p.stam === undefined) p.stam = p.stamMax;
     if (p.stam > p.stamMax) p.stam = p.stamMax;
     this.refreshBuffs();
