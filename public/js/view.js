@@ -672,7 +672,7 @@
     }
   };
 
-  /* 부채꼴 & 스킬 타격 이펙트. 선딜 동안은 예고하고, 판정 순간 화려하게 터진다. */
+  /* 굵은 검기 궤적 & 스킬 타격 불꽃 파티클 (Dynamic Slash Trail & Spark Bursts) */
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
     var k = a.t / Math.max(0.01, m.windup);
@@ -681,45 +681,47 @@
     var half = m.arc * Math.PI / 360;
     var radius = m.reach * TILE;
     ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-    ctx.closePath();
 
     if (live) {
       if (e.team === 0) {
-        /* 플레이어 공격/스킬 — 화려하고 선명한 검기/마력 궤적 */
-        var grad = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
-        grad.addColorStop(0, "rgba(255, 240, 180, 0.70)");
-        grad.addColorStop(0.7, "rgba(255, 170, 60, 0.45)");
-        grad.addColorStop(1, "rgba(255, 110, 30, 0)");
+        /* 날카로운 픽셀 검기 초승달 궤적 (Sharpened Blade Slash Flare) */
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
+        ctx.arc(cx, cy, radius * 0.45, a.ang + half, a.ang - half, true);
+        ctx.closePath();
+        var grad = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
+        grad.addColorStop(0, "rgba(255, 255, 220, 0.95)");
+        grad.addColorStop(0.5, "rgba(255, 180, 50, 0.75)");
+        grad.addColorStop(1, "rgba(255, 80, 20, 0)");
         ctx.fillStyle = grad;
         ctx.fill();
 
-        /* 외곽 빛나는 칼날 테두리 선 */
-        ctx.strokeStyle = "rgba(255, 255, 230, 0.95)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-        ctx.stroke();
+        /* 칼날 끝 스파크 입자 7개 */
+        for (var spi = 0; spi < 7; spi++) {
+          var spAng = a.ang - half + (spi / 6) * (half * 2);
+          var spR = radius * (0.85 + (spi % 2 === 0 ? 0.15 : 0.05));
+          var spx = cx + Math.cos(spAng) * spR;
+          var spy = cy + Math.sin(spAng) * spR;
+          ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe080";
+          ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
+        }
       } else {
-        /* 몬스터 위협적인 붉은 타격 */
-        ctx.fillStyle = "rgba(255, 90, 70, 0.40)";
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255, 140, 100, 0.85)";
-        ctx.lineWidth = 2.5;
+        /* 몬스터 날카로운 붉은 손톱/위협적인 사선 베기 */
         ctx.beginPath();
         ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-        ctx.stroke();
+        ctx.arc(cx, cy, radius * 0.5, a.ang + half, a.ang - half, true);
+        ctx.closePath();
+        ctx.fillStyle = "rgba(255, 60, 40, 0.65)";
+        ctx.fill();
       }
     } else {
-      /* 차오르는 예고 고리 */
-      var alphaVal = (0.08 + 0.20 * Math.min(1, k)).toFixed(3);
-      ctx.fillStyle = e.team === 0 ? "rgba(255,240,180," + alphaVal + ")" : "rgba(255,80,60," + alphaVal + ")";
+      /* 예고 — 다가오는 붉은/황금빛 사선 바닥 경고 파동 */
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * Math.min(1, k), a.ang - half, a.ang + half);
+      ctx.lineTo(cx, cy);
+      ctx.closePath();
+      ctx.fillStyle = e.team === 0 ? "rgba(255,220,140,0.18)" : "rgba(255,70,50,0.22)";
       ctx.fill();
-      ctx.strokeStyle = e.team === 0 ? "rgba(255,220,130,0.4)" : "rgba(255,100,80,0.5)";
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
     }
     ctx.restore();
   };
@@ -771,95 +773,85 @@
     return { x: wx / TILE, y: wy / TILE };
   };
 
-  /* 개체 몸체/발밑 지속 효과 오라 (Body & Foot Buff Aura FX) */
+  /* 개체 몸체/발밑 지속 효과 오라 — 단순 원형 선을 전면 삭제하고 피어오르는 붉은 불꽃/열기/입자로 표현 */
   View.prototype.drawEntityAuras = function (ctx, e, ex, ey, ox, oy, world) {
     if (e.dead) return;
     var bx = ex * TILE + ox, by = ey * TILE + oy;
     var cy = by - 16; /* 캐릭터 중심 높이 */
     ctx.save();
 
-    /* 1) 둔화 상태 오라 (Slow Debuff Ring) */
+    /* 1) 둔화 상태 오라 (Slow Frost Shards under feet) */
     if (e.slowUntil && e.slowUntil > world.time) {
-      ctx.strokeStyle = "rgba(100, 220, 255, 0.85)";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.arc(bx, by - 4, 14, 0, Math.PI * 2);
-      ctx.stroke();
-      for (var sfi = 0; sfi < 3; sfi++) {
-        var sfa = world.time * 3 + sfi * 2.09;
-        ctx.fillStyle = "rgba(180, 240, 255, 0.95)";
-        ctx.fillRect(Math.round(bx + Math.cos(sfa) * 14) - 1, Math.round(by - 4 + Math.sin(sfa) * 6) - 1, 3, 3);
+      for (var sfi = 0; sfi < 6; sfi++) {
+        var sfa = sfi * (Math.PI / 3) + Math.sin(world.time * 2) * 0.2;
+        var sfx = bx + Math.cos(sfa) * 14;
+        var sfy = by - 4 + Math.sin(sfa) * 6;
+        ctx.fillStyle = (sfi % 2 === 0) ? "#82d8ff" : "#ffffff";
+        ctx.beginPath();
+        ctx.moveTo(sfx, sfy - 7);
+        ctx.lineTo(sfx + 3, sfy + 2);
+        ctx.lineTo(sfx - 3, sfy + 2);
+        ctx.closePath();
+        ctx.fill();
       }
     }
 
-    /* 2) 플레이어 몸체를 감싸는 직관적인 붉은/황금/초록 버프 오라 (Enveloping Body Aura) */
+    /* 2) 플레이어 전신 붉은 불꽃 오라 / 황금 신성 별빛 / 독기 피어오름 */
     if (e.kind === "player" && world.buffs && world.buffs.length) {
       for (var bi = 0; bi < world.buffs.length; bi++) {
         var bf = world.buffs[bi];
-        var puls = 1 + Math.sin(world.time * 9 + bi * 1.5) * 0.18;
 
         if (bf.id === "shout" || bf.dmgPct > 20) {
-          /* 붉은 광폭/함성 오라 — 캐릭터 몸 전체를 붉은 불꽃과 붉은 기운 오라로 감쌈 */
-          var rgShout = ctx.createRadialGradient(bx, cy, 4, bx, cy, 26 * puls);
-          rgShout.addColorStop(0, "rgba(255, 50, 30, 0.55)");
-          rgShout.addColorStop(0.5, "rgba(230, 20, 10, 0.35)");
-          rgShout.addColorStop(0.85, "rgba(255, 80, 40, 0.15)");
-          rgShout.addColorStop(1, "rgba(255, 0, 0, 0)");
-          ctx.fillStyle = rgShout;
-          ctx.beginPath(); ctx.arc(bx, cy, 26 * puls, 0, Math.PI * 2); ctx.fill();
+          /* 🔴 붉은 광폭/함성 — 14개의 진짜 피어오르는 불꽃 덩어리가 캐릭터 몸 전체를 감싸 올라감 */
+          for (var fi = 0; fi < 14; fi++) {
+            var phase = world.time * 12 + fi * 0.45;
+            var spreadX = Math.sin(phase * 1.3) * 13;
+            var flameH = (world.time * 30 + fi * 9) % 32;
+            var fx = bx + spreadX;
+            var fy = by + 2 - flameH;
+            var size = Math.max(1.5, (1 - flameH / 32) * 5.5);
 
-          /* 솟구치는 붉은 불티 오라 입자 */
-          ctx.fillStyle = "rgba(255, 180, 80, 0.95)";
-          for (var pti = 0; pti < 5; pti++) {
-            var pta = world.time * 6 + pti * 1.25;
-            var ptr = 12 + Math.sin(pta * 2) * 6;
-            var pty = cy + Math.sin(pta * 1.5) * 14 - ((world.time * 20 + pti * 7) % 24) + 12;
-            var ptx = bx + Math.cos(pta) * ptr;
-            ctx.fillRect(Math.round(ptx), Math.round(pty), 2.5, 2.5);
+            var fColor = "#d92418";
+            if (flameH < 8) fColor = "#ff4820";
+            else if (flameH < 18) fColor = "#ff9428";
+            else if (flameH < 26) fColor = "#ffdb43";
+            else fColor = "#ffffff";
+
+            ctx.fillStyle = fColor;
+            ctx.beginPath();
+            ctx.arc(fx, fy, size, 0, Math.PI * 2);
+            ctx.fill();
           }
 
-          /* 외곽 붉은 빛 충격 고리 */
-          ctx.strokeStyle = "rgba(255, 80, 50, 0.85)";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.ellipse(bx, by - 4, 18 * puls, 8 * puls, 0, 0, Math.PI * 2);
-          ctx.stroke();
+          /* 피어오르는 붉은 열기 불티 파티클 8개 */
+          ctx.fillStyle = "#ffe480";
+          for (var pti = 0; pti < 8; pti++) {
+            var pta = world.time * 5 + pti * 0.8;
+            var ptx = bx + Math.sin(pta * 2.1) * 16;
+            var pty = cy + 14 - ((world.time * 28 + pti * 6) % 36);
+            ctx.fillRect(Math.round(ptx), Math.round(pty), 2, 2);
+          }
 
         } else if (bf.id === "ward" || bf.armor > 0) {
-          /* 황금빛 수호/결의 오라 — 캐릭터를 감싸는 빛나는 신성한 쉴드 돔 & 룬 링 */
-          var rgWard = ctx.createRadialGradient(bx, cy, 6, bx, cy, 25 * puls);
-          rgWard.addColorStop(0, "rgba(255, 235, 120, 0.55)");
-          rgWard.addColorStop(0.6, "rgba(255, 190, 40, 0.30)");
-          rgWard.addColorStop(1, "rgba(255, 160, 0, 0)");
-          ctx.fillStyle = rgWard;
-          ctx.beginPath(); ctx.arc(bx, cy, 25 * puls, 0, Math.PI * 2); ctx.fill();
-
-          /* 회전하는 황금 신성 테두리 */
-          ctx.strokeStyle = "rgba(255, 240, 160, 0.90)";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(bx, cy, 22 * puls, world.time * 3, world.time * 3 + Math.PI * 1.3);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(bx, cy, 22 * puls, world.time * 3 + Math.PI, world.time * 3 + Math.PI * 2.3);
-          ctx.stroke();
+          /* 🟡 황금 신성 별 빛 수호 */
+          for (var wi = 0; wi < 6; wi++) {
+            var wa = world.time * 2.5 + wi * 1.047;
+            var wx = bx + Math.cos(wa) * 18;
+            var wy = cy + Math.sin(wa * 2) * 10;
+            ctx.fillStyle = (wi % 2 === 0) ? "#fff2a8" : "#ffd040";
+            ctx.fillRect(Math.round(wx) - 1, Math.round(wy) - 4, 3, 9);
+            ctx.fillRect(Math.round(wx) - 4, Math.round(wy) - 1, 9, 3);
+          }
 
         } else if (bf.id === "venom") {
-          /* 짙은 초록 독 오라 — 독기가 몸 전체에 피어오름 */
-          var rgVenom = ctx.createRadialGradient(bx, cy, 4, bx, cy, 24 * puls);
-          rgVenom.addColorStop(0, "rgba(80, 240, 120, 0.55)");
-          rgVenom.addColorStop(0.65, "rgba(30, 180, 70, 0.30)");
-          rgVenom.addColorStop(1, "rgba(10, 120, 40, 0)");
-          ctx.fillStyle = rgVenom;
-          ctx.beginPath(); ctx.arc(bx, cy, 24 * puls, 0, Math.PI * 2); ctx.fill();
-
-          /* 독 방울 입자 */
-          ctx.fillStyle = "rgba(180, 255, 160, 0.90)";
-          for (var vni = 0; vni < 4; vni++) {
-            var vna = world.time * 4 + vni * 1.57;
-            var vnx = bx + Math.cos(vna) * 15;
-            var vny = cy + Math.sin(vna * 2) * 12;
-            ctx.beginPath(); ctx.arc(vnx, vny, 2, 0, Math.PI * 2); ctx.fill();
+          /* 🟢 짙은 초록 독기 구름 8개 */
+          for (var vi = 0; vi < 8; vi++) {
+            var vp = world.time * 8 + vi * 0.78;
+            var vx = bx + Math.sin(vp * 1.7) * 14;
+            var vy = by - ((world.time * 18 + vi * 5) % 28);
+            var vr = Math.max(1, (1 - ((world.time * 18 + vi * 5) % 28) / 28) * 4);
+            ctx.fillStyle = (vi % 2 === 0) ? "#4fbf6a" : "#9cf0a8";
+            ctx.beginPath(); ctx.arc(vx, vy, vr, 0, Math.PI * 2); ctx.fill();
           }
         }
       }
@@ -867,7 +859,7 @@
     ctx.restore();
   };
 
-  /* 개체 전면 전신 버프 오라 레이어 (Enveloping Front Aura) */
+  /* 개체 전면 전신 불꽃 레이어 */
   View.prototype.drawEntityAurasOver = function (ctx, e, ex, ey, ox, oy, world) {
     if (e.dead) return;
     var bx = ex * TILE + ox, by = ey * TILE + oy;
@@ -876,27 +868,15 @@
     if (e.kind === "player" && world.buffs && world.buffs.length) {
       for (var bi = 0; bi < world.buffs.length; bi++) {
         var bf = world.buffs[bi];
-        var puls = 1 + Math.sin(world.time * 9 + bi * 1.5) * 0.18;
         if (bf.id === "shout" || bf.dmgPct > 20) {
-          /* 붉은 포효/광폭 전면 회전 불꽃 테두리 */
-          ctx.strokeStyle = "rgba(255, 120, 60, 0.95)";
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.arc(bx, cy, 21 * puls, world.time * 5, world.time * 5 + Math.PI * 1.2);
-          ctx.stroke();
-
-          /* 붉은 함성 머리 위 기운 */
-          ctx.fillStyle = "rgba(255, 60, 40, 0.90)";
-          ctx.beginPath();
-          ctx.arc(bx, cy - 22, 5 * puls, 0, Math.PI * 2);
-          ctx.fill();
-        } else if (bf.id === "ward" || bf.armor > 0) {
-          /* 황금 전면 수호 쉴드 빛 반사 */
-          ctx.strokeStyle = "rgba(255, 255, 200, 0.95)";
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.arc(bx, cy, 20 * puls, world.time * 4 + Math.PI * 0.5, world.time * 4 + Math.PI * 1.5);
-          ctx.stroke();
+          /* 전면 불꽃 혀 6개 (캐릭터 몸 앞을 지나가며 붉은 불꽃이 입체적으로 피어오름) */
+          for (var ffi = 0; ffi < 6; ffi++) {
+            var ffa = world.time * 10 + ffi * 1.04;
+            var ffx = bx + Math.cos(ffa) * 10;
+            var ffy = cy + 10 - ((world.time * 24 + ffi * 8) % 26);
+            ctx.fillStyle = (ffi % 2 === 0) ? "#ff4820" : "#ffdb43";
+            ctx.beginPath(); ctx.arc(ffx, ffy, 3, 0, Math.PI * 2); ctx.fill();
+          }
         }
       }
     }
