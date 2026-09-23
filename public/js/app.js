@@ -1480,16 +1480,24 @@
     var rng = D.makeRng(Date.now() & 0x7fffffff);
     var count = 0;
     var slots = ["weapon", "head", "body", "hands", "feet", "ring", "amulet"];
+    /* ⚠ `bases[bases.length - 1]` 로 **늘 목록의 마지막 하나**만 줬다.
+     *   무기가 일곱 종(단검·장검·전투도끼·장창·철퇴·지팡이·활)인데 활만 나왔다.
+     *   시험 장비인데 한 종류만 나오면 무기별 차이를 아예 못 본다.
+     * ⚠ **무기를 먼저 다 준다.** 가방이 24칸이라 전부(7+6+3+2+2+2+2=24)는
+     *   빠듯하다 — 뒤에서 잘리더라도 무기는 온전해야 한다.
+     * ⚠ 자리가 없으면 조용히 멈추지 않고 몇 개를 줬는지 말한다. */
     for (var i = 0; i < slots.length; i++) {
-      if (hero.bag.length >= S.BAG) break;
       var sl = slots[i];
       var bases = I.BASES[sl];
       if (!bases || !bases.length) continue;
-      /* 가장 마지막 base(고급 기준) 또는 적성 기준으로 pick */
-      var base = bases[bases.length - 1];
-      var item = I.roll(rng, { slot: sl, base: base.id, tier: "relic", ilvl: 15 });
-      hero.bag.push(I.pack(item));
-      count++;
+      for (var bi = 0; bi < bases.length; bi++) {
+        if (hero.bag.length >= S.BAG) break;
+        var item = I.roll(rng, { slot: sl, base: bases[bi].id, tier: "relic", ilvl: 15 });
+        if (!item) continue;
+        hero.bag.push(I.pack(item));
+        count++;
+      }
+      if (hero.bag.length >= S.BAG) break;
     }
     if (!count) return toast("가방이 가득 찼습니다.");
     hero.potions = Math.min(99, (hero.potions || 0) + 5);
