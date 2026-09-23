@@ -312,27 +312,42 @@
     for (var wi = 0; wi < lv.tiles.length; wi++) if (lv.tiles[wi] !== D.WALL) walk++;
     if (count === undefined) count = DT.countAt(depth, walk);
 
-    /* 보스가 먼저다 — **가장 먼 방**에 세운다. 들어서는 자리에 두면
-     * 문을 여는 순간 끝나고, 준비할 틈이 없다. */
-    var boss = DT.bossAt(depth);
-    if (boss && count > 0) {
-      var far = null, fd = -1;
-      for (var ri = 0; ri < lv.rooms.length; ri++) {
-        var rr = lv.rooms[ri];
-        var cx = rr.x + rr.w / 2, cy = rr.y + rr.h / 2;
-        var dd = Math.hypot(cx - this.player.x, cy - this.player.y);
-        if (dd > fd) { fd = dd; far = rr; }
+    /* 수문장이 먼저다 — **계단 곁에** 세운다.
+     *
+     * ⚠ 예전에는 "가장 먼 방" 이었다. 지금은 쓰러뜨려야 계단이 열리므로
+     *   계단과 딴 곳에 서 있으면 판을 다 뒤져야 내려갈 수 있다 — 그건
+     *   싸움이 아니라 술래잡기다.
+     * ⚠ 계단 칸 **위에** 세우지 않는다. 죽은 자리에 시체가 남는 것은
+     *   아니지만, 밀려나며 계단을 밟고 서면 그 칸을 못 누른다.
+     * ⚠ 들어서는 자리와 너무 가까우면 준비할 틈이 없다. 계단이 시작점
+     *   가까이 난 판에서는 그냥 그대로 둔다 — 자리를 옮기면 계단을 안 지킨다. */
+    var guard0 = DT.guardAt(depth);
+    if (guard0 && count > 0 && lv.downAt) {
+      var gx = lv.downAt.x + 0.5, gy = lv.downAt.y + 0.5;
+      var gr = guard0.def.r || 0.4;
+      var spot = null;
+      /* 계단 둘레를 안쪽부터 훑어 설 자리를 찾는다 */
+      var ring = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1],
+                  [2,0],[-2,0],[0,2],[0,-2]];
+      for (var gi = 0; gi < ring.length; gi++) {
+        var px2 = gx + ring[gi][0], py2 = gy + ring[gi][1];
+        if (boxFree(lv, px2, py2, gr)) { spot = { x: px2, y: py2 }; break; }
       }
-      if (far) {
-        var bx = Math.floor(far.x + far.w / 2) + 0.5;
-        var by = Math.floor(far.y + far.h / 2) + 0.5;
-        if (boxFree(lv, bx, by, boss.def.r || 0.34)) {
-          var bdef = {};
-          for (var bk in boss.def) bdef[bk] = boss.def[bk];
-          bdef.id = boss.id; bdef.sprite = boss.id;
-          this.boss = makeMob(bdef, depth, bx, by, true);
-          this.ents.push(this.boss);
-        }
+      if (!spot && boxFree(lv, gx, gy, gr)) spot = { x: gx, y: gy };
+      if (spot) {
+        var gdef = {};
+        for (var gk in guard0.def) gdef[gk] = guard0.def[gk];
+        gdef.id = guard0.id;
+        if (!gdef.sprite) gdef.sprite = guard0.id;
+        /* ⚠ 중간보스는 표 값이 아니라 **그 층에서 뽑은 값**이다(data.js 가
+         *   이미 그 층에 맞춰 놨다). 여기서 또 층 배율을 곱하면 두 번 곱해진다 —
+         *   makeMob 의 `boss` 자리를 true 로 주어 표 그대로 쓰게 한다. */
+        this.boss = makeMob(gdef, depth, spot.x, spot.y, true);
+        this.boss.guardian = true;
+        this.boss.guardKind = guard0.kind;
+        this.ents.push(this.boss);
+        this.guardName = guard0.def.name;
+        this.guardKind = guard0.kind;
       }
     }
 
@@ -1036,6 +1051,15 @@
   /* 밟고 선 칸이 계단인가 — 던전에서 더 내려가는 길이다.
    * ⚠ 밟는 **순간**이 아니라 서 있는 동안 계속 참이다. 눌러서 내려가게 한다
    *   (밟자마자 내려가면 지나가다 실수로 떨어진다). */
+  /* 계단이 잠겨 있는가 — 잠겼으면 **수문장을 돌려준다.**
+   * ⚠ 판단을 여기 한 곳에서만 한다. 화면이 따로 셈하면 "열렸다고 나오는데
+   *   안 내려가진다" 가 된다. */
+  World.prototype.stairGuard = function () {
+    var g = this.boss;
+    if (!g || !g.guardian || g.dead) return null;
+    return g;
+  };
+
   World.prototype.onStairs = function () {
     var lv = this.level;
     var tx = Math.floor(this.player.x), ty = Math.floor(this.player.y);

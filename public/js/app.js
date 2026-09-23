@@ -200,6 +200,13 @@
    * ⚠ 여기서만 maxDepth 가 는다(포탈은 이미 가 본 곳만 연다). 그래서
    *   "내려가 본 적 없는 층으로 포탈이 열리는" 일이 안 생긴다. */
   function descend() {
+    /* 수문장이 살아 있으면 계단이 안 열린다(사용자 결정 2026-09-23).
+     * 막는 자리는 여기와 안내 글 둘뿐이고, 판단은 world.stairGuard() 한 곳이다. */
+    var g = world.stairGuard();
+    if (g) {
+      if (global.SFX) global.SFX.play("deny");
+      return toast(g.name + " 을(를) 쓰러뜨려야 계단이 열린다");
+    }
     var d = world.depth + 1;
     start({ depth: d, hp: world.player.hp });
     global.SAVE.save(hero);
@@ -320,7 +327,14 @@
               global.ITEMS.SLOT_NAME[dp.item.slot] + " · Lv." + dp.item.req + ")";
       }
       else if (pr) txt = "[E] " + pr.def.label + " — " + pr.def.verb;
-      else if (world.onStairs()) txt = "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
+      else if (world.onStairs()) {
+        /* 눌러 보고서야 못 내려가는 것을 알면 안 된다. 밟고 선 그 자리에서
+         * 누가 막고 있는지 말한다 — 이름이 있어야 찾아갈 수 있다. */
+        var sg = world.stairGuard();
+        txt = sg
+          ? "잠김 · 계단 — " + sg.name + " 이(가) 지키고 있다"
+          : "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
+      }
       else if (dr) txt = dr.open ? "[E] 문 — 닫기" : "[E] 문 — 열기";
       else if (!world.inTown) txt = "[T] 마을로 귀환 (2초간 가만히)";
     }

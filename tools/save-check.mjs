@@ -155,8 +155,20 @@ const carry = await ev(`(function(){
 /* ⚠ 전에는 `.` 키로 내려갔다. 5단계에서 그 키는 없어지고 **계단**이 됐다 —
  *   검사의 전제가 낡은 것이지 제품이 틀린 게 아니다. 지금 길로 내려간다.
  *   (게임은 마을에서 시작하므로 먼저 1층으로 들어간다.) */
+/* 2026-09-23 부터 **수문장이 계단을 막는다.** 내려가려면 먼저 쓰러뜨린다 —
+ * 검사의 전제가 낡은 것이지 제품이 틀린 게 아니다. */
+const slayGuard = async () => {
+  await ev(`(function(){
+    var w = window.__w();
+    var g = w.ents.filter(function (e) { return e.guardian && !e.dead; })[0];
+    if (g) { g.hp = 0; g.dead = true; g.deadAt = w.time; }
+    return !w.stairGuard();
+  })()`);
+  await sleep(120);
+};
 await ev(`window.__depth(1)`);
 await sleep(400);
+await slayGuard();
 await ev(`window.__descend()`);
 await sleep(400);
 const carried = await ev(`(function(){

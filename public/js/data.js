@@ -24,6 +24,8 @@
      *   **묘지**로 바꿨다. 색은 던전 기본(자주빛 돌)이 아니라 **흙과 이끼**다 —
      *   같은 돌을 쓰면 아무리 꾸며도 아래 구역과 같은 곳으로 보인다. */
     { id: "grave", from: 1, to: 6, boss: "b_gravekeeper",
+      /* 구역 중간보스 — 얼굴과 성격만 준다. 능력치는 그 층에서 뽑는다 */
+      mid: "b_gravekeeper",
       name: "묘지", tag: "여기서부터 아래로 내려간다",
       enter: "묘지. 비뚤어진 묘비 사이로 계단이 아래로 뚫려 있다.",
       props: ["grave", "deadtree", "torch"],
@@ -34,6 +36,8 @@
                grain1: "#6d745b", grain2: "#545b47", moss: "#6d8a4a" } },
 
     { id: "flood", from: 7, to: 12, boss: "b_drowned",
+      /* 구역 중간보스 — 얼굴과 성격만 준다. 능력치는 그 층에서 뽑는다 */
+      mid: "b_warden",
       name: "물이 든 계단실", tag: "어딘가에서 물이 새어 든다",
       enter: "물이 든 계단실. 발밑이 미끄럽고, 어디선가 물 떨어지는 소리가 난다.",
       props: ["puddle", "moss", "torch"],
@@ -44,6 +48,8 @@
                grain1: "#649898", grain2: "#507a78", moss: "#567b52" } },
 
     { id: "library", from: 13, to: 18, boss: "b_librarian",
+      /* 구역 중간보스 — 얼굴과 성격만 준다. 능력치는 그 층에서 뽑는다 */
+      mid: "b_librarian",
       name: "이름의 도서관", tag: "지워진 이름들이 쌓여 있다",
       enter: "이름의 도서관. 장부가 천장까지 쌓여 있고, 펼쳐진 쪽은 전부 비어 있다.",
       props: ["books", "papers", "torch"],
@@ -200,10 +206,14 @@
     return out.length ? out : [MOBS[0]];
   }
 
+  /* 진짜 보스는 **10층마다**다(사용자 결정 2026-09-23).
+   * ⚠ 예전에는 구역 끝(6·12·18·24·30)이었다. 10·20·30 으로 옮기면서
+   *   무덤지기와 사서가 자리를 잃었는데, 버리지 않고 그 구역의 **중간보스**로
+   *   내려 세웠다(guardAt 의 z.mid). 예비로 놀던 관리인도 함께 쓴다. */
   function bossAt(depth) {
+    if (depth < 10 || depth % 10 !== 0) return null;
     var z = zoneAt(depth);
-    if (depth !== z.to) return null;
-    var id = z.boss || (depth >= 30 ? "b_lord" : null);
+    var id = (z && z.boss) || (depth >= 30 ? "b_lord" : null);
     return (id && BOSSES[id]) ? { id: id, def: BOSSES[id] } : null;
   }
 
@@ -226,6 +236,82 @@
    *   밀도는 "얼마나 싸우나" 의 문제다 — 한 번에 둘을 바꾸면 무엇 때문에
    *   달라졌는지 알 수가 없다. 걷는 칸에 비례해 마릿수를 맞춘다. */
   var REF_WALK = 685;
+
+  /* ── 수문장 ───────────────────────────────────────────
+   *
+   * 층마다 계단을 지키는 하나가 있다. 10·20·30 층은 **진짜 보스**이고
+   * 나머지 층은 **중간보스**다. 쓰러뜨려야 계단이 열린다(사용자 결정).
+   *
+   * ⚠ 중간보스의 능력치를 손수 만든 보스 표에서 그대로 가져오면 안 된다.
+   *   무덤지기는 체력이 230 인데 1층 주인공의 초당 피해가 7 남짓이라
+   *   **한 마리에 33초**가 걸린다(실측). 표에서 가져오는 것은 이름 · 그림 ·
+   *   성격뿐이고, 체력과 피해는 **그 층 보통 몬스터에서 키운다.**
+   * ⚠ 그래서 구역에 이름난 얼굴이 없어도 된다(뼈 무덤 · 군주의 방).
+   *   그때는 그 층 몬스터 하나에 칭호를 붙인다 — 디아블로의 유니크와 같다. */
+  /* ⚠ 배수를 7 로 뒀다가 되돌렸다. 진짜 보스가 마침 그 층 보통 몬스터의
+   *   **7.5배**라(380/50 · 760/109 · 1400/186 실측), 중간보스가 보스와
+   *   같은 세기가 되어 상한에 계속 걸렸다 — 3~9층이 전부 체력 171 로
+   *   평평했다. 보스 배수의 **절반**을 쓴다. 그러면 다음 보스가 늘 두 배쯤
+   *   되어 상한이 물릴 일이 없고, 층을 따라 매끄럽게 자란다. */
+  var ELITE = { hp: 3.5, dmg: 1.45, r: 1.3, xp: 6, gold: 6 };
+  var ELITE_TITLE = ["거대한", "굶주린", "피에 젖은", "오래된", "무리를 이끄는"];
+
+  /* 그 층 보통 몬스터의 평균 — 정예의 바탕이다 */
+  function midBaseAt(depth) {
+    var pool = poolAt(depth), hp = 0, dmg = 0, xp = 0, gold = 0;
+    for (var i = 0; i < pool.length; i++) {
+      var st = statsAt(pool[i], depth);
+      hp += st.hp; dmg += st.dmg; xp += st.xp; gold += st.gold;
+    }
+    var n = Math.max(1, pool.length);
+    return { hp: hp / n, dmg: dmg / n, xp: xp / n, gold: gold / n };
+  }
+
+  /* 이 층의 수문장. { kind: "boss"|"mid", id, def } 또는 null(마을).
+   * ⚠ 마릿수 셈과 달리 **여기 한 곳**에서만 정한다 — 화면과 규칙이
+   *   서로 다른 수문장을 말하면 계단이 영영 안 열린다. */
+  function guardAt(depth) {
+    if (depth < 1) return null;
+    var b = bossAt(depth);
+    if (b) return { kind: "boss", id: b.id, def: b.def };
+
+    var z = zoneAt(depth);
+    var base = midBaseAt(depth);
+    var face = (z && z.mid && BOSSES[z.mid]) ? BOSSES[z.mid] : null;
+    var pool = poolAt(depth);
+    /* 얼굴이 없는 구역은 그 층 몬스터 가운데 **가장 단단한 것**에 칭호를 붙인다.
+     * ⚠ 무작위로 뽑으면 같은 층을 다시 와도 딴 것이 나와 "그 층의 수문장" 이
+     *   되지 않는다. 층이 같으면 늘 같은 얼굴이라야 기억에 남는다. */
+    var pick = pool[0];
+    for (var i = 1; i < pool.length; i++) if (pool[i].hp > pick.hp) pick = pool[i];
+    var title = ELITE_TITLE[depth % ELITE_TITLE.length];
+
+    /* ⚠ 필드를 **하나씩 베끼지 않는다.** 처음에 이름·그림·성격·몸짓만 옮겼다가
+     *   무덤지기의 `summon` 설정이 빠져 소환사 행동이 매 걸음 터졌다
+     *   (ai.js 가 `sm.cd` 를 읽는데 sm 이 undefined). 성격마다 필요한 값이
+     *   다르므로 **통째로 복사하고 숫자만 덮어쓴다.** */
+    var src = face || pick, def = {}, kk;
+    for (kk in src) def[kk] = src[kk];
+    if (!face) {
+      def.name = title + " " + pick.name;
+      def.r = (pick.r || 0.34) * ELITE.r;
+    } else if (!def.sprite) {
+      def.sprite = z.mid;
+    }
+    /* ⚠ **다음 진짜 보스를 넘지 못하게 막는다.** 안 막으면 29층 중간보스가
+     *   체력 1,267 이 되어 30층 군주(1,400)와 거의 같아진다 — 보스가
+     *   봉우리가 아니게 된다(실측으로 잡혔다). 진짜 보스는 손으로 맞춘
+     *   고정값이고 중간보스는 층을 따라 자라므로, 깊이 갈수록 반드시 만난다.
+     * ⚠ 상한은 다음 보스의 45% 다. 그래야 보스가 적어도 두 배는 된다. */
+    var nb = bossAt(Math.ceil(depth / 10) * 10);
+    var capHp = nb ? nb.def.hp * 0.45 : Infinity;
+    var capDmg = nb ? nb.def.dmg * 0.60 : Infinity;
+    def.hp = Math.round(Math.min(base.hp * ELITE.hp, capHp));
+    def.dmg = Math.round(Math.min(base.dmg * ELITE.dmg, capDmg));
+    def.xp = Math.round(base.xp * ELITE.xp);
+    def.gold = Math.round(base.gold * ELITE.gold);
+    return { kind: "mid", id: (z && z.mid) || ("elite_" + (pick.id || "mob")), def: def };
+  }
 
   function countAt(depth, walkable) {
     var n = Math.min(22, 8 + Math.floor(depth * 0.7));
@@ -290,6 +376,7 @@
   global.DATA = {
     ZONES: ZONES, MOBS: MOBS, BOSSES: BOSSES, MAX_DEPTH: 30,
     zoneAt: zoneAt, poolAt: poolAt, bossAt: bossAt,
-    statsAt: statsAt, scaleAt: scaleAt, countAt: countAt, REF_WALK: REF_WALK, audit: audit
+    statsAt: statsAt, scaleAt: scaleAt, countAt: countAt, REF_WALK: REF_WALK,
+    guardAt: guardAt, midBaseAt: midBaseAt, ELITE: ELITE, audit: audit
   };
 })(window);

@@ -212,6 +212,18 @@ const stair = await ev(`(function(){
   w.advance(1/60);
   return { near: window.__near(), hp: p.hp, depth: w.depth, maxDepth: window.__hero().maxDepth };
 })()`);
+/* 2026-09-23 부터 **수문장이 계단을 막는다.** 내려가려면 먼저 쓰러뜨린다 —
+ * 검사의 전제가 낡은 것이지 제품이 틀린 게 아니다. */
+const slayGuard = async () => {
+  await ev(`(function(){
+    var w = window.__w();
+    var g = w.ents.filter(function (e) { return e.guardian && !e.dead; })[0];
+    if (g) { g.hp = 0; g.dead = true; g.deadAt = w.time; }
+    return !w.stairGuard();
+  })()`);
+  await sleep(120);
+};
+await slayGuard();
 await sleep(120);
 const stairTxt = await ev(`document.getElementById("act").textContent`);
 await key("KeyE");

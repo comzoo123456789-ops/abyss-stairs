@@ -125,11 +125,17 @@ const all = await ev(`(function(){
     var foes = w.ents.filter(function (x) { return x.team !== 0; });
     var kinds = {};
     foes.forEach(function (x) { kinds[x.name] = 1; });
-    var boss = foes.filter(function (x) { return x.boss; })[0];
-    var want = DT.bossAt(d);
+    /* 2026-09-23 부터 **층마다 수문장이 하나** 선다. 10·20·30 은 진짜 보스이고
+     * 나머지는 중간보스다. 예전에는 구역 끝에만 보스가 있었고, 이 검사가
+     * "그 밖의 층에 보스가 있으면 안 된다" 를 우기고 있었다 — 뒤집힌 결정이다. */
+    var boss = foes.filter(function (x) { return x.guardian; })[0];
+    var want = DT.guardAt(d);
     if (!foes.length) bad.push(d + "층에 몬스터가 없다");
-    if (want && !boss) bad.push(d + "층 보스(" + want.def.name + ")가 안 나왔다");
-    if (!want && boss) bad.push(d + "층에 있어선 안 될 보스가 나왔다");
+    if (want && !boss) bad.push(d + "층 수문장(" + want.def.name + ")이 안 나왔다");
+    if (boss && boss.guardKind !== want.kind)
+      bad.push(d + "층 수문장 종류가 다르다: " + boss.guardKind + " vs " + want.kind);
+    if ((d % 10 === 0) !== (want.kind === "boss"))
+      bad.push(d + "층 진짜 보스 여부가 10층 규칙과 다르다");
     /* 몬스터가 벽 안에 박혀 있지 않은가 */
     foes.forEach(function (x) {
       if (!W.boxFree(w.level, x.x, x.y, x.r)) bad.push(d + "층 " + x.name + " 이 벽 안에 있다");
@@ -282,8 +288,11 @@ add("버프 없으면 때리러 온다", brkIdle.d1 < brkIdle.d0 - 2,
 const boss = await ev(`(function(){
   var W = window.WORLD, DT = window.DATA, S = window.SAVE, h = window.__hero();
   h.level = 30; h.xp = 0; h.gold = 0;
-  var w = new W.World({ seed: 42, depth: 6, hero: h });
-  var b = w.ents.filter(function (x) { return x.boss; })[0];
+  /* ⚠ 6층은 이제 **중간보스** 층이다(진짜 보스는 10·20·30). 6층에서 재면
+   *   무덤지기 체력 120 에 금화 +39 가 나와 "보스 보상이 초라하다" 로
+   *   빨개진다 — 제품이 아니라 검사가 옛 자리를 보고 있었다. */
+  var w = new W.World({ seed: 42, depth: 10, hero: h });
+  var b = w.ents.filter(function (x) { return x.guardian && x.guardKind === "boss"; })[0];
   if (!b) return null;
   var p = w.player;
   p.maxHp = 999999; p.hp = 999999;
