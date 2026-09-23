@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.css">
-<link rel="stylesheet" href="css/rpg.css?v=72">
+<link rel="stylesheet" href="css/rpg.css?v=73">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23221f28'/><rect x='7' y='0' width='2' height='2' fill='%23d24a3a'/><rect x='4' y='2' width='8' height='5' fill='%23b8bec9'/><rect x='3' y='7' width='10' height='5' fill='%238a919e'/><rect x='2' y='7' width='2' height='5' fill='%239c2f2a'/></svg>">
 </head>
 <script>
@@ -91,24 +91,36 @@
     <div id="skillbar" class="skillbar"></div>
     <div class="orb orb-st"  title="기력"><i class="fill"></i><b class="num" id="stNum">0</b></div>
   </div>
-  <div class="hint">WASD 이동 · 마우스 조준 · 클릭 공격 · <b>1234</b> 재주 · <b>E</b> 조작 · <b>I</b> 가방 · <b>K</b> 재주책 · <b>Q</b> 물약 · <b>T</b> 귀환</div>
+  <!-- 조작 안내. 키는 자판 모양(.hk b)으로 세운다 - 글줄로 이어 쓰면 어디까지가
+       키인지 눈이 매번 갈라 읽는다. 좁은 화면에서는 통째로 감춘다(손가락으로 논다). -->
+  <div class="hint">
+    <span class="hk"><b>W</b><b>A</b><b>S</b><b>D</b> 이동</span>
+    <span class="hk"><b>마우스</b> 조준</span>
+    <span class="hk"><b>클릭</b> 공격</span>
+    <span class="hk"><b>1</b><b>2</b><b>3</b><b>4</b> 재주</span>
+    <span class="hk"><b>E</b> 조작</span>
+    <span class="hk"><b>I</b> 가방</span>
+    <span class="hk"><b>K</b> 재주책</span>
+    <span class="hk"><b>Q</b> 물약</span>
+    <span class="hk"><b>T</b> 귀환</span>
+  </div>
 </div>
 
-<script src="js/sprites.js?v=72"></script>
-<script src="js/sprites-art.js?v=72"></script>
-<script src="js/sound.js?v=72"></script>
-<script src="js/data.js?v=72"></script>
-<script src="js/items.js?v=72"></script>
-<script src="js/save.js?v=72"></script>
-<script src="js/dungeon.js?v=72"></script>
-<script src="js/town.js?v=72"></script>
-<script src="js/combat.js?v=72"></script>
-<script src="js/skills.js?v=72"></script>
-<script src="js/classes.js?v=72"></script>
-<script src="js/world.js?v=72"></script>
-<script src="js/ai.js?v=72"></script>
-<script src="js/view.js?v=72"></script>
-<script src="js/app.js?v=72"></script>
+<script src="js/sprites.js?v=73"></script>
+<script src="js/sprites-art.js?v=73"></script>
+<script src="js/sound.js?v=73"></script>
+<script src="js/data.js?v=73"></script>
+<script src="js/items.js?v=73"></script>
+<script src="js/save.js?v=73"></script>
+<script src="js/dungeon.js?v=73"></script>
+<script src="js/town.js?v=73"></script>
+<script src="js/combat.js?v=73"></script>
+<script src="js/skills.js?v=73"></script>
+<script src="js/classes.js?v=73"></script>
+<script src="js/world.js?v=73"></script>
+<script src="js/ai.js?v=73"></script>
+<script src="js/view.js?v=73"></script>
+<script src="js/app.js?v=73"></script>
 
   <div id="mobileDropdown" class="mobile-dropdown">
     <button id="mBtnTest" class="mitem" style="color:#ffd700;font-weight:bold;"><span class="ico">🎁</span><span>전설 장비 받기 (테스트)</span></button>

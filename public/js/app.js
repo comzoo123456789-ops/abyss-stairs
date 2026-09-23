@@ -307,8 +307,29 @@
     miniCtx.fillRect(px - 0.75, py - 0.75, 1.5, 1.5);
   }
 
+  /* 안내 줄이 몇 픽셀인지 CSS 에 알려 준다.
+   * ⚠ 손으로 적으면 안내 줄을 고칠 때마다 그 위 줄들이 조용히 어긋난다
+   *   (자판으로 바꾸며 22 → 32px 이 되자 구슬 줄과 2px 겹쳤다).
+   * ⚠ 값이 달라졌을 때만 쓴다 — 매 프레임 쓰면 레이아웃을 다시 계산한다. */
+  var hintH = -1;
+  function measureHint() {
+    var el = document.querySelector(".hint");
+    if (!el) return;
+    var h = el.offsetHeight;                 /* 감춰 두면 0 이고, 그게 맞는 값이다 */
+    if (h === hintH) return;
+    hintH = h;
+    document.documentElement.style.setProperty("--hint-h", h + "px");
+  }
+  if (global.ResizeObserver) {
+    var ro = new ResizeObserver(measureHint);
+    var hintEl = document.querySelector(".hint");
+    if (hintEl) ro.observe(hintEl);
+  }
+  global.addEventListener("resize", measureHint);
+
   function hud() {
     renderMinimap();
+    measureHint();
     var el = document.getElementById("act");
     if (!el) return;
     var txt = "";
@@ -336,7 +357,10 @@
           : "[E] 계단 — 더 깊이 내려간다 (" + (world.depth + 1) + "층)";
       }
       else if (dr) txt = dr.open ? "[E] 문 — 닫기" : "[E] 문 — 열기";
-      else if (!world.inTown) txt = "[T] 마을로 귀환 (2초간 가만히)";
+      /* ⚠ **누를 것이 없으면 아무 말도 안 한다.** 전에는 던전에 있는 내내
+       *   "[T] 마을로 귀환 (2초간 가만히)" 가 떠 있었다 — 늘 떠 있는 안내는
+       *   안내가 아니라 배경이고, 아래 조작 안내 줄과 같은 말을 두 번 한다
+       *   (거기 이미 T 귀환이 있다). 귀환을 시작하면 그때 남은 시간을 말한다. */
     }
     el.textContent = txt;
     el.style.visibility = txt ? "visible" : "hidden";
