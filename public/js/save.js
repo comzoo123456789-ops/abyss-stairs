@@ -33,9 +33,24 @@
   /* 저장할 칸과 그 칸을 **어떻게 검사할지**를 한 곳에 적는다.
    * ⚠ 칸을 늘릴 때 여기만 고치면 저장·불러오기·검사가 함께 따라온다.
    *   세 곳에 나눠 적으면 반드시 한 곳을 빠뜨린다. */
+  /* 쓸 수 있는 직업 — classes.js 가 진실원이다.
+   * ⚠ 못 읽을 때만 옛 셋으로 떨어진다. 그 자리에 기사를 적어 넣지 말 것 —
+   *   목록을 두 곳에 두면 다음 직업에서 같은 사고가 난다. */
+  function clsList() {
+    var CL = global.CLASSES;
+    if (CL && CL.LIST && CL.LIST.length)
+      return CL.LIST.map(function (c) { return c.id; });
+    return ["warrior", "rogue", "mage"];
+  }
+
   var FIELDS = {
     name:     { def: "모험가", str: 24 },
-    cls:      { def: "warrior", oneOf: ["warrior", "rogue", "mage"] },
+    /* ⚠ 직업 목록을 **여기 박지 않는다.** 기사를 더했을 때 이 배열에 없어서
+     *   고르는 순간 정리기가 전사로 되돌렸고, 그 빈 전사가 진짜 전사 칸을
+     *   덮어썼다 — **키워 둔 저장이 통째로 날아갔다.** 오류는 한 줄도 안 났다.
+     * ⚠ 함수로 둔다. save.js 는 classes.js 보다 **먼저** 실리므로(index.html)
+     *   선언할 때 읽으면 늘 undefined 다. 부를 때 읽어야 한다. */
+    cls:      { def: "warrior", oneOf: clsList },
     level:    { def: 1, min: 1, max: 99, int: true },
     xp:       { def: 0, min: 0, max: 1e12, int: true },
     gold:     { def: 0, min: 0, max: 1e12, int: true },
@@ -71,7 +86,10 @@
     for (k in FIELDS) {
       f = FIELDS[k];
       v = raw[k];
-      if (f.oneOf) out[k] = f.oneOf.indexOf(v) >= 0 ? v : f.def;
+      if (f.oneOf) {
+        var allow = (typeof f.oneOf === "function") ? f.oneOf() : f.oneOf;
+        out[k] = allow.indexOf(v) >= 0 ? v : f.def;
+      }
       else if (f.str) out[k] = (typeof v === "string" && v.length) ? v.slice(0, f.str) : f.def;
       else out[k] = clampNum(v, f);
     }
@@ -195,7 +213,7 @@
      *   마법사가 되어, 다음 정리에서 전사 재주가 걸러지고 **빈 칸 둘**이 남았다
      *   (실측: 마법사로 시작했는데 손잡이가 [—,—,돌진,결의]).
      *   순서 하나로 새 캐릭터가 반쯤 빈 채 시작하는 종류의 버그다. */
-    var want = FIELDS.cls.oneOf.indexOf(cls) >= 0 ? cls : FIELDS.cls.def;
+    var want = clsList().indexOf(cls) >= 0 ? cls : FIELDS.cls.def;
     var s = sanitize({ cls: want });
     if (name) s.name = String(name).slice(0, FIELDS.name.str);
     s.born = Date.now();
@@ -261,6 +279,24 @@
    *   도적이 못 꺼낸다 — 보관함의 뜻이 사라진다. 바꿀 때 옮겨 준다. */
   function slotKey(cls) { return KEY + ":cls:" + cls; }
 
+  /* 저장을 덮어쓰기 전에 **한 벌 옆에 둔다.**
+   * ⚠ 2026-09-23 에 기사를 더하며 전사 저장을 날렸다. 원인(박아 둔 목록)은
+   *   고쳤지만, 저장을 덮어쓰는 길은 앞으로도 늘 있다 — 되돌릴 자리가
+   *   하나도 없던 것이 진짜 문제였다.
+   * ⚠ 레벨이 **내려가는** 덮어쓰기만 남긴다. 평소 저장마다 남기면 백업이
+   *   백업을 덮어 뜻이 없다. 레벨이 내려가는 것은 거의 사고다. */
+  function keepBackup(ls, cls, nextLevel) {
+    if (!cls) return;
+    var k = slotKey(cls), prev = null;
+    try { prev = ls.getItem(k); } catch (e) { return; }
+    if (!prev) return;
+    var pd;
+    try { pd = JSON.parse(prev); } catch (e) { return; }
+    var lv = pd && pd.d && pd.d.level;
+    if (!(lv > 1) || !(lv > (nextLevel || 0))) return;
+    try { ls.setItem(k + ":bak", prev); } catch (e) {}
+  }
+
   function save(s) {
     var ls = store();
     if (!ls) return false;
@@ -269,6 +305,7 @@
     /* ⚠ 직업 칸은 **본래 칸과 따로** 센다. 본래 칸이 안 바뀌었다고 건너뛰면
      *   직업 칸이 영영 안 써진다. */
     if (clean.cls) {
+      keepBackup(ls, clean.cls, clean.level);
       try { ls.setItem(slotKey(clean.cls), text); } catch (e) {}
     }
     if (text === lastText) return true;        /* 안 바뀌었으면 안 쓴다 */
@@ -307,7 +344,7 @@
     if (!ls) return out;
     var ids = (global.CLASSES && global.CLASSES.LIST)
       ? global.CLASSES.LIST.map(function (c) { return c.id; })
-      : ["warrior", "rogue", "mage"];
+      : clsList();
     for (var i = 0; i < ids.length; i++) {
       var g = loadSlot(ids[i]);
       if (g) out[ids[i]] = { level: g.level || 1, maxDepth: g.maxDepth || 1, gold: g.gold || 0 };

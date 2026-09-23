@@ -310,6 +310,75 @@ add("남의 직업 재주는 걸러진다",
   " · 전사 시너지 " + (forged.war ? "⚠남음" : "지워짐") +
   " · 내 시너지 " + (forged.mine ? "남음" : "⚠지워짐"));
 
+/* ── 골라서 정말 그 직업이 되는가 ─────────────────────
+ * ⚠ 이것이 없어서 **기사를 못 고르는 채로 배포됐다.** 창이 뜨고 그림이
+ *   칠해지는 것만 봤지, 눌렀을 때 바뀌는지는 아무도 안 쟀다.
+ *   save.js 에 직업 목록이 박혀 있어 고르는 순간 전사로 되돌아갔는데
+ *   오류는 한 줄도 안 났다. */
+await wipe();
+const picked = await ev(`(function(){
+  var CL = window.CLASSES, out = [];
+  CL.LIST.forEach(function (c) {
+    window.__pick(c.id);
+    var h = window.__hero();
+    out.push({ want: c.id, got: h.cls, sprite: window.__w().player.sprite,
+               bar: h.bar.filter(Boolean).length });
+  });
+  return out;
+})()`);
+const wrongPick = picked.filter(p => p.got !== p.want || p.sprite !== p.want);
+add("골라서 그 직업이 된다", wrongPick.length === 0,
+  picked.map(p => p.want + (p.got === p.want ? "✔" : "→" + p.got + "✘")).join(" · ") +
+  " · 손잡이 " + picked.map(p => p.bar).join("/") + "칸");
+
+/* ── 새 직업을 골라도 키워 둔 것이 안 날아가는가 ───────
+ * 2026-09-23 에 실제로 난 사고다. 기사를 고르자 빈 전사가 만들어지며
+ * **진짜 전사 칸을 덮어썼다.** 되돌릴 자리가 하나도 없었다. */
+await wipe();
+const survive = await ev(`(function(){
+  var S = window.SAVE;
+  window.__pick("warrior");
+  var h = window.__hero();
+  h.level = 24; h.gold = 7777; h.maxDepth = 19;
+  S.save(h);
+  var before = S.loadSlot("warrior");
+  /* 새 직업으로 갔다가 돌아온다 */
+  window.__pick("knight");
+  var mid = window.__hero();
+  window.__pick("warrior");
+  var back = window.__hero();
+  return { before: before ? before.level : -1,
+           midCls: mid.cls, midLv: mid.level,
+           backCls: back.cls, backLv: back.level, backGold: back.gold, backDepth: back.maxDepth };
+})()`);
+add("키운 것이 안 날아간다",
+  survive.before === 24 && survive.midCls === "knight" && survive.midLv === 1 &&
+  survive.backCls === "warrior" && survive.backLv === 24 && survive.backGold === 7777,
+  "전사 Lv.24 7777금 → 기사(" + survive.midCls + " Lv." + survive.midLv + ") → 전사로 돌아오니 " +
+  survive.backCls + " Lv." + survive.backLv + " " + survive.backGold + "금 " + survive.backDepth + "층");
+
+/* ── 레벨이 내려가는 덮어쓰기는 사본을 남기는가 ────────
+ * 원인은 고쳤지만 저장을 덮어쓰는 길은 앞으로도 있다. 되돌릴 자리가
+ * 하나도 없던 것이 진짜 문제였다. */
+const bak = await ev(`(function(){
+  var S = window.SAVE;
+  window.__pick("warrior");
+  var h = window.__hero();
+  h.level = 31; h.gold = 4242; S.save(h);
+  /* 사고를 흉내낸다 — 빈 전사로 덮어쓴다 */
+  var blank = S.blank("warrior");
+  S.save(blank);
+  var now = S.loadSlot("warrior");
+  var raw = null;
+  try { raw = JSON.parse(localStorage.getItem(S.KEY + ":cls:warrior:bak")); } catch (e) {}
+  return { now: now ? now.level : -1,
+           bak: raw && raw.d ? raw.d.level : -1,
+           bakGold: raw && raw.d ? raw.d.gold : -1 };
+})()`);
+add("덮어써도 사본이 남는다", bak.now === 1 && bak.bak === 31 && bak.bakGold === 4242,
+  "Lv.31 을 빈 것으로 덮으니 지금 Lv." + bak.now + " · 사본에 Lv." + bak.bak +
+  " " + bak.bakGold + "금 (되돌릴 자리가 남는다)");
+
 add("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 3).join(" / ") : "0건");
 
 console.log("\n직업 셋 — 전사 · 도적 · 마법사\n");
