@@ -24,6 +24,12 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..");
 const ROOT = path.join(REPO, "public");
 const OLD = process.env.OLD === "1";          /* 대조군 */
+/* 배포본을 다시 잰다: node tools/aim-check.mjs --url https://...
+ * 올렸다고 바뀐 것이 아니다. ?v= 를 안 올리면 브라우저가 옛것을 쓴다.
+ * cb 로 CDN 을 비켜 간다. 대조군은 내 파일을 고쳐 내주는 것이라 같이 못 쓴다. */
+const ui = process.argv.indexOf("--url");
+const URL_ARG = ui >= 0 ? process.argv[ui + 1] : null;
+if (URL_ARG && OLD) { console.error("--url 과 OLD=1 은 같이 못 쓴다"); process.exit(2); }
 
 /* 고친 자리를 **하나씩** 되돌린다. [파일, 지금, 옛날] */
 const REVERT = [
@@ -118,7 +124,10 @@ const mUp = (x, y) => S("Input.dispatchMouseEvent", { type: "mouseReleased", x, 
 
 const W = 1280, H = 800;
 await S("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false });
-await S("Page.navigate", { url: "http://127.0.0.1:" + port + "/index.html" });
+const TARGET = URL_ARG
+  ? URL_ARG.replace(/\/?$/, "/") + "?cb=" + Math.random().toString(36).slice(2)
+  : "http://127.0.0.1:" + port + "/index.html";
+await S("Page.navigate", { url: TARGET });
 await sleep(1500);
 
 let fails = 0;
@@ -292,7 +301,9 @@ add("공격해도 걷는다", ratio >= 0.45,
   "그냥 " + free + "칸 · 누르고 " + busy + "칸 → " + Math.round(ratio * 100) +
   "% (45% 이상) · 옛 값은 30% 였다");
 
-console.log((OLD ? "── 조준 · 겹 · 걸음 [대조군: 고치기 전] ──" : "── 조준 · 겹 · 걸음 ──"));
+console.log(OLD ? "── 조준 · 겹 · 걸음 [대조군: 고치기 전] ──"
+                : ("── 조준 · 겹 · 걸음" + (URL_ARG ? " [배포본]" : "") + " ──"));
+if (URL_ARG) console.log("   " + TARGET);
 console.log("   (프레임 " + live + "fps · 화면 " + W + "x" + H + " · 활 " + (setup.bow ? "쥠" : "없음") + " · Lv." + setup.lvl + ")");
 for (const [n, ok, note] of out) console.log((ok ? "✔ " : "✘ ") + n.padEnd(16) + " " + note);
 if (errs.length) { console.log("\n화면 오류 " + errs.length + "건:"); errs.slice(0, 5).forEach(e => console.log("  " + e)); }
