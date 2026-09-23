@@ -96,9 +96,27 @@
         { id: "hold",  name: "버티기",  text: "쓴 뒤 3초간 방어 +6", s: { guard: 6 } }
       ] },
 
-    /* ── 도적 전용 ──
-     * ⚠ 급소찌르기는 **뒤에서 찔러야** 값어치가 있다. 앞에서도 같은 피해면
-     *   "그냥 센 평타" 라 도적이 붙었다 빠질 이유가 없어진다. */
+    { id: "stomp", name: "대지발구르기", kind: "nova", icon: "s_stomp",
+      cd: 8.0, cast: 0.30, after: 0.25, stam: 28,
+      mult: 1.4, reach: 2.8, push: 1.6, slow: 3,
+      text: "발을 굴러 주위 적을 쳐내고 3초간 느리게 만든다",
+      syn: [
+        { id: "big",   name: "더 넓게", text: "반경 2.8 → 3.8칸", s: { reach: 1.0 } },
+        { id: "heavy", name: "묵직하게", text: "밀쳐내기 +1.2칸 · 위력 +0.5배", s: { push: 1.2, mult: 0.5 } },
+        { id: "quick", name: "빠르게",  text: "재사용 8.0 → 5.5초", s: { cd: -2.5 } }
+      ] },
+
+    { id: "shout", name: "전장의 함성", kind: "buff", icon: "s_shout",
+      cd: 16.0, cast: 0.0, after: 0.10, stam: 30,
+      dur: 8.0, armor: 10, dmgPct: 20,
+      text: "8초간 방어 +10 · 피해 +20% · 주변 적의 시선을 끈다",
+      syn: [
+        { id: "long",  name: "오래",    text: "지속 8 → 13초", s: { dur: 5 } },
+        { id: "taunt", name: "위엄",    text: "방어 +6 추가 · 회복 +15%", s: { armor: 6, heal: 15 } },
+        { id: "rage",  name: "광란",    text: "피해 +20% → +45%", s: { dmgPct: 25 } }
+      ] },
+
+    /* ── 도적 전용 ── */
     { id: "backstab", name: "급소찌르기", kind: "swing", icon: "s_backstab",
       cd: 5.0, cast: 0.12, after: 0.18, stam: 20,
       mult: 2.2, reach: 1.3, arc: 60, push: 0.2, behind: 2.0,
@@ -117,6 +135,47 @@
         { id: "long",  name: "오래",   text: "지속 8 → 13초", s: { dur: 5 } },
         { id: "thick", name: "짙게",   text: "타격 회복 3 → 8", s: { lifeOnHit: 5 } },
         { id: "swift", name: "날래게", text: "공격속도 +15% → +35%", s: { apsPct: 20 } }
+      ] },
+
+    { id: "knives", name: "단검난무", kind: "knives", icon: "s_knives",
+      cd: 6.0, cast: 0.15, after: 0.20, stam: 24,
+      mult: 1.3, reach: 4.5, count: 5,
+      text: "전방 부채꼴로 단검 5개를 사격한다",
+      syn: [
+        { id: "more",  name: "더 많이", text: "단검 5개 → 7개", s: { count: 2 } },
+        { id: "quick", name: "빠르게",  text: "재사용 6.0 → 3.8초", s: { cd: -2.2 } },
+        { id: "pierce", name: "날카롭게", text: "위력 1.3 → 2.1배", s: { mult: 0.8 } }
+      ] },
+
+    { id: "smoke", name: "연막탄", kind: "field", icon: "s_smoke",
+      cd: 14.0, cast: 0.20, after: 0.20, stam: 32,
+      mult: 0.2, reach: 2.8, dur: 5.0, tick: 0.5, range: 4.5, slow: 4,
+      text: "지정한 곳에 5초간 회피·둔화 연막을 친다",
+      syn: [
+        { id: "long",  name: "오래",    text: "지속 5 → 9초", s: { dur: 4 } },
+        { id: "wide",  name: "넓게",    text: "반경 2.8 → 3.8칸", s: { reach: 1.0 } },
+        { id: "quick", name: "빠르게",  text: "재사용 14.0 → 9.0초", s: { cd: -5.0 } }
+      ] },
+
+    /* ── 마법사 전용 ── */
+    { id: "frost", name: "서리발", kind: "nova", icon: "s_frost",
+      cd: 9.0, cast: 0.30, after: 0.20, stam: 32,
+      mult: 1.5, reach: 3.5, push: 0.3, slow: 4,
+      text: "사방으로 얼음 서리를 터뜨려 4초간 강하게 둔화시킨다",
+      syn: [
+        { id: "big",   name: "더 크게", text: "반경 3.5 → 4.8칸", s: { reach: 1.3 } },
+        { id: "deep",  name: "혹한",    text: "위력 1.5 → 2.4배", s: { mult: 0.9 } },
+        { id: "quick", name: "빠르게",  text: "재사용 9.0 → 5.5초", s: { cd: -3.5 } }
+      ] },
+
+    { id: "lightning", name: "연쇄벼락", kind: "lightning", icon: "s_lightning",
+      cd: 7.0, cast: 0.35, after: 0.20, stam: 35,
+      mult: 2.6, reach: 1.8, range: 6.0, push: 0.8,
+      text: "목표 지점에 강력한 벼락을 내리친다",
+      syn: [
+        { id: "heavy", name: "강력하게", text: "위력 2.6 → 3.8배", s: { mult: 1.2 } },
+        { id: "wide",  name: "넓게",    text: "폭발 반경 1.8 → 2.8칸", s: { reach: 1.0 } },
+        { id: "quick", name: "빠르게",  text: "재사용 7.0 → 4.2초", s: { cd: -2.8 } }
       ] },
 
     /* ── 공용 ── */
@@ -178,18 +237,10 @@
   function cdLeft(world, id, taken) {
     var sk = resolve(id, taken);
     var at = world.cds ? world.cds[id] : undefined;
-    /* ⚠ **`!at` 로 보면 안 된다.** 세계가 막 시작했을 때 world.time 은 0 이고,
-     *   그때 쓴 스킬은 cds[id] === 0 이라 falsy 다 — 그러면 "쿨다운이 없다" 로
-     *   읽혀 **첫 스킬은 무한 연타가 된다**(실측: 4초짜리를 0.6초 뒤에 또 썼다).
-     *   화면을 새로 열 때마다 되살아나는 종류라 눈으로는 거의 못 잡는다. */
     if (at === undefined || at === null) return 0;
-    /* ⚠ 규칙 시계로만 잰다. Date.now 를 쓰면 창을 감췄다 돌아올 때 어긋난다. */
     return Math.max(0, sk.cd - (world.time - at));
   }
 
-  /* ── 쓰기 ───────────────────────────────────────────────
-   * ⚠ 규칙이 나는 자리는 **여기 하나**다. app.js 가 효과를 따로 만들면
-   *   화면과 규칙이 갈린다. app.js 는 use() 를 부르기만 한다. */
   function use(world, id, aimX, aimY, taken, cls) {
     var no = why(world, id, taken, cls);
     if (no) return no;
@@ -203,16 +254,12 @@
     world.cds[id] = world.time;
     if (Math.abs(dx) > 0.05) p.face = dx > 0 ? 1 : -1;
 
-    /* 시전이 있으면 **그 동안은 아직 아무 일도 안 일어난다** — 상대가 피할 시간이다.
-     * ⚠ 시전을 건너뛰고 바로 터뜨리면 실시간 전투가 "먼저 누른 쪽이 이긴다" 가 된다. */
     p.cast = { id: id, sk: sk, t: 0, ang: ang, x: aimX, y: aimY,
                x0: p.x, y0: p.y, done: false };
     if (global.SFX) global.SFX.play("ability");
     return null;
   }
 
-  /* 무기 한 대의 피해. 스킬 위력은 **이것의 배수**다 —
-   * 평값으로 두면 무기를 바꿔도 스킬만 그대로라 후반에 평타보다 약해진다. */
   function baseDmg(world) {
     var p = world.player;
     return (p.swing && p.swing.dmg) ? p.swing.dmg : C_().SWING.dmg;
@@ -223,19 +270,13 @@
     var dmg = Math.max(1, Math.round(baseDmg(world) * (sk.mult || 0)));
 
     if (sk.kind === "swing" || sk.kind === "nova") {
-      /* COMBAT 의 부채꼴을 그대로 쓴다 — 판정 규칙을 두 벌로 두지 않는다.
-       * ⚠ aps 를 크게 줘서 **평타 주기를 안 먹게** 한다(스킬은 자기 쿨다운으로 잰다). */
       p.atk = null; p.atkRest = 0;
       C_().begin(p, Math.cos(cast.ang), Math.sin(cast.ang), {
         aps: 99, windup: 0, recover: sk.after, reach: sk.reach,
         arc: sk.kind === "nova" ? 360 : sk.arc, dmg: dmg, push: sk.push || 0
       });
-      /* windup 0 이라 다음 걸음에 바로 판정된다 */
       var hits = C_().tick(world, p, 0);
       if (hits && sk.slow) markSlow(world, hits, sk.slow);
-      /* 등 뒤 배수 — **맞은 쪽이 나를 등지고 있었나.**
-       * ⚠ 내 방향이 아니라 **상대의 방향**을 본다. 내 방향으로 재면 옆에서
-       *   찔러도 늘 등 뒤가 되어 조건이 없는 것과 같다. */
       if (hits && sk.behind) {
         for (var bi = 0; bi < hits.length; bi++) {
           var t2 = hits[bi];
@@ -249,7 +290,6 @@
                               next: world.time + 0.5, dmg: Math.max(1, Math.round(dmg * 0.12)),
                               from: p });
       }
-      /* 쓴 뒤 잠깐 단단해진다(회전베기 시너지) */
       if (sk.guard) world.buffs.push({ until: world.time + 3, armor: sk.guard,
                                        apsPct: 0, dmgPct: 0, id: cast.id });
       if (sk.guard) world.refreshBuffs();
@@ -259,7 +299,6 @@
                  left: sk.dist, spd: sk.speed, dmg: dmg, reach: sk.reach,
                  iframe: !!sk.iframe, hit: {}, id: cast.id, refund: sk.refund || 0 };
     } else if (sk.kind === "field") {
-      /* ⚠ 닿는 거리를 **제한한다.** 없으면 화면 끝 몬스터를 안전하게 태운다. */
       var d = Math.hypot(cast.x - cast.x0, cast.y - cast.y0);
       var fx = cast.x, fy = cast.y;
       if (d > sk.range) {
@@ -268,12 +307,59 @@
       }
       world.fields.push({ id: ++world._fieldId, x: fx, y: fy, r: sk.reach,
                           until: world.time + sk.dur, next: world.time,
-                          tick: sk.tick, dmg: dmg, from: p });
+                          tick: sk.tick, dmg: dmg, from: p, slow: sk.slow || 0,
+                          type: cast.id === "smoke" ? "smoke" : "fire" });
     } else if (sk.kind === "buff") {
       world.buffs.push({ until: world.time + sk.dur, armor: sk.armor || 0,
                          apsPct: sk.apsPct || 0, dmgPct: sk.dmgPct || 0, id: cast.id });
       if (sk.heal) p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * sk.heal / 100));
+      if (cast.id === "shout") {
+        for (var si = 0; si < world.ents.length; si++) {
+          var se = world.ents[si];
+          if (se.dead || se.team === p.team) continue;
+          if (Math.hypot(se.x - p.x, se.y - p.y) <= 4.5) {
+            se.target = p;
+            se.slowUntil = world.time + 2.5;
+            se.slowPct = 30;
+          }
+        }
+      }
       world.refreshBuffs();
+    } else if (sk.kind === "knives") {
+      var count = sk.count || 5;
+      var spread = Math.PI * 0.45;
+      var startAng = cast.ang - spread / 2;
+      var stepAng = count > 1 ? spread / (count - 1) : 0;
+      for (var ki = 0; ki < count; ki++) {
+        var ka = startAng + stepAng * ki;
+        var kvx = Math.cos(ka) * 16, kvy = Math.sin(ka) * 16;
+        world.shots.push({
+          x: p.x, y: p.y, vx: kvx, vy: kvy,
+          dmg: dmg, reach: sk.reach, team: p.team,
+          from: p, kind: "dagger", maxDist: sk.reach, dist: 0
+        });
+      }
+    } else if (sk.kind === "lightning") {
+      var ld = Math.hypot(cast.x - cast.x0, cast.y - cast.y0);
+      var lx = cast.x, ly = cast.y;
+      if (ld > sk.range) {
+        lx = cast.x0 + (cast.x - cast.x0) / ld * sk.range;
+        ly = cast.y0 + (cast.y - cast.y0) / ld * sk.range;
+      }
+      if (!world.lightningFX) world.lightningFX = [];
+      world.lightningFX.push({ x: lx, y: ly, r: sk.reach, t: 0, life: 0.4 });
+      for (var li = 0; li < world.ents.length; li++) {
+        var le = world.ents[li];
+        if (le.dead || le.team === p.team) continue;
+        if (Math.hypot(le.x - lx, le.y - ly) <= sk.reach + le.r) {
+          C_().damage(world, p, le, dmg, { canCrit: true });
+          if (sk.push) {
+            var pdx = le.x - lx, pdy = le.y - ly;
+            var plen = Math.hypot(pdx, pdy) || 1;
+            global.WORLD.moveBy(world.level, le, (pdx / plen) * sk.push, (pdy / plen) * sk.push);
+          }
+        }
+      }
     }
   }
 

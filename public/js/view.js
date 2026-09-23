@@ -276,34 +276,86 @@
       var fleft = fd.until - world.time;
       var fcx = fd.x * TILE + ox, fcy = fd.y * TILE + oy;
       var fr = fd.r * TILE;
-      var fg = ctx.createRadialGradient(fcx, fcy, fr * 0.2, fcx, fcy, fr);
-      /* ⚠ 끝나기 전에 **옅어진다.** 안 그러면 사라지는 순간을 못 읽어
-       *   "아직 타는 줄 알고" 서 있게 된다. */
       var fa = Math.min(1, fleft / 1.2);
-      fg.addColorStop(0, "rgba(255,150,60," + (0.34 * fa).toFixed(3) + ")");
-      fg.addColorStop(1, "rgba(200,60,20,0)");
-      ctx.fillStyle = fg;
-      ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.fill();
+      ctx.save();
+      if (fd.type === "smoke") {
+        var fg = ctx.createRadialGradient(fcx, fcy, fr * 0.1, fcx, fcy, fr);
+        fg.addColorStop(0, "rgba(90,70,120," + (0.55 * fa).toFixed(3) + ")");
+        fg.addColorStop(0.6, "rgba(50,40,70," + (0.38 * fa).toFixed(3) + ")");
+        fg.addColorStop(1, "rgba(30,20,40,0)");
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.fill();
+        /* 연막 입자 구름 효과 */
+        for (var smi = 0; smi < 4; smi++) {
+          var sma = world.time * 2.2 + smi * 1.57;
+          var smr = (smi % 2 === 0 ? 0.35 : 0.65) * fr;
+          ctx.fillStyle = "rgba(160,140,190," + (0.28 * fa).toFixed(3) + ")";
+          ctx.beginPath();
+          ctx.arc(fcx + Math.cos(sma) * smr, fcy + Math.sin(sma) * smr * 0.7, 8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        var fg = ctx.createRadialGradient(fcx, fcy, fr * 0.2, fcx, fcy, fr);
+        fg.addColorStop(0, "rgba(255,150,60," + (0.34 * fa).toFixed(3) + ")");
+        fg.addColorStop(1, "rgba(200,60,20,0)");
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
     }
 
-    /* 2-a3) 날아가는 것. **바닥보다 위 · 개체보다 아래**에 둔다 —
-     *       개체 위에 그리면 화살이 사람 얼굴을 가린다. */
+    /* 2-a3) 날아가는 것 (화살 & 단검 투척) */
     for (var si = 0; si < world.shots.length; si++) {
       var sh = world.shots[si];
       var stx = Math.floor(sh.x), sty = Math.floor(sh.y);
       if (stx < 0 || sty < 0 || stx >= lv.w || sty >= lv.h) continue;
       if (!lv.visible[sty * lv.w + stx]) continue;
       var sxp = sh.x * TILE + ox, syp = sh.y * TILE + oy;
-      /* 꼬리를 남긴다 — 점 하나만 그리면 **어디서 오는지** 못 읽는다 */
       var tl = Math.hypot(sh.vx, sh.vy) || 1;
-      ctx.strokeStyle = "rgba(255,210,140,.55)";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sxp - sh.vx / tl * 9, syp - sh.vy / tl * 9);
-      ctx.lineTo(sxp, syp);
-      ctx.stroke();
-      ctx.fillStyle = "#ffe9a8";
-      ctx.beginPath(); ctx.arc(sxp, syp, 2.6, 0, Math.PI * 2); ctx.fill();
+      if (sh.kind === "dagger") {
+        ctx.strokeStyle = "rgba(215,200,255,.90)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(sxp - sh.vx / tl * 13, syp - sh.vy / tl * 13);
+        ctx.lineTo(sxp, syp);
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath(); ctx.arc(sxp, syp, 3.2, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.strokeStyle = "rgba(255,210,140,.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sxp - sh.vx / tl * 9, syp - sh.vy / tl * 9);
+        ctx.lineTo(sxp, syp);
+        ctx.stroke();
+        ctx.fillStyle = "#ffe9a8";
+        ctx.beginPath(); ctx.arc(sxp, syp, 2.6, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    /* 2-a4) 벼락 연출 (Lightning FX) */
+    if (world.lightningFX && world.lightningFX.length) {
+      for (var lfi = world.lightningFX.length - 1; lfi >= 0; lfi--) {
+        var lfx = world.lightningFX[lfi];
+        lfx.t += 0.033;
+        var lk = 1 - lfx.t / lfx.life;
+        if (lk <= 0) { world.lightningFX.splice(lfi, 1); continue; }
+        var lcx = lfx.x * TILE + ox, lcy = lfx.y * TILE + oy;
+        var lfr = lfx.r * TILE;
+        ctx.save();
+        ctx.strokeStyle = "rgba(255,240,110," + (lk * 0.9).toFixed(3) + ")";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(lcx, lcy, lfr * (1 - lk * 0.3), 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255," + (lk * 0.95).toFixed(3) + ")";
+        ctx.lineWidth = 3.5;
+        ctx.beginPath();
+        ctx.moveTo(lcx + (Math.sin(world.time * 20) * 12), lcy - 180);
+        ctx.lineTo(lcx - 8, lcy - 120);
+        ctx.lineTo(lcx + 10, lcy - 60);
+        ctx.lineTo(lcx, lcy);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     /* 2-b) 바닥의 전리품. **개체보다 먼저** — 사람이 그 위에 서야 한다.
@@ -429,6 +481,9 @@
           sy += Math.round((1 - bornK) * 5);
         }
       }
+      /* 발밑 지속 효과 오라 (Buff / Debuff Aura FX) */
+      this.drawEntityAuras(ctx, e, ex, ey, ox, oy, world);
+
       placeAt(ctx, S.bake(e.sprite, fr), e.sprite, sx, sy);
       if (bornK < 1) ctx.globalAlpha = 1;
       /* 맞은 티 — **덧칠**이다. 색을 통째로 바꾸면(실측) 몸이 빨간 실루엣이 되어
@@ -709,6 +764,47 @@
     var wx = (clientX - box.left) / this.zoom - this.ox;
     var wy = (clientY - box.top) / this.zoom - this.oy;
     return { x: wx / TILE, y: wy / TILE };
+  };
+
+  /* 개체 발밑 지속 효과 오라 (Buff / Debuff Aura FX) */
+  View.prototype.drawEntityAuras = function (ctx, e, ex, ey, ox, oy, world) {
+    if (e.dead) return;
+    var bx = ex * TILE + ox, by = ey * TILE + oy;
+    ctx.save();
+    /* 1) 둔화 상태 오라 (Slow Debuff Aura) */
+    if (e.slowUntil && e.slowUntil > world.time) {
+      ctx.strokeStyle = "rgba(120,220,255,0.70)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(bx, by - 4, 13, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    /* 2) 플레이어 지속 버프 오라 (Player Buff Auras) */
+    if (e.kind === "player" && world.buffs && world.buffs.length) {
+      for (var bi = 0; bi < world.buffs.length; bi++) {
+        var bf = world.buffs[bi];
+        if (bf.id === "venom") {
+          ctx.strokeStyle = "rgba(80,230,120,0.75)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(bx, by - 4, 15 + Math.sin(world.time * 6) * 2, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (bf.id === "ward") {
+          ctx.strokeStyle = "rgba(255,225,120,0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(bx, by - 4, 17, world.time * 3, world.time * 3 + Math.PI * 1.4);
+          ctx.stroke();
+        } else if (bf.id === "shout") {
+          ctx.strokeStyle = "rgba(255,100,60,0.85)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(bx, by - 4, 18 + Math.sin(world.time * 8) * 3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
   };
 
   global.VIEW = { View: View, TILE: TILE, variantAt: variantAt, placeAt: placeAt };

@@ -29,7 +29,7 @@
       stam: 100, stamRegen: 12,
       likes: ["axe", "mace", "sword"],
       likesText: "전투도끼 · 철퇴 · 장검",
-      skills: ["cleave", "whirl"],
+      skills: ["cleave", "whirl", "stomp", "shout"],
       start: { weapon: "sword", body: "tunic" }
     },
     {
@@ -40,7 +40,7 @@
       stam: 120, stamRegen: 16,
       likes: ["dagger", "spear", "bow"],
       likesText: "단검 · 장창 · 활",
-      skills: ["backstab", "venom"],
+      skills: ["backstab", "venom", "knives", "smoke"],
       start: { weapon: "dagger", feet: "boots" }
     },
     {
@@ -53,13 +53,12 @@
       stam: 140, stamRegen: 18,
       likes: ["staff", "bow"],
       likesText: "지팡이 · 활",
-      skills: ["burn", "nova"],
+      skills: ["burn", "nova", "frost", "lightning"],
       start: { weapon: "staff", body: "robe" }
     }
   ];
 
-  /* 셋이 함께 쓰는 재주. ⚠ 공용이 없으면 직업마다 배워야 할 것이 너무 많고,
-   *   공용만 있으면 직업이 갈리지 않는다. 둘씩이 손잡이 네 칸에 딱 맞는다. */
+  /* 셋이 함께 쓰는 재주. */
   var SHARED = ["dash", "ward"];
 
   var ADEPT_BONUS = 25;      /* 적성 무기 피해 % */
@@ -93,8 +92,8 @@
       var c = CLASSES[i];
       if (seen[c.id]) bad.push("직업 id 가 겹친다: " + c.id);
       seen[c.id] = 1;
-      /* ⚠ 손잡이가 네 칸이다. 전용 둘 + 공용 둘이 아니면 빈 칸이 생기거나 넘친다. */
-      if (c.skills.length !== 2) bad.push(c.name + " 의 전용 재주가 2개가 아니다");
+      /* ⚠ 전용 4개 + 공용 2개 구조 */
+      if (c.skills.length !== 4) bad.push(c.name + " 의 전용 재주가 4개가 아니다");
       if (SK) for (j = 0; j < c.skills.length; j++)
         if (!SK.byId(c.skills[j])) bad.push(c.name + " 의 재주 " + c.skills[j] + " 가 없다");
       if (I) for (j = 0; j < c.likes.length; j++)
