@@ -841,6 +841,76 @@
       }
     }
   }
+  /* 물건 하나를 눌렀을 때 뜨는 창 — 무엇인지 보여 주고 입거나 벗는다.
+   *
+   * ⚠ 이 함수가 **없었다.** 가방 칸과 장비 칸이 둘 다 이걸 부르는데
+   *   정의가 어디에도 없어서, 누르는 순간
+   *   `ReferenceError: openItemModal is not defined` 로 터졌다 —
+   *   그래서 "장착이 안 된다" 로 보였다. CSS(.item-modal-*)는 이미 있었다.
+   * ⚠ 꼴은 rpg.css 가 기대하는 대로 맞춘다. 새로 짜지 않는다 —
+   *   .item-modal-overlay > .item-modal-card > .item-modal-close,
+   *   단추는 .card-act-row > .btn-card-act.equip / .unequip / .cancel.
+   * ⚠ 창을 **새로 만들어 body 에 붙인다.** #panel 안에 그리면 가방 목록을
+   *   덮어써서, 닫았을 때 돌아갈 자리가 사라진다.
+   * ⚠ 레벨이 모자라면 입기 단추를 **지우지 않고 막는다.** 없애 버리면
+   *   왜 못 입는지 알 수가 없다(.req-warn 이 그 자리를 말해 준다). */
+  function openItemModal(it, equipped, where) {
+    if (!it) return;
+    var I = global.ITEMS;
+    var ti = I.tierOf(it.tier);
+    var can = I.canEquip(it, hero.level);
+
+    var old = document.getElementById("itemModal");
+    if (old) old.remove();
+
+    var ov = document.createElement("div");
+    ov.id = "itemModal";
+    ov.className = "item-modal-overlay";
+
+    var acts = equipped
+      ? '<button class="btn-card-act unequip" data-act="unequip">벗기</button>' +
+        '<button class="btn-card-act cancel" data-act="close">닫기</button>'
+      : (can
+          ? '<button class="btn-card-act equip" data-act="equip">입기</button>' +
+            '<button class="btn-card-act cancel" data-act="close">닫기</button>'
+          : '<button class="btn-card-act equip" data-act="equip" disabled>입기</button>' +
+            '<button class="btn-card-act cancel" data-act="close">닫기</button>');
+
+    ov.innerHTML =
+      '<div class="item-modal-card" style="border-color:' + ti.color + '">' +
+        '<button class="item-modal-close" data-act="close" aria-label="닫기">×</button>' +
+        '<div class="smrow">' +
+          '<div class="itm-icon-box" style="border-color:' + ti.color + '">' +
+            getItemIconHtml(it) + '</div>' +
+          '<div class="itm-info-box">' +
+            '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
+            '<span class="mt">' + I.SLOT_NAME[it.slot] + ' · ' + ti.name +
+              ((it.enh || 0) ? ' · 강화 +' + it.enh : '') + '</span>' +
+            '<span class="st">' + esc(statsOf(it)) + '</span>' +
+          '</div>' +
+        '</div>' +
+        (can ? '' : '<span class="req-warn">Lv.' + I.reqLevel(it) + ' 부터 입을 수 있다</span>') +
+        '<div class="card-act-row">' + acts + '</div>' +
+      '</div>';
+
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    /* ⚠ 바깥을 눌러도 닫힌다. 모바일에서 작은 × 만 두면 닫기가 어렵다. */
+    ov.addEventListener("click", function (e) {
+      if (e.target === ov) close();
+    });
+    ov.querySelectorAll("[data-act]").forEach(function (b) {
+      bindTapUI(b, function () {
+        var a = b.getAttribute("data-act");
+        if (a === "close") return close();
+        if (b.disabled) return;
+        close();
+        if (a === "equip") equipFromBag(where);
+        else if (a === "unequip") unequip(where);
+      });
+    });
+    document.body.appendChild(ov);
+  }
+
   /* 입는다. **자리에 있던 것은 가방으로 돌아간다** —
    * ⚠ 안 돌려주면 바꿔 끼는 순간 전에 쓰던 것이 사라진다(되돌릴 수 없다). */
   function equipFromBag(idx) {
@@ -1381,7 +1451,10 @@
 
     for (var i = 0; i < mine.length; i++) {
       var sId = mine[i];
-      var def = SK.by(sId);
+      /* ⚠ `SK.by` 가 아니라 **`SK.byId`** 다. skills.js 는 by 를 안 내보낸다.
+       *   그래서 스킬북이 첫 반복에서 터졌고, 창을 보이게 하는 줄에 아예
+       *   닿지 못했다 — 눌러도 **아무 일도 안 일어나는** 것으로 보였다. */
+      var def = SK.byId(sId);
       if (!def) continue;
 
       var barAt = (hero.bar || []).indexOf(def.id);
@@ -1389,7 +1462,9 @@
       var isPassive = (def.type === "passive" || def.kind === "buff");
       var stype = isPassive ? "passive" : "active";
 
-      var r = SK.calc(def, pts);
+      /* ⚠ `SK.calc` 도 없다. `SK.resolve(id, 가진것)` 이다 — 인자도 다르다.
+       *   이름만 바꾸면 def 를 id 자리에 넣게 되어 조용히 null 이 된다. */
+      var r = SK.resolve(def.id, hero.skills);
 
       html += '<div class="col skill" data-type="' + stype + '">' +
         '<div class="head"><canvas width="34" height="34" data-ico="' + def.icon + '"></canvas>' +
