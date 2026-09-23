@@ -209,9 +209,12 @@ if (pick) {
     var m = document.getElementById("cmpModal");
     if (!m) return { none: true };
     var rows = [].slice.call(m.querySelectorAll(".cmp-t tbody tr"));
+    /* 줄 이름으로 찾되 **앞머리로** 본다. 딸림말(초당 피해)이 같은 칸에
+     * 들어 있어 통짜로 맞대면 이름을 바꿀 때마다 검사가 깨진다 —
+     * 실제로 "초당 피해" 를 "공격" 으로 바꾸자 그 자리에서 빨개졌다. */
     var r = rows.filter(function (x) {
       var h = x.querySelector(".cmp-rowh");
-      return h && h.textContent.trim() === "초당 피해";
+      return h && h.textContent.trim().indexOf("공격") === 0;
     })[0];
     if (!r) return { norow: true, rows: rows.length };
     var tds = [].slice.call(r.querySelectorAll("td"));
@@ -224,11 +227,15 @@ if (pick) {
   else if (tbl.norow) cmpNote = "초당 피해 줄이 없다 (줄 " + tbl.rows + "개)";
   else {
     predicted = tbl.cand;
-    /* 정말 끼워 보고 **몸에서** 다시 잰다. derive 로 재면 제자리를 도는 셈이다 */
+    /* 정말 끼워 보고 **몸에서** 다시 잰다. derive 로 재면 제자리를 도는 셈이다.
+     * ⚠ 치명타를 함께 센다 — 표의 「공격」이 치명타까지 넣은 값이라
+     *   맨 곱셈과 맞대면 치명타가 붙은 벌에서 늘 어긋난다.
+     *   식은 combat.js 의 굴림과 같다(power-check 가 그 식을 따로 지킨다). */
     actual = await ev(`(function(){
       window.__equipBag(${pick.i});
       var p = window.__w().player;
-      return Math.round(p.swing.dmg * p.swing.aps * 10) / 10;
+      var mul = 1 + (p.critPct / 100) * ((150 + (p.critDmgPct || 0)) / 100 - 1);
+      return Math.round(p.swing.dmg * p.swing.aps * mul * 10) / 10;
     })()`);
     cmpNote = pick.name + " · 예고 " + predicted + " · 정말 끼니 " + actual +
       " (지금 낀 것 " + tbl.mine + ")";

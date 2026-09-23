@@ -153,6 +153,9 @@
                           life: crit ? 0.95 : 0.75, crit: crit, foe: to.team !== 0 });
     if (to.kind === "dummy") {
       to.hp = to.maxHp;
+      /* 허수아비에 들어간 것만 센다 — 방어 0 이라 **내가 내는 피해 그대로**다.
+       * ⚠ 몬스터까지 세면 상대 방어가 섞여 무엇을 잰 것인지 알 수 없다. */
+      if (from && from.team === 0 && world.meterHit) world.meterHit(n, crit);
     } else if (to.hp <= 0) {
       to.hp = 0;
       to.dead = true;

@@ -179,6 +179,9 @@
     }
     this.ents = [];
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
+    /* 허수아비 타격 측정. 최고 기록은 판을 넘겨도 남겨야 견줄 수 있다 —
+     * 세계를 새로 만들 때 app.js 가 옛 값을 옮겨 준다. */
+    this.meter = { on: false, t0: 0, last: 0, dmg: 0, hits: 0, crits: 0, best: 0, done: null };
     this.drops = [];        /* 바닥에 떨어진 것 */
     this._dropId = 0;
     this.boss = null;       /* 이 층의 보스(있으면) */
@@ -558,9 +561,52 @@
       };
     }
     /* 초당 피해 — 무기를 견주는 **유일하게 정직한 한 수치**다.
-     * ⚠ 한 대 피해만 보면 활(14 · 0.85타/초)과 단검이 뒤집혀 보인다. */
-    o.dps = o.swing ? Math.round(o.swing.dmg * o.swing.aps * 10) / 10 : 0;
+     * ⚠ 한 대 피해만 보면 활(14 · 0.85타/초)과 단검이 뒤집혀 보인다.
+     * ⚠ **치명타를 함께 센다.** 안 세면 치명타 빌드를 1.5배 낮게 말한다
+     *   (실측: 치명타 33% · 피해 +95% 인 단검이 109.2 로 적히는데 기대값은
+     *   161.5 였다). combat.js 의 굴림과 같은 식이라야 한다:
+     *   배수 = (150 + critDmgPct) / 100, 확률 = critPct%. */
+    o.dpsRaw = o.swing ? o.swing.dmg * o.swing.aps : 0;
+    o.critMul = 1 + (o.critPct / 100) * ((150 + o.critDmgPct) / 100 - 1);
+    o.dps = Math.round(o.dpsRaw * o.critMul * 10) / 10;
+
+    /* ── 전투력 두 숫자 ──────────────────────────────────
+     *
+     * 디아블로 3 이 피해 · 방어력 · 회복 셋으로 나눈 것과 같은 판단이다.
+     * 한 숫자로 묶으면 **딜러와 탱커를 구별하지 못한다**(실측: 4배 단단한 벌과
+     * 3배 아픈 벌을 기하평균으로 묶으니 1.03~1.16배로 거의 같다고 했다).
+     *
+     * ⚠ **생존은 층을 정해야 나온다.** 이 게임의 방어는 뺄셈이고 30% 바닥이
+     *   있다(combat.js). 같은 방어 27 이 10층에서는 30% 바닥에 붙어 있다가
+     *   30층에서는 41% 로 무너진다 — 층 없는 생존력은 성립하지 않는다.
+     * ⚠ 기준 적 피해를 **손으로 적지 않는다.** data.js 의 그 층 몬스터 표에서
+     *   뽑는다. 숫자를 적어 두면 표를 고칠 때 여기가 조용히 낡는다. */
+    o.refDepth = Math.max(1, (h && h.maxDepth) || 1);
+    o.refDmg = this.refDmgAt(o.refDepth);
+    /* 받는 비율 — combat.js 와 **한 글자까지 같은 식**이라야 한다.
+     * ⚠ `Math.max(1, Math.round(...))` 를 빼먹었다가 검사에 잡혔다. 얕은 층은
+     *   적 한 대가 5 라서 1.5 가 2 로 올림되고, 그것만으로 생존 숫자가
+     *   2,957 vs 2,218 로 33% 틀렸다. 작은 수에서는 반올림이 규칙이다. */
+    var take = Math.max(1, Math.round(Math.max(o.refDmg * 0.30, o.refDmg - o.def))) / o.refDmg;
+    o.ehp = Math.round(o.maxHp / take);
+    /* 흡혈은 초당 회복으로 따로 적는다. 생존에 섞으면 때리지 않는 동안에도
+     * 회복되는 것처럼 보인다 — 흡혈은 **때려야** 도는 값이다. */
+    o.hps = o.swing ? Math.round(o.lifeOnHit * o.swing.aps * 10) / 10 : 0;
     return o;
+  };
+
+  /* 그 층 몬스터가 한 대에 주는 **평균 피해.** 보스는 안 센다(늘 만나는 것이
+   * 아니라 섞으면 평상시 체감과 어긋난다). */
+  World.prototype.refDmgAt = function (depth) {
+    /* ⚠ `D` 는 DUNGEON 이다. 몬스터 표는 `global.DATA` 에 있다 —
+     *   한 번 헷갈려 `D.poolAt` 을 썼고, undefined 라 조용히 10 으로 떨어졌다. */
+    var DT = global.DATA;
+    if (!DT || !DT.poolAt) return 10;
+    var pool = DT.poolAt(depth);
+    if (!pool || !pool.length) return 10;
+    var sum = 0;
+    for (var i = 0; i < pool.length; i++) sum += DT.statsAt(pool[i], depth).dmg;
+    return Math.max(1, sum / pool.length);
   };
 
   World.prototype.applyHero = function () {
@@ -1049,6 +1095,71 @@
   };
 
   /* 실제로 흐른 시간을 받아 규칙을 따라잡고, 그리기가 쓸 보간값을 돌려준다. */
+  /* ── 허수아비 타격 측정 ────────────────────────────────
+   *
+   * 수식으로 낸 전투력은 **스킬을 못 센다.** 시너지 · 관통 · 장판 · 버프까지
+   * 넣으려면 수식을 한 벌 더 적어야 하고, 그 순간 게임과 어긋나기 시작한다.
+   * 그래서 마을 허수아비를 실제로 때려서 **들어간 피해를 센다.**
+   * 이 저장소가 계속 해 온 "재서 고친다" 를 플레이어에게 그대로 준 것이다.
+   *
+   * ⚠ 허수아비만 센다(`kind === "dummy"`). 던전 몬스터까지 세면 상대 방어와
+   *   숫자가 섞여 무엇을 잰 것인지 알 수 없다. 허수아비는 방어 0 이라
+   *   **순수하게 내가 내는 피해**가 나온다.
+   * ⚠ 첫 타격에 저절로 시작한다. 시작 단추를 두면 누르고 달려가는 사이가
+   *   측정에 섞인다.
+   * ⚠ 손을 멈추고 IDLE 초가 지나면 끝낸다. 시간을 못 박으면(10초) 그 안에
+   *   쿨다운이 안 도는 스킬이 빠져 느린 벌이 손해를 본다. */
+  var METER_IDLE = 2.5;        /* 이만큼 안 때리면 한 판이 끝난 것으로 본다 */
+  var METER_MIN = 1.2;         /* 이보다 짧으면 안 적는다 — 한 대는 표본이 아니다 */
+
+  World.prototype.meterHit = function (n, crit) {
+    var m = this.meter;
+    if (!m.on) {
+      m.on = true; m.t0 = this.time; m.dmg = 0; m.hits = 0; m.crits = 0; m.best = m.best || 0;
+    }
+    m.dmg += n;
+    m.hits++;
+    if (crit) m.crits++;
+    m.last = this.time;
+  };
+
+  /* 재는 중인 값. 화면이 매 프레임 읽는다. */
+  World.prototype.meterNow = function () {
+    var m = this.meter;
+    if (!m.on) return null;
+    var el = Math.max(0.001, this.time - m.t0);
+    return {
+      on: true, sec: el, dmg: Math.round(m.dmg),
+      dps: Math.round(m.dmg / el * 10) / 10,
+      hits: m.hits,
+      critPct: m.hits ? Math.round(m.crits / m.hits * 100) : 0,
+      best: m.best
+    };
+  };
+
+  /* 손을 멈추면 끝낸다. step() 이 매 걸음 부른다. */
+  World.prototype.meterTick = function () {
+    var m = this.meter;
+    if (!m.on) return;
+    if (this.time - m.last < METER_IDLE) return;
+    var el = Math.max(0.001, m.last - m.t0);
+    m.on = false;
+    /* ⚠ 끝난 시각이 아니라 **마지막 타격 시각**까지로 잰다. 멈춘 뒤 기다린
+     *   2.5초를 넣으면 초당 피해가 그만큼 깎여 늘 낮게 나온다. */
+    if (el >= METER_MIN && m.hits >= 3) {
+      var dps = Math.round(m.dmg / el * 10) / 10;
+      m.done = { dps: dps, sec: Math.round(el * 10) / 10, dmg: Math.round(m.dmg),
+                 hits: m.hits, critPct: m.hits ? Math.round(m.crits / m.hits * 100) : 0,
+                 at: this.time, fresh: true };
+      if (dps > (m.best || 0)) { m.best = dps; m.done.record = true; }
+    }
+  };
+
+  World.prototype.meterReset = function () {
+    this.meter = { on: false, t0: 0, last: 0, dmg: 0, hits: 0, crits: 0,
+                   best: this.meter ? this.meter.best : 0, done: null };
+  };
+
   World.prototype.advance = function (realDt) {
     if (!(realDt > 0)) realDt = 0;
     if (realDt > 0.25) realDt = 0.25;     /* 탭을 오래 감췄다 돌아온 경우 */
@@ -1060,6 +1171,7 @@
     var n = 0;
     while (this._acc >= SIM_DT && n < MAX_STEPS) {
       this.step();
+      this.meterTick();
       this._acc -= SIM_DT;
       n++;
     }

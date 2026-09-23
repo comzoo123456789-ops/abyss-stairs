@@ -108,6 +108,7 @@
 
     hud();
     drawBar();
+    paintMeter();
 
     fps.t += dt; fps.n++;
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
@@ -755,6 +756,8 @@
       // Equipment Rack
       html += '<div class="inv-sec eq-section">';
       html += '<div class="sec-title"><span>착용 장비</span><span class="sub-cnt">7 슬롯</span></div>';
+      /* 전투력 — 착용 장비 바로 위다. 아래 총합표는 조각이고 이것이 결론이다. */
+      html += powerBox(powerNow(), "pw--bag");
       html += '<div class="eq-rack-grid">';
       var slotMeta = [
         { sl: "head", label: "투구", ico: "🧢" },
@@ -1023,6 +1026,66 @@
    *   덮어써서, 닫았을 때 돌아갈 자리가 사라진다.
    * ⚠ 레벨이 모자라면 입기 단추를 **지우지 않고 막는다.** 없애 버리면
    *   왜 못 입는지 알 수가 없다(.req-warn 이 그 자리를 말해 준다). */
+  /* ── 전투력 ───────────────────────────────────────────
+   *
+   * 두 숫자다 — **공격**(치명타까지 넣은 초당 피해)과 **생존**(실효 체력).
+   * 한 숫자로 묶지 않는다. 묶으면 딜러와 탱커를 구별하지 못한다(실측: 4배
+   * 단단한 벌과 3배 아픈 벌이 기하평균으로 1.03~1.16배, 거의 같다고 했다).
+   *
+   * ⚠ 셈은 `world.derive()` 한 곳이다. 여기서 다시 더하지 말 것.
+   * ⚠ 생존은 **층을 정해야 나온다.** 방어가 뺄셈이라 같은 방어 27 이 10층에서는
+   *   30% 바닥이고 30층에서는 41% 다. 기준은 지금 도달한 최고 층이다 —
+   *   "내가 지금 가는 곳 기준" 이라 따로 설명할 것이 없다. */
+  function powerNow() {
+    if (!world || !world.derive) return null;
+    return world.derive(global.SAVE.liveEquip(hero));
+  }
+  function powerBox(d, cls) {
+    if (!d) return "";
+    return '<div class="pw ' + (cls || "") + '">' +
+      '<div class="pw-i"><span class="pw-l">공격</span>' +
+        '<b class="pw-v">' + d.dps + '</b><span class="pw-u">초당 피해</span></div>' +
+      '<div class="pw-i"><span class="pw-l">생존</span>' +
+        '<b class="pw-v">' + d.ehp + '</b><span class="pw-u">실효 체력</span></div>' +
+      (d.hps ? '<div class="pw-i"><span class="pw-l">회복</span>' +
+        '<b class="pw-v">' + d.hps + '</b><span class="pw-u">초당</span></div>' : '') +
+      '<div class="pw-note">' + d.refDepth + '층 기준 (적 한 대 ' +
+        (Math.round(d.refDmg * 10) / 10) + ') · 치명타 x' +
+        (Math.round(d.critMul * 100) / 100) + ' 포함</div>' +
+      '</div>';
+  }
+
+  /* ── 허수아비 타격 측정 ────────────────────────────────
+   * 수식은 스킬을 못 센다. 실제로 때려서 들어간 피해를 센다.
+   * ⚠ 마을에서만 그린다. 던전에서 이것이 떠 있으면 싸움을 가린다. */
+  function paintMeter() {
+    var box = document.getElementById("dpsMeter");
+    if (!box) return;
+    if (!world || !world.inTown) { box.hidden = true; return; }
+    var m = world.meterNow();
+    var done = world.meter && world.meter.done;
+    if (!m && !done) { box.hidden = true; return; }
+
+    var h;
+    if (m) {
+      h = '<div class="dm-t">허수아비 측정 중</div>' +
+        '<div class="dm-v"><b>' + m.dps + '</b><span>초당 피해</span></div>' +
+        '<div class="dm-s">' + m.sec.toFixed(1) + '초 · ' + m.hits + '대 · 치명타 ' +
+        m.critPct + '%</div>';
+    } else {
+      /* 끝난 판은 잠깐 남겼다 지운다 — 바로 지우면 결과를 못 읽는다 */
+      if (world.time - done.at > 6) { box.hidden = true; return; }
+      h = '<div class="dm-t">' + (done.record ? "★ 최고 기록" : "측정 끝") + '</div>' +
+        '<div class="dm-v"><b>' + done.dps + '</b><span>초당 피해</span></div>' +
+        '<div class="dm-s">' + done.sec + '초 · ' + done.hits + '대 · 치명타 ' +
+        done.critPct + '% · 합 ' + done.dmg + '</div>';
+    }
+    if (world.meter.best) h += '<div class="dm-b">최고 ' + world.meter.best + '</div>';
+    box.innerHTML = h;
+    box.hidden = false;
+    box.classList.toggle("is-rec", !!(done && done.record && !m));
+  }
+
   /* ── 견주기 ───────────────────────────────────────────
    *
    * 같은 장르(디아블로 3·4 · 라스트 에포크)가 푸는 방식이 하나로 모인다:
@@ -1045,7 +1108,12 @@
 
   /* 견줄 줄. `always` 는 값이 같아도 늘 보인다(기준점이 없으면 읽을 수가 없다). */
   var CMP_ROWS = [
-    { k: "dps",   name: "초당 피해",   always: true,  dec: 1 },
+    /* ⚠ 맨 위 둘이 **전투력**이다. 나머지는 그것을 이루는 조각이다 —
+     *   차례를 바꾸면 조각부터 읽게 되어 무엇이 결론인지 안 보인다. */
+    { k: "dps",   name: "공격",        always: true,  dec: 1, sub: "초당 피해" },
+    { k: "ehp",   name: "생존",        always: true,  dec: 0, sub: "실효 체력" },
+    { k: "hps",   name: "회복",        dec: 1, sub: "초당" },
+    { k: "dpsRaw", name: "치명타 없이", dec: 1 },
     { k: "dmg",   name: "한 대 피해",  dec: 0, from: function (d) { return d.swing ? d.swing.dmg : 0; } },
     { k: "aps",   name: "공격 속도",   dec: 2, unit: "타/초",
       from: function (d) { return d.swing ? d.swing.aps : 0; } },
@@ -1125,7 +1193,8 @@
       /* 가장 좋은 값에 표시를 한다. 전부 같으면 아무 데도 안 한다. */
       var best = Math.max.apply(null, vs);
       var allSame = vs.every(function (v) { return Math.abs(v - vs[0]) < 1e-9; });
-      h += '<tr><th class="cmp-rowh">' + row.name + '</th>';
+      h += '<tr><th class="cmp-rowh">' + row.name +
+        (row.sub ? '<span class="cmp-rowsub">' + row.sub + '</span>' : '') + '</th>';
       for (var ci = 0; ci < vs.length; ci++) {
         var isBest = !allSame && Math.abs(vs[ci] - best) < 1e-9;
         h += '<td class="' + (isBest ? "cmp-best " : "") + (ci === 0 ? "cmp-mine" : "") + '">' +
@@ -2480,7 +2549,11 @@
     opt = opt || {};
     opt.hero = hero;                 /* **같은 객체**를 넘긴다(사본 아님) */
     opt.sprite = hero.cls;
+    var keepBest = (world && world.meter) ? world.meter.best : 0;
     world = new W.World(opt);
+    /* ⚠ 최고 기록은 판을 넘겨도 남겨야 견줄 수 있다. 세계를 새로 만들 때마다
+     *   0 이 되면 마을을 한 번 나갔다 오는 것만으로 기록이 사라진다. */
+    if (world.meter) world.meter.best = keepBest;
     /* ⚠ 마을(0층)은 도달 기록이 아니다. 그리고 상한(30)을 넘기지 않는다 —
      *   SAVE 가 어차피 자르지만, 자르는 곳이 하나뿐이면 여기서 조용히 어긋난다. */
     if (!world.inTown && world.depth > hero.maxDepth)
