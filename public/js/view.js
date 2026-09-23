@@ -485,6 +485,8 @@
       this.drawEntityAuras(ctx, e, ex, ey, ox, oy, world);
 
       placeAt(ctx, S.bake(e.sprite, fr), e.sprite, sx, sy);
+      /* 캐릭터 몸체 전면 버프 오라 레이어 */
+      this.drawEntityAurasOver(ctx, e, ex, ey, ox, oy, world);
       if (bornK < 1) ctx.globalAlpha = 1;
       /* 맞은 티 — **덧칠**이다. 색을 통째로 바꾸면(실측) 몸이 빨간 실루엣이 되어
        * 누가 누구인지 안 보인다. 원래 그림 위에 옅게 얹고 금방 뺀다. */
@@ -670,26 +672,55 @@
     }
   };
 
-  /* 부채꼴. 선딜 동안은 **엷게 예고**하고, 판정 순간 한 번 밝아진다. */
+  /* 부채꼴 & 스킬 타격 이펙트. 선딜 동안은 예고하고, 판정 순간 화려하게 터진다. */
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
-    var k = a.t / m.windup;
+    var k = a.t / Math.max(0.01, m.windup);
     var live = a.t >= m.windup;
     var cx = ex * TILE + ox, cy = (ey - 0.35) * TILE + oy;
     var half = m.arc * Math.PI / 360;
+    var radius = m.reach * TILE;
     ctx.save();
     ctx.beginPath();
     ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, m.reach * TILE, a.ang - half, a.ang + half);
+    ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
     ctx.closePath();
+
     if (live) {
-      ctx.fillStyle = e.team === 0 ? "rgba(255,240,200,.30)" : "rgba(255,110,90,.30)";
+      if (e.team === 0) {
+        /* 플레이어 공격/스킬 — 화려하고 선명한 검기/마력 궤적 */
+        var grad = ctx.createRadialGradient(cx, cy, radius * 0.2, cx, cy, radius);
+        grad.addColorStop(0, "rgba(255, 240, 180, 0.70)");
+        grad.addColorStop(0.7, "rgba(255, 170, 60, 0.45)");
+        grad.addColorStop(1, "rgba(255, 110, 30, 0)");
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        /* 외곽 빛나는 칼날 테두리 선 */
+        ctx.strokeStyle = "rgba(255, 255, 230, 0.95)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
+        ctx.stroke();
+      } else {
+        /* 몬스터 위협적인 붉은 타격 */
+        ctx.fillStyle = "rgba(255, 90, 70, 0.40)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(255, 140, 100, 0.85)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
+        ctx.stroke();
+      }
     } else {
-      /* 차오르는 예고 — 다 차면 나간다는 뜻이다 */
-      ctx.fillStyle = e.team === 0 ? "rgba(255,240,200,.09)" : "rgba(255,90,70,"
-        + (0.06 + 0.16 * Math.min(1, k)).toFixed(3) + ")";
+      /* 차오르는 예고 고리 */
+      var alphaVal = (0.08 + 0.20 * Math.min(1, k)).toFixed(3);
+      ctx.fillStyle = e.team === 0 ? "rgba(255,240,180," + alphaVal + ")" : "rgba(255,80,60," + alphaVal + ")";
+      ctx.fill();
+      ctx.strokeStyle = e.team === 0 ? "rgba(255,220,130,0.4)" : "rgba(255,100,80,0.5)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
-    ctx.fill();
     ctx.restore();
   };
 
@@ -705,8 +736,7 @@
     ctx.fillRect(x, y, Math.max(1, Math.round(w * frac)), h);
   };
 
-  /* 걸음 그림 — **시간이 아니라 걸은 거리**로 고른다. 시간으로 고르면
-   * 벽에 막혀 제자리인데도 다리가 계속 움직인다(허공답보). */
+  /* 걸음 그림 */
   View.prototype.frameOf = function (e) {
     if (!S.hasFrames(e.sprite)) return 0;
     var moving = (e.mx || e.my) && (Math.abs(e.x - e.px) + Math.abs(e.y - e.py)) > 1e-5;
@@ -714,51 +744,26 @@
     return 1 + (Math.floor(e.walked / STRIDE) % 2);
   };
 
-  /* ── 그리는 자리의 흔들림 ─────────────────────────────
-   * **도트에 프레임이 없어도 살아 있게 한다.**
-   *
-   * 잡몹 14종·보스 6종이 전부 프레임 0 이다 — 서 있는 조각상이었다. 그림을
-   * 스무 장 더 그리는 대신 **그리는 자리**를 흔든다.
-   *   얻는 것: 한 곳만 고치면 전부 살아난다.
-   *   잃는 것: 팔다리는 여전히 안 움직인다(그건 프레임이 있어야 한다).
-   *
-   * ⚠ 걸음 들썩임은 **프레임이 없는 것에만** 건다. 주인공은 다리가 이미
-   *   움직이는데 몸까지 들썩이면 걷는 게 아니라 뛰는 것처럼 보인다.
-   * ⚠ 흔들림은 **정수 픽셀**이어야 한다. 소수로 밀면 도트 가장자리가 지글거린다.
-   * ⚠ 걸음은 **걸은 거리**로 센다(e.walked). 시간으로 하면 벽에 막혀 제자리
-   *   걸음 할 때도 흔들려 미끄러지는 것처럼 보인다.
-   * ⚠ 공격은 **모두에게** 건다. 예고(windup)에 뒤로 움츠리고 내려칠 때 앞으로
-   *   뻗는다 — 예고를 몸으로 보여 주면 원형 게이지를 안 봐도 피할 수 있다. */
   View.prototype.motionOf = function (e) {
     var bx = 0, by = 0;
-    if (e.dead) return { x: 0, y: 0 };
-
-    if (!S.hasFrames(e.sprite)) {
-      var moved = Math.abs(e.x - e.px) + Math.abs(e.y - e.py);
-      if (moved > 1e-5) {
-        var ph = Math.floor((e.walked || 0) / 0.30);
-        by = (ph % 2) ? -1 : 0;                    /* 한 걸음마다 1px 들썩 */
-        bx = (Math.floor(ph / 2) % 2) ? 1 : -1;    /* 두 걸음마다 좌우 1px */
-      }
+    var moving = (e.mx || e.my) && (Math.abs(e.x - e.px) + Math.abs(e.y - e.py)) > 1e-5;
+    if (moving) {
+      var ph = Math.floor(e.walked / (STRIDE * 0.5));
+      by = (ph % 2) ? -1 : 0;
+      bx = (Math.floor(ph / 2) % 2) ? 1 : -1;
     }
-
     var a = e.atk;
     if (a && a.m) {
       var w = a.m.windup || 0.2, r = a.m.recover || 0.2;
-      var push = (a.t < w)
-        ? -2 * (a.t / w)                                  /* 뒤로 최대 2px */
-        : 3 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));  /* 앞으로 3px → 0 */
+      var push = (a.t < w) ? -2 * (a.t / w) : 3 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
       bx += Math.round(Math.cos(a.ang) * push);
       by += Math.round(Math.sin(a.ang) * push);
     }
-
-    /* 맞은 순간 1px 떨림 — 덧칠만으로는 "맞았다" 가 약하다 */
     if (e.hurt > 0) bx += (Math.floor(e.hurt * 140) % 2) ? 1 : -1;
-
     return { x: bx, y: by };
   };
 
-  /* 화면 좌표 → 월드 칸 좌표. 마우스 조준이 이것을 쓴다. */
+  /* 화면 좌표 → 월드 칸 좌표. */
   View.prototype.toWorld = function (clientX, clientY) {
     var box = this.canvas.getBoundingClientRect();
     var wx = (clientX - box.left) / this.zoom - this.ox;
@@ -766,40 +771,131 @@
     return { x: wx / TILE, y: wy / TILE };
   };
 
-  /* 개체 발밑 지속 효과 오라 (Buff / Debuff Aura FX) */
+  /* 개체 몸체/발밑 지속 효과 오라 (Body & Foot Buff Aura FX) */
   View.prototype.drawEntityAuras = function (ctx, e, ex, ey, ox, oy, world) {
     if (e.dead) return;
     var bx = ex * TILE + ox, by = ey * TILE + oy;
+    var cy = by - 16; /* 캐릭터 중심 높이 */
     ctx.save();
-    /* 1) 둔화 상태 오라 (Slow Debuff Aura) */
+
+    /* 1) 둔화 상태 오라 (Slow Debuff Ring) */
     if (e.slowUntil && e.slowUntil > world.time) {
-      ctx.strokeStyle = "rgba(120,220,255,0.70)";
-      ctx.lineWidth = 2;
+      ctx.strokeStyle = "rgba(100, 220, 255, 0.85)";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(bx, by - 4, 13, 0, Math.PI * 2);
+      ctx.arc(bx, by - 4, 14, 0, Math.PI * 2);
       ctx.stroke();
+      for (var sfi = 0; sfi < 3; sfi++) {
+        var sfa = world.time * 3 + sfi * 2.09;
+        ctx.fillStyle = "rgba(180, 240, 255, 0.95)";
+        ctx.fillRect(Math.round(bx + Math.cos(sfa) * 14) - 1, Math.round(by - 4 + Math.sin(sfa) * 6) - 1, 3, 3);
+      }
     }
-    /* 2) 플레이어 지속 버프 오라 (Player Buff Auras) */
+
+    /* 2) 플레이어 몸체를 감싸는 직관적인 붉은/황금/초록 버프 오라 (Enveloping Body Aura) */
     if (e.kind === "player" && world.buffs && world.buffs.length) {
       for (var bi = 0; bi < world.buffs.length; bi++) {
         var bf = world.buffs[bi];
-        if (bf.id === "venom") {
-          ctx.strokeStyle = "rgba(80,230,120,0.75)";
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(bx, by - 4, 15 + Math.sin(world.time * 6) * 2, 0, Math.PI * 2);
-          ctx.stroke();
-        } else if (bf.id === "ward") {
-          ctx.strokeStyle = "rgba(255,225,120,0.85)";
+        var puls = 1 + Math.sin(world.time * 9 + bi * 1.5) * 0.18;
+
+        if (bf.id === "shout" || bf.dmgPct > 20) {
+          /* 붉은 광폭/함성 오라 — 캐릭터 몸 전체를 붉은 불꽃과 붉은 기운 오라로 감쌈 */
+          var rgShout = ctx.createRadialGradient(bx, cy, 4, bx, cy, 26 * puls);
+          rgShout.addColorStop(0, "rgba(255, 50, 30, 0.55)");
+          rgShout.addColorStop(0.5, "rgba(230, 20, 10, 0.35)");
+          rgShout.addColorStop(0.85, "rgba(255, 80, 40, 0.15)");
+          rgShout.addColorStop(1, "rgba(255, 0, 0, 0)");
+          ctx.fillStyle = rgShout;
+          ctx.beginPath(); ctx.arc(bx, cy, 26 * puls, 0, Math.PI * 2); ctx.fill();
+
+          /* 솟구치는 붉은 불티 오라 입자 */
+          ctx.fillStyle = "rgba(255, 180, 80, 0.95)";
+          for (var pti = 0; pti < 5; pti++) {
+            var pta = world.time * 6 + pti * 1.25;
+            var ptr = 12 + Math.sin(pta * 2) * 6;
+            var pty = cy + Math.sin(pta * 1.5) * 14 - ((world.time * 20 + pti * 7) % 24) + 12;
+            var ptx = bx + Math.cos(pta) * ptr;
+            ctx.fillRect(Math.round(ptx), Math.round(pty), 2.5, 2.5);
+          }
+
+          /* 외곽 붉은 빛 충격 고리 */
+          ctx.strokeStyle = "rgba(255, 80, 50, 0.85)";
           ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.arc(bx, by - 4, 17, world.time * 3, world.time * 3 + Math.PI * 1.4);
+          ctx.ellipse(bx, by - 4, 18 * puls, 8 * puls, 0, 0, Math.PI * 2);
           ctx.stroke();
-        } else if (bf.id === "shout") {
-          ctx.strokeStyle = "rgba(255,100,60,0.85)";
+
+        } else if (bf.id === "ward" || bf.armor > 0) {
+          /* 황금빛 수호/결의 오라 — 캐릭터를 감싸는 빛나는 신성한 쉴드 돔 & 룬 링 */
+          var rgWard = ctx.createRadialGradient(bx, cy, 6, bx, cy, 25 * puls);
+          rgWard.addColorStop(0, "rgba(255, 235, 120, 0.55)");
+          rgWard.addColorStop(0.6, "rgba(255, 190, 40, 0.30)");
+          rgWard.addColorStop(1, "rgba(255, 160, 0, 0)");
+          ctx.fillStyle = rgWard;
+          ctx.beginPath(); ctx.arc(bx, cy, 25 * puls, 0, Math.PI * 2); ctx.fill();
+
+          /* 회전하는 황금 신성 테두리 */
+          ctx.strokeStyle = "rgba(255, 240, 160, 0.90)";
           ctx.lineWidth = 2.5;
           ctx.beginPath();
-          ctx.arc(bx, by - 4, 18 + Math.sin(world.time * 8) * 3, 0, Math.PI * 2);
+          ctx.arc(bx, cy, 22 * puls, world.time * 3, world.time * 3 + Math.PI * 1.3);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(bx, cy, 22 * puls, world.time * 3 + Math.PI, world.time * 3 + Math.PI * 2.3);
+          ctx.stroke();
+
+        } else if (bf.id === "venom") {
+          /* 짙은 초록 독 오라 — 독기가 몸 전체에 피어오름 */
+          var rgVenom = ctx.createRadialGradient(bx, cy, 4, bx, cy, 24 * puls);
+          rgVenom.addColorStop(0, "rgba(80, 240, 120, 0.55)");
+          rgVenom.addColorStop(0.65, "rgba(30, 180, 70, 0.30)");
+          rgVenom.addColorStop(1, "rgba(10, 120, 40, 0)");
+          ctx.fillStyle = rgVenom;
+          ctx.beginPath(); ctx.arc(bx, cy, 24 * puls, 0, Math.PI * 2); ctx.fill();
+
+          /* 독 방울 입자 */
+          ctx.fillStyle = "rgba(180, 255, 160, 0.90)";
+          for (var vni = 0; vni < 4; vni++) {
+            var vna = world.time * 4 + vni * 1.57;
+            var vnx = bx + Math.cos(vna) * 15;
+            var vny = cy + Math.sin(vna * 2) * 12;
+            ctx.beginPath(); ctx.arc(vnx, vny, 2, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
+    }
+    ctx.restore();
+  };
+
+  /* 개체 전면 전신 버프 오라 레이어 (Enveloping Front Aura) */
+  View.prototype.drawEntityAurasOver = function (ctx, e, ex, ey, ox, oy, world) {
+    if (e.dead) return;
+    var bx = ex * TILE + ox, by = ey * TILE + oy;
+    var cy = by - 16;
+    ctx.save();
+    if (e.kind === "player" && world.buffs && world.buffs.length) {
+      for (var bi = 0; bi < world.buffs.length; bi++) {
+        var bf = world.buffs[bi];
+        var puls = 1 + Math.sin(world.time * 9 + bi * 1.5) * 0.18;
+        if (bf.id === "shout" || bf.dmgPct > 20) {
+          /* 붉은 포효/광폭 전면 회전 불꽃 테두리 */
+          ctx.strokeStyle = "rgba(255, 120, 60, 0.95)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(bx, cy, 21 * puls, world.time * 5, world.time * 5 + Math.PI * 1.2);
+          ctx.stroke();
+
+          /* 붉은 함성 머리 위 기운 */
+          ctx.fillStyle = "rgba(255, 60, 40, 0.90)";
+          ctx.beginPath();
+          ctx.arc(bx, cy - 22, 5 * puls, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (bf.id === "ward" || bf.armor > 0) {
+          /* 황금 전면 수호 쉴드 빛 반사 */
+          ctx.strokeStyle = "rgba(255, 255, 200, 0.95)";
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.arc(bx, cy, 20 * puls, world.time * 4 + Math.PI * 0.5, world.time * 4 + Math.PI * 1.5);
           ctx.stroke();
         }
       }
