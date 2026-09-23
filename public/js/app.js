@@ -472,8 +472,17 @@
     /* 닫기 버튼을 패널 맨 위에 삽입 (내용 겹침 방지) */
     box.insertBefore(btn, box.firstChild);
 
-    /* 패널 바깥 클릭 시 닫기 — 한 번만 등록 */
+    /* 패널 바깥 클릭 시 닫기 — 한 번만 등록.
+     *
+     * ⚠ **패널 위에 뜨는 창은 "바깥" 이 아니다.** 물건 창(#itemModal)과
+     *   우클릭 차림표(#itemCtx)는 `body` 에 붙는다 — `box.contains()` 로 보면
+     *   바깥으로 잡혀서, 물건 창에서 「닫기」를 누르면 **가방까지 같이 닫혔다.**
+     *   그 둘 안에서 난 클릭은 건너뛴다.
+     * ⚠ 새 창을 `body` 에 붙일 때마다 여기 이름을 더해야 한다. 안 더하면
+     *   같은 증상이 조용히 되살아난다. */
+    var OVER_PANEL = "#itemModal, #itemCtx";
     var _outsideClose = function(e) {
+      if (e.target && e.target.closest && e.target.closest(OVER_PANEL)) return;
       if (!box.hidden && !box.contains(e.target)) {
         closePanel();
         document.removeEventListener("mousedown", _outsideClose, true);
@@ -501,9 +510,15 @@
     return (v > 0 ? "+" : "") + v + (PCT[k] ? "%" : "") + " " + (STAT_NAME[k] || k);
   }
   function statsOf(it) {
+    return statsList(it).join(" · ");
+  }
+  /* 능력치를 **줄 단위로** 돌려준다.
+   * ⚠ `statsOf` 는 한 줄로 이어 붙인다 — 좁은 칸에서는 말줄임으로 잘린다.
+   *   물건 창처럼 다 보여야 하는 곳은 이걸 쓴다. */
+  function statsList(it) {
     var parts = [], k;
     for (k in it.s) { var t = statLine(k, it.s[k]); if (t) parts.push(t); }
-    return parts.join(" · ");
+    return parts;
   }
   function esc(t) {
     return String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -787,21 +802,15 @@
         return (y.it.req || 0) - (x.it.req || 0);
       });
 
-      /* 고른 것.
-       * ⚠ 세트는 분해가 안 된다. 그래서 **분해할 수 있는 것만** 센다 —
-       *   "7개" 라고 써 놓고 6개만 없어지면 하나를 잃어버린 줄 안다. */
-      var selCount = 0, selSet = 0;
-      for (var sc = 0; sc < bag.length; sc++) {
-        if (!bagSel[sc] || !bag[sc]) continue;
-        if (bag[sc].set) selSet++; else selCount++;
-      }
+      /* 고른 것 — 세트도 센다. 막지 않으니 숫자도 그대로다 */
+      var selCount = 0;
+      for (var sc = 0; sc < bag.length; sc++) if (bagSel[sc] && bag[sc]) selCount++;
 
       html += '<div class="bag-seltools">' +
         '<button class="fchip" id="btnSelAll">전체 선택</button>' +
         '<button class="fchip" id="btnSelNone">선택 해제</button>' +
         '<button class="fchip danger" id="btnSalvageSel"' + (selCount ? '' : ' disabled') + '>' +
         '분해하기' + (selCount ? ' (' + selCount + '개)' : '') + '</button>' +
-        (selSet ? '<span class="selnote warn">세트 ' + selSet + '개는 분해 안 됨</span>' : '') +
         '<span class="selnote">' + shown.length + '개 보임' +
         (shown.length !== bag.length ? ' / 전체 ' + bag.length : '') + '</span>' +
         '</div>';
@@ -996,9 +1005,16 @@
           '<div class="itm-info-box">' +
             '<span class="nm" style="color:' + ti.color + '">' + esc(it.name) + '</span>' +
             '<span class="mt">' + I.SLOT_NAME[it.slot] + ' · ' + ti.name +
+              ' · Lv.' + I.reqLevel(it) +
               ((it.enh || 0) ? ' · 강화 +' + it.enh : '') + '</span>' +
-            '<span class="st">' + esc(statsOf(it)) + '</span>' +
           '</div>' +
+        '</div>' +
+        /* ⚠ 능력치는 **한 줄에 하나씩** 편다. 이어 붙이면 좁은 창에서
+         *   말줄임으로 잘려 "+43 ..." 처럼 뒤가 안 보인다(실제로 그랬다). */
+        '<div class="item-stats">' +
+          statsList(it).map(function (t2) {
+            return '<span>' + esc(t2) + '</span>';
+          }).join("") +
         '</div>' +
         (can ? '' : '<span class="req-warn">Lv.' + I.reqLevel(it) + ' 부터 입을 수 있다</span>') +
         '<div class="card-act-row">' + acts + '</div>' +
@@ -1045,8 +1061,9 @@
    * ⚠ 값 셈은 일괄 분해(salvageJunk)와 **같은 식**이다. 두 벌로 두면 한쪽만
    *   고쳐져 "일괄로 하면 더 받는" 이상한 일이 생긴다.
    * ⚠ 일괄 분해는 일반·마법만 건드린다. 여기서는 사람이 하나를 **고른** 것이라
-   *   희귀·유물도 받아 준다. 대신 **되돌릴 수 없으니** 한 번 더 묻는다.
-   * ⚠ 세트는 안 받는다 — 모으는 물건을 실수로 녹이면 되돌릴 방법이 없다. */
+   *   희귀·유물·세트까지 전부 받는다. 대신 되돌릴 수 없으니 한 번 더 묻는다.
+   * ⚠ **세트를 막지 않는다.** 한때 막아 뒀는데 그건 내가 정할 일이 아니었다 —
+   *   무엇을 녹일지는 쓰는 사람이 정한다. 대신 묻기는 한다. */
   var DUST_BY_TIER = { common: 1, magic: 2, rare: 4, relic: 8 };
 
   function salvageOne(where) {
@@ -1054,7 +1071,6 @@
     var eqSlot = (typeof where === "string") ? where : null;
     var it = eqSlot ? S.liveEquip(hero)[eqSlot] : S.liveBag(hero)[where];
     if (!it) return;
-    if (it.set) return toast("세트 장비는 분해할 수 없다");
     if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
 
     var gold = Math.max(5, Math.round((it.val || 0) * 0.6));
@@ -1075,31 +1091,32 @@
    * ⚠ **큰 번호부터 지운다.** 작은 것부터 지우면 뒤 번호가 밀려 엉뚱한 것이
    *   날아간다. 이건 되돌릴 수 없는 사고다.
    * ⚠ 값 셈은 한 개 분해(salvageOne)와 **같은 식**이다.
-   * ⚠ 세트와 **낀 물건**은 건너뛴다. 세트는 모으는 것이고, 낀 것은 가방에
-   *   없으니 애초에 안 걸리지만 한 번 더 막아 둔다.
-   * ⚠ 희귀·유물이 섞여 있으면 **한 번 더 묻는다.** 몇 개인지 숫자로 보여 준다
-   *   — "정말?" 만 물으면 무엇을 잃는지 모른 채 누른다. */
+   * ⚠ **아무것도 막지 않는다.** 세트도 녹인다 — 무엇을 버릴지는 쓰는 사람이
+   *   정한다. 대신 희귀·유물·세트가 섞여 있으면 **한 번 더 묻고**, 몇 개인지
+   *   숫자로 보여 준다. "정말?" 만 물으면 무엇을 잃는지 모른 채 누른다. */
   function salvageSelected(btn) {
     var I = global.ITEMS, S = global.SAVE;
     var bag = S.liveBag(hero);
     var idxs = [];
     for (var k in bagSel) {
       var i = Number(k);
-      if (bag[i] && !bag[i].set) idxs.push(i);
+      if (bag[i]) idxs.push(i);
     }
-    var bagSelBefore = {};
-    for (var pre in bagSel) if (bagSel[pre] && bag[Number(pre)]) bagSelBefore[pre] = true;
-    if (!idxs.length) return toast("고른 것이 없다 (세트는 분해할 수 없다)");
+    if (!idxs.length) return toast("고른 것이 없다");
     idxs.sort(function (a, b) { return b - a; });        /* 큰 번호부터 */
 
-    var precious = 0;
+    var precious = 0, sets = 0;
     for (var p = 0; p < idxs.length; p++) {
       var t = bag[idxs[p]].tier;
       if (t === "rare" || t === "relic") precious++;
+      if (bag[idxs[p]].set) sets++;
     }
-    if (precious && btn && btn.getAttribute("data-sure") !== "1") {
+    if ((precious || sets) && btn && btn.getAttribute("data-sure") !== "1") {
       btn.setAttribute("data-sure", "1");
-      btn.textContent = "정말 분해한다 (희귀·유물 " + precious + "개 포함)";
+      var what = [];
+      if (precious) what.push("희귀·유물 " + precious + "개");
+      if (sets) what.push("세트 " + sets + "개");
+      btn.textContent = "정말 분해한다 (" + what.join(" · ") + " 포함)";
       return;
     }
 
@@ -1117,12 +1134,7 @@
     if (world && world.applyHero) world.applyHero();
     S.save(hero);
     if (global.SFX) global.SFX.play("pickup");
-    /* 건너뛴 것이 있으면 **말해 준다.** 조용히 남겨 두면 "왜 안 없어졌지" 가 된다 */
-    var skipped = 0;
-    for (var sk in bagSelBefore) if (bagSelBefore[sk]) skipped++;
-    skipped -= idxs.length;
-    toast(idxs.length + "개 분해: +" + gold + "금 · 영혼의 가루 +" + dust +
-          (skipped > 0 ? " · 세트 " + skipped + "개는 그대로 뒀다" : ""));
+    toast(idxs.length + "개 분해: +" + gold + "금 · 영혼의 가루 +" + dust);
     openBag();
   }
 
@@ -1164,7 +1176,7 @@
         var d = b.getAttribute("data-do");
         if (d === "close") return closeCtxMenu();
         if (d === "salvage") {
-          var hard = (it.tier === "rare" || it.tier === "relic");
+          var hard = (it.tier === "rare" || it.tier === "relic" || !!it.set);
           if (hard && b.getAttribute("data-sure") !== "1") {
             b.setAttribute("data-sure", "1");
             b.textContent = "정말 분해한다 (되돌릴 수 없다)";

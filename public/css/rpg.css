@@ -1219,6 +1219,22 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 }
 
 /* ── Item Detail Modal Popup Overlay ── */
+/* 물건 창의 능력치 — **한 줄에 하나씩.**
+ * ⚠ 이어 붙여 한 줄로 두면 `.itm-info-box .st` 의 말줄임에 걸려 뒤가
+ *   잘린다("+43 ..."). 창은 다 보여 주는 자리다. */
+.item-stats {
+  display: flex; flex-direction: column; gap: 3px;
+  margin-top: 10px;
+  padding: 9px 11px;
+  background: rgba(0, 0, 0, .3);
+  border: 1px solid rgba(255, 255, 255, .07);
+  border-radius: 6px;
+}
+.item-stats span {
+  font-size: 13px; line-height: 1.45; color: #cfe0f0;
+  white-space: normal;
+}
+
 /* ══ 가방 거르기 · 정렬 · 고르기 ════════════════════════
  * ⚠ 칩은 **줄바꿈된다.** 좁은 화면에서 한 줄에 여덟 개를 욱여넣으면
  *   가방 격자를 밀어낸다. */
