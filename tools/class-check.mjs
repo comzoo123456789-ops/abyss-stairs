@@ -291,7 +291,11 @@ const forged = await ev(`(function(){ var h = window.__hero();
  *   걸러낸 자리를 **그 직업 재주로 메운다**(더 나은 동작이다 — 빈 칸으로 두면
  *   새 캐릭터가 반쯤 빈 손잡이로 시작한다). 재는 것을 바꾼다:
  *   ① 남의 재주가 하나도 없다  ② 겹친 칸이 없다  ③ 칸이 다 찼다 */
-const legal = ["burn", "nova", "dash", "ward"];
+/* 쓸 수 있는 재주를 **목록에서** 가져온다.
+ * 전에는 여기에 넷을 손으로 박아 두었다. 직업에 재주가 하나 늘자
+ * (전사에 stomp, 마법사도 같은 식) 멀쩡한 배치를 "남의 것" 이라고
+ * 불렀다. 검사 안에 박힌 목록은 제품의 진실이 아니라 검사의 기억이다. */
+const legal = await ev("window.CLASSES.skillsOf(window.__hero().cls)");
 const wrong = forged.bar.filter(x => x && legal.indexOf(x) < 0);
 const dup = forged.bar.filter((x, i) => x && forged.bar.indexOf(x) !== i);
 add("남의 직업 재주는 걸러진다",

@@ -14,7 +14,10 @@
   var last = 0, raf = 0;
   var fps = { t: 0, n: 0, v: 0 };
   /* 마우스 — **PC 에서 조준은 마우스다.** */
-  var mouse = { cx: 0, cy: 0, down: false, has: false };
+  /* ⚠ `has` 만으로는 모자란다. 오른쪽 화면을 터치해도 여기 좌표가 들어와서,
+   *   손을 떼고 나면 **마지막 터치 자리를 계속 바라보는** 상태가 된다.
+   *   `touch` 로 갈라 둔다 — 마우스 움직임이 들어오면 다시 false 다. */
+  var mouse = { cx: 0, cy: 0, down: false, has: false, touch: false };
   /* 모바일 터치 및 가상 조이스틱 상태 */
   var touchMove = { x: 0, y: 0 };
   var touchAttacking = false;
@@ -70,6 +73,22 @@
     }
 
     var r = world.advance(dt);
+
+    /* 몸이 **늘 커서를 본다.**
+     * ⚠ world 는 걸어가는 쪽으로 몸을 돌린다(e.dirX = mx). 마우스가 있으면
+     *   그 뒤에 덮어써야 한다 — 안 그러면 뒤로 물러날 때 등을 보인 채 쏜다.
+     * ⚠ `advance` **뒤, 그리기 앞**이다. 앞에 두면 걸음이 다시 덮는다. */
+    if (hasCursor() && !touchAttacking && !touchMove.x && !touchMove.y && !world.player.dead) {
+      var pw = view.toWorld(mouse.cx, mouse.cy);
+      var fdx2 = pw.x - world.player.x, fdy2 = pw.y - world.player.y;
+      var flen2 = Math.hypot(fdx2, fdy2);
+      if (flen2 > 0.05) {
+        world.player.dirX = fdx2 / flen2;
+        world.player.dirY = fdy2 / flen2;
+        world.player.face = world.player.dirX > 0 ? 1 : -1;
+      }
+    }
+
     view.draw(world, r.alpha);
 
     /* 논 시간도 캐릭터의 시간이다(죽어 있을 때는 안 센다) */
@@ -94,9 +113,29 @@
     if (fps.t >= 0.5) { fps.v = Math.round(fps.n / fps.t); fps.t = 0; fps.n = 0; diag(); }
   }
 
+  /* **진짜 커서**가 있는가. 터치로 들어온 좌표는 커서가 아니다. */
+  function hasCursor() { return mouse.has && !mouse.touch; }
+
   /* 마우스나 8방향 이동/조이스틱/타겟 방향이 가리키는 **월드 좌표**. */
   function aim() {
     var p = world.player;
+    /* 0) **마우스가 있으면 마우스가 정한다.**
+     *
+     * ⚠ 예전에는 "움직이는 중이면 가는 쪽" 이 먼저였다. 그래서 마우스를 어디에
+     *   두든 걸어가는 방향으로 쐈다 — 활을 들고 뒤로 물러나며 쏠 수가 없었다.
+     *   마우스가 달린 기기에서는 **늘 커서**가 조준이다.
+     * ⚠ 터치는 커서가 없다. 아래 갈래(조이스틱·자동 조준)를 그대로 둔다. */
+    if (hasCursor() && !touchAttacking && !touchMove.x && !touchMove.y) {
+      var mw = view.toWorld(mouse.cx, mouse.cy);
+      var adx = mw.x - p.x, ady = mw.y - p.y;
+      var alen = Math.hypot(adx, ady);
+      if (alen > 0.05) {
+        p.dirX = adx / alen; p.dirY = ady / alen;
+        p.face = p.dirX > 0 ? 1 : -1;
+      }
+      return mw;
+    }
+
     /* 1) 키보드(WASD 8방향) 또는 터치 조이스틱(8방향/360도) 이동 중일 때 */
     var ix = p.mx || 0, iy = p.my || 0;
     if (touchMove.x || touchMove.y) {
@@ -128,16 +167,13 @@
       }
     }
 
-    /* 3) 터치 조작 / 8방향 유지 조준 (마지막 이동 8방향 벡터) */
-    if (touchAttacking || !mouse.has) {
-      var dx = p.dirX !== undefined ? p.dirX : (p.face || 1);
-      var dy = p.dirY !== undefined ? p.dirY : 0;
-      var dlen = Math.hypot(dx, dy) || 1;
-      return { x: p.x + (dx / dlen) * 2, y: p.y + (dy / dlen) * 2 };
-    }
-
-    /* 4) 데스크톱 마우스 커서 기반 조준 */
-    return view.toWorld(mouse.cx, mouse.cy);
+    /* 3) 터치 · 커서 없음 — 마지막으로 보던 쪽.
+     * ⚠ 예전 4번 갈래(「데스크톱 커서 조준」)는 0번이 가져갔다. 남겨 두면
+     *   닿지 않는 코드가 되어, 다음 사람이 거기를 고치고 왜 안 먹는지 찾는다. */
+    var dx = p.dirX !== undefined ? p.dirX : (p.face || 1);
+    var dy = p.dirY !== undefined ? p.dirY : 0;
+    var dlen = Math.hypot(dx, dy) || 1;
+    return { x: p.x + (dx / dlen) * 2, y: p.y + (dy / dlen) * 2 };
   }
 
   /* 마을로. 체력은 마을에 들어가면 알아서 다 찬다(World 안에서). */
@@ -1202,7 +1238,7 @@
     if (m && !m.contains(e.target)) closeCtxMenu();
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeCtxMenu();
+    if (e.key === "Escape") closeCtxMenu();   /* 겹 닫기의 첫 겹 — 아래 keydown 이 나머지를 본다 */
   });
 
   function unequip(slot) {
@@ -2360,6 +2396,7 @@
         } else if (stickTouchId !== null && t.clientX >= window.innerWidth * 0.55) {
           /* 오른쪽 캔버스 터치 시 조준 & 공격 */
           mouse.cx = t.clientX; mouse.cy = t.clientY; mouse.has = true;
+          mouse.touch = true;
           mouse.down = true;
         }
       }
@@ -2393,6 +2430,7 @@
           }
         } else {
           mouse.cx = t.clientX; mouse.cy = t.clientY; mouse.has = true;
+          mouse.touch = true;
         }
       }
       e.preventDefault();
@@ -2505,7 +2543,21 @@
     global.addEventListener("resize", function () { view.resize(); });
     global.addEventListener("keydown", function (e) {
       wakeAudio();
-      if (e.code === "Escape") { closePanel(); return; }
+      /* ESC 는 **한 겹만** 닫는다.
+       * ⚠ 물건 창을 열어 놓고 ESC 를 누르면 가방까지 같이 닫혔다. 위에 뜬 것을
+       *   먼저 닫고, 그게 없을 때만 패널을 닫는다.
+       * ⚠ 새 겹을 만들 때마다 여기 차례를 더해야 한다 — 안 더하면 그 겹이
+       *   생긴 날부터 같은 증상이 조용히 돌아온다. */
+      if (e.code === "Escape") {
+        if (document.getElementById("itemCtx")) { closeCtxMenu(); return; }
+        if (document.getElementById("itemModal")) {
+          var ov = document.getElementById("itemModal");
+          if (ov.parentNode) ov.parentNode.removeChild(ov);
+          return;
+        }
+        closePanel();
+        return;
+      }
       /* ⚠ **연 키로 닫히게** 한다. I 로 열고 Esc 로만 닫히면 매번 손이 멀리 간다. */
       if (e.code === "KeyI" && panelOpen()) { closePanel(); return; }
       if (e.code === "KeyK" && panelOpen()) { closePanel(); return; }
@@ -2535,7 +2587,7 @@
     global.addEventListener("keyup", function (e) { keys[e.code] = 0; });
 
     canvas.addEventListener("mousemove", function (e) {
-      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
+      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true; mouse.touch = false;
       if (view && world) {
         var wpos = view.toWorld(e.clientX, e.clientY);
         var targetFoe = false, targetProp = false;
@@ -2568,7 +2620,7 @@
       }
     });
     canvas.addEventListener("mousedown", function (e) {
-      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true;
+      mouse.cx = e.clientX; mouse.cy = e.clientY; mouse.has = true; mouse.touch = false;
       mouse.down = true; wakeAudio(); e.preventDefault();
     });
     /* ⚠ mouseup 을 캔버스에만 걸면, 캔버스 밖에서 손을 떼었을 때 **계속 눌린
@@ -2620,6 +2672,20 @@
       } catch (e) { /* 막혀 있으면 그만 */ }
       return devOn();
     };
+    /* 검사가 장비를 갖추고 재려면 필요하다.
+     * ⚠ 「활로 쏘면 커서로 가는가」 는 활이 없으면 못 잰다. 화면을 눌러
+     *   장비를 끼우는 길만 두면, 그 길이 막히는 날 조준 검사까지 같이 죽는다. */
+    global.__give = giveTestItems;
+    global.__equipBag = equipFromBag;
+    global.__findBag = function (kind) {
+      /* ⚠ `hero.bag` 는 **눌러 담은 것**이다(`I.pack`). 거기서 `.base` 를
+       *   찾으면 늘 undefined 라 "활이 없다" 가 된다. 푼 것을 봐야 한다. */
+      var bag = global.SAVE.liveBag(hero);
+      for (var i = 0; i < bag.length; i++) {
+        if (bag[i] && bag[i].base === kind) return i;
+      }
+      return -1;
+    };
     global.__smith = openSmith;
     global.__craft = openCraft;
     global.__buyback = function () { return buyback.length; };
@@ -2670,7 +2736,16 @@
                ranged: !!(world.player.swing && world.player.swing.ranged),
                reach: world.player.swing ? world.player.swing.reach : null,
                spd: +world.player.spd.toFixed(2), stamMax: world.player.stamMax,
-               shots: world.shots.length };
+               /* 몸이 어디를 보는가 · 화살이 어디로 갔는가.
+                * ⚠ 「마우스를 따라 도는가」 는 이 둘 없이는 못 잰다. 눈으로
+                *   보면 늘 맞아 보인다 — 각도 8도 차이는 안 보인다. */
+               dirX: +(world.player.dirX || 0).toFixed(4),
+               dirY: +(world.player.dirY || 0).toFixed(4),
+               face: world.player.face,
+               shots: world.shots.length,
+               shotDir: world.shots.length
+                 ? { x: +(world.shots[0].vx).toFixed(4), y: +(world.shots[0].vy).toFixed(4) }
+                 : null };
     };
     /* 검사가 마우스 없이 조준·공격할 수 있어야 한다 */
     global.__swing = function (wx, wy) { return world.swing(wx, wy); };

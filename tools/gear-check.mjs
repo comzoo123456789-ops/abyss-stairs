@@ -331,8 +331,13 @@ await sleep(200);
 const ui = await ev(`(function(){
   var box = document.getElementById("panel");
   return { open: !box.hidden, wide: box.className.indexOf("wide") >= 0,
-           slots: box.querySelectorAll("[data-off], .itm.empty").length,
-           bagBtns: box.querySelectorAll("[data-on]").length,
+           /* 옛 표시([data-off] / .itm.empty / [data-on])를 세고 있었다.
+            * 가방 화면을 다시 그리면서 data-eq-slot / data-bag-idx 로 바뀌었는데
+            * 검사만 옛것을 봤다 - 늘 0개라 화면이 멀쩡해도 빨갰다.
+            * 검사 안에 박힌 목록은 제품의 진실이 아니라 검사의 기억이다.
+            * (여기는 지문 안이다. 홑따옴표 기울임표를 쓰면 지문이 거기서 끊긴다.) */
+           slots: box.querySelectorAll("[data-eq-slot]").length,
+           bagBtns: box.querySelectorAll("[data-bag-idx]").length,
            text: box.textContent.slice(0, 40) };
 })()`);
 add("가방 화면", ui.open && ui.wide && ui.slots === 7,

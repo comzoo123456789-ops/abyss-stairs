@@ -395,15 +395,25 @@ const book = await ev(`(function(){
   /* ⚠ 개수를 **못 박지 않는다.** 직업이 갈린 뒤로는 "내가 쓸 수 있는 것" 만
    *   보이므로, 5 로 적어 두면 멀쩡한 제품이 빨개진다(실제로 그랬다).
    *   목록(CLASSES.skillsOf)에서 세어 맞춘다. */
-  var want = window.CLASSES.skillsOf(window.__hero().cls).length;
+  var list = window.CLASSES.skillsOf(window.__hero().cls);
+  var want = list.length;
+  /* 손잡이 칸은 **쓰는 재주에만** 붙는다. 지속 효과는 손잡이에 못 올린다 -
+   * 올릴 수 없는 것에 칸을 그리면 눌러 보고서야 안 된다는 것을 안다.
+   * 그래서 want * 4 가 아니라 (쓰는 재주) * 4 다. 전에는 6 * 4 = 24 를
+   * 기다렸다가 16 을 보고 빨개졌다 - 제품이 아니라 검사가 낡은 것이었다. */
+  var active = list.filter(function (id) {
+    var d = window.SKILLS.byId(id);
+    return d && d.type !== "passive" && d.kind !== "buff";
+  }).length;
   return { open: !b.hidden, skills: b.querySelectorAll(".col.skill").length,
            syn: b.querySelectorAll("[data-syn]").length,
-           bar: b.querySelectorAll("[data-bar]").length, want: want };
+           bar: b.querySelectorAll("[data-bar]").length,
+           want: want, active: active };
 })()`);
 add("재주책", book.open && book.skills === book.want &&
-  book.syn === book.want * 3 && book.bar === book.want * 4,
+  book.syn === book.want * 3 && book.bar === book.active * 4,
   "스킬 " + book.skills + "/" + book.want + "개 · 시너지 " + book.syn +
-  "개 · 손잡이 단추 " + book.bar + "개");
+  "개 · 손잡이 단추 " + book.bar + "개(쓰는 재주 " + book.active + " x 4)");
 
 /* 화면 밖으로 안 잘리는가 */
 const fit = await ev(`(function(){
@@ -454,7 +464,11 @@ const forged = await ev(`(function(){ var h = window.__hero();
   return { cleave: h.skills.cleave, nope: !!h.skills.nope, other: !!h.skills.burn,
            bar: h.bar }; })()`);
 /* 남의 것·없는 것이 지워지고, 빈 자리는 **내 직업 재주로** 메워졌는가 */
-const legalW = ["cleave", "whirl", "dash", "ward"];
+/* 쓸 수 있는 재주를 **목록에서** 가져온다.
+ * 전에는 여기에 넷을 손으로 박아 두었다. 직업에 재주가 하나 늘자
+ * (전사에 stomp, 마법사도 같은 식) 멀쩡한 배치를 "남의 것" 이라고
+ * 불렀다. 검사 안에 박힌 목록은 제품의 진실이 아니라 검사의 기억이다. */
+const legalW = await ev("window.CLASSES.skillsOf(window.__hero().cls)");
 const wrongW = forged.bar.filter(x => x && legalW.indexOf(x) < 0);
 const dupW = forged.bar.filter((x, i) => x && forged.bar.indexOf(x) !== i);
 add("손으로 고쳐도 안 무너진다",
