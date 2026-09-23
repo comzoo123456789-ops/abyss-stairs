@@ -1219,6 +1219,73 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
 }
 
 /* ── Item Detail Modal Popup Overlay ── */
+/* ══ 가방 거르기 · 정렬 · 고르기 ════════════════════════
+ * ⚠ 칩은 **줄바꿈된다.** 좁은 화면에서 한 줄에 여덟 개를 욱여넣으면
+ *   가방 격자를 밀어낸다. */
+.bag-filters {
+  display: flex; flex-direction: column; gap: 5px;
+  margin: 8px 0 6px;
+}
+.bag-filters .frow {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
+}
+.bag-filters .flab {
+  width: 32px; flex: 0 0 auto;
+  font-size: 11px; color: #8d8474; letter-spacing: 1px;
+}
+.fchip {
+  padding: 4px 9px;
+  background: #201a28;
+  border: 1px solid #4a3d54;
+  border-radius: 5px;
+  color: #a09580;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.fchip:hover { background: #2b2336; color: #d9cfb8; }
+.fchip.on {
+  background: #4a3525; border-color: #ffd24a; color: #ffd24a; font-weight: bold;
+}
+.fchip[disabled] { opacity: .4; cursor: default; }
+.fchip[disabled]:hover { background: #201a28; color: #a09580; }
+/* 분해는 되돌릴 수 없다 — 색으로 미리 말해 준다 */
+.fchip.danger { border-color: #7a3a3a; color: #f0a0a0; }
+.fchip.danger:hover { background: #3a2026; color: #ffc9c9; }
+.fchip.danger[data-sure="1"] {
+  background: #5b1f26; border-color: #ff8a8a; color: #fff; font-weight: bold;
+}
+
+.bag-seltools {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin: 2px 0 8px;
+}
+.bag-seltools .selnote { margin-left: auto; font-size: 11px; color: #8d8474; }
+.bag-seltools .selnote.warn { margin-left: 4px; color: #e0b73a; }
+
+/* 고르기 네모 — 칸 왼쪽 위. ⚠ 칸 누르기와 겹치면 안 된다(따로 받는다) */
+.arpg-slot .sel-box {
+  position: absolute; left: 3px; top: 3px; z-index: 3;
+  width: 18px; height: 18px; line-height: 16px; text-align: center;
+  border: 1px solid #6a6178; border-radius: 4px;
+  background: rgba(12, 10, 18, .85);
+  color: #ffd24a; font-size: 12px; font-weight: bold;
+  cursor: pointer;
+}
+.arpg-slot .sel-box:hover { border-color: #ffd24a; }
+.arpg-slot.sel { box-shadow: 0 0 0 2px #ffd24a inset, 0 0 10px rgba(255,210,74,.35); }
+.arpg-slot.sel .sel-box { background: #ffd24a; color: #1a1509; border-color: #ffd24a; }
+
+/* 쓸 수 있는 레벨 — 오른쪽 아래에 작게. 레벨별로 고르려면 보여야 한다 */
+.arpg-slot .lv-badge {
+  position: absolute; right: 3px; bottom: 3px; z-index: 2;
+  padding: 0 4px; border-radius: 3px;
+  background: rgba(12, 10, 18, .82);
+  color: #9a917f; font-size: 10px; font-family: var(--num, monospace);
+}
+.arpg-slot.req-fail .lv-badge { color: #f87171; }
+
 /* 오른쪽 단추로 여는 작은 차림표 — 장착 / 해제 / 분해하기.
  * ⚠ 물건 창(.item-modal-*)보다 **위**에 둔다. 창 위에서도 우클릭이 된다. */
 .item-ctx {

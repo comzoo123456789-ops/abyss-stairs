@@ -635,6 +635,13 @@
   }
 
   var currentBagTab = "equip";
+  /* 가방 거르기·정렬·고르기.
+   * ⚠ 고른 것은 **칸 번호**로 들고 있는다. 분해하면 번호가 밀리므로
+   *   지울 때는 **큰 번호부터** 지운다(안 그러면 엉뚱한 것이 날아간다). */
+  var bagFilterSlot = "all";
+  var bagFilterTier = "all";
+  var bagSort = "tier";
+  var bagSel = {};
 
   function openBag(forceTab) {
     if (forceTab) currentBagTab = forceTab;
@@ -652,7 +659,9 @@
       '<button id="btnBagTabEquip" class="bag-tab-btn' + (currentBagTab === "equip" ? " active" : "") + '">⚔️ 장비 가방</button>' +
       '<button id="btnBagTabMats" class="bag-tab-btn' + (currentBagTab === "mats" ? " active" : "") + '">🔮 재료 가방</button>' +
       '</div>' +
-      (currentBagTab === "equip" ? '<div class="bag-action-row"><button id="btnSortBag" class="btn-sort-bag">⚡ 자동 정렬</button><button id="btnTestItems" class="btn-test-items">🎁 테스트 장비 획득</button></div>' : '') +
+      (currentBagTab === "equip" ? '<div class="bag-action-row">' +
+        '<button id="btnSortBag" class="btn-sort-bag">⚡ 자동 정렬</button>' +
+        '<button id="btnTestItems" class="btn-test-items">🎁 테스트 장비 획득</button></div>' : '') +
       '</div></div>';
     
     if (currentBagTab === "mats") {
@@ -723,24 +732,104 @@
       // Bag Grid (20 compact slots: 5x4)
       html += '<div class="inv-sec bag-section">';
       html += '<div class="sec-title"><span>가방</span><span class="sub-cnt">' + bag.length + ' / ' + S.BAG + '</span></div>';
-      html += '<div class="arpg-bag-grid">';
-      for (var b = 0; b < S.BAG; b++) {
-        var bit = bag[b];
-        if (bit) {
-          var bTi = I.tierOf(bit.tier);
-          var bTierCol = bTi ? bTi.color : '#b8b2a4';
-          var canEq = I.canEquip(bit, hero.level);
-          var bEnhBadge = bit.enh ? '<span class="enh-badge">+' + bit.enh + '</span>' : '';
-          var lockBadge = !canEq ? '<span class="lock-badge">🔒</span>' : '';
-          
-          html += '<div class="arpg-slot bag-slot filled tier-' + (bit.tier || 'common') + (!canEq ? ' req-fail' : '') + '" style="border-color:' + bTierCol + '" data-bag-idx="' + b + '" title="' + esc(bit.name) + '">';
-          html += getItemIconHtml(bit);
-          html += bEnhBadge;
-          html += lockBadge;
-          html += '</div>';
-        } else {
-          html += '<div class="arpg-slot bag-slot empty"><div class="empty-dot"></div></div>';
+
+      /* ── 거르기 · 정렬 ─────────────────────────────────
+       * ⚠ **거르는 것은 보여 주기만** 바꾼다. 가방 순서는 안 건드린다 —
+       *   거를 때마다 실제로 지우거나 섞으면 되돌릴 수가 없다.
+       * ⚠ 칸 번호(data-bag-idx)는 **진짜 번호**를 쓴다. 걸러서 보이는
+       *   순서로 매기면 장착·분해가 엉뚱한 것을 집는다. */
+      var SLOT_TABS = [["all", "전체"], ["weapon", "무기"], ["head", "투구"],
+                       ["body", "갑옷"], ["hands", "장갑"], ["feet", "신발"],
+                       ["ring", "반지"], ["amulet", "목걸이"]];
+      var TIER_TABS = [["all", "전체"], ["common", "일반"], ["magic", "마법"],
+                       ["rare", "희귀"], ["relic", "유물"]];
+      var SORT_TABS = [["tier", "등급순"], ["slot", "종류순"], ["level", "레벨순"]];
+
+      html += '<div class="bag-filters">';
+      html += '<div class="frow"><span class="flab">종류</span>';
+      for (var ft = 0; ft < SLOT_TABS.length; ft++) {
+        html += '<button class="fchip' + (bagFilterSlot === SLOT_TABS[ft][0] ? " on" : "") +
+          '" data-fslot="' + SLOT_TABS[ft][0] + '">' + SLOT_TABS[ft][1] + '</button>';
+      }
+      html += '</div><div class="frow"><span class="flab">등급</span>';
+      for (var gt = 0; gt < TIER_TABS.length; gt++) {
+        var tc = gt ? I.tierOf(TIER_TABS[gt][0]) : null;
+        html += '<button class="fchip' + (bagFilterTier === TIER_TABS[gt][0] ? " on" : "") + '"' +
+          (tc ? ' style="color:' + tc.color + '"' : '') +
+          ' data-ftier="' + TIER_TABS[gt][0] + '">' + TIER_TABS[gt][1] + '</button>';
+      }
+      html += '</div><div class="frow"><span class="flab">정렬</span>';
+      for (var st2 = 0; st2 < SORT_TABS.length; st2++) {
+        html += '<button class="fchip' + (bagSort === SORT_TABS[st2][0] ? " on" : "") +
+          '" data-fsort="' + SORT_TABS[st2][0] + '">' + SORT_TABS[st2][1] + '</button>';
+      }
+      html += '</div></div>';
+
+      /* 보이는 것 — 진짜 번호를 달고 다닌다 */
+      var shown = [];
+      for (var bi = 0; bi < bag.length; bi++) {
+        var b2 = bag[bi];
+        if (!b2) continue;
+        if (bagFilterSlot !== "all" && b2.slot !== bagFilterSlot) continue;
+        if (bagFilterTier !== "all" && b2.tier !== bagFilterTier) continue;
+        shown.push({ i: bi, it: b2 });
+      }
+      var TORD = { relic: 4, rare: 3, magic: 2, common: 1 };
+      var SORD = { weapon: 1, head: 2, body: 3, hands: 4, feet: 5, ring: 6, amulet: 7 };
+      shown.sort(function (x, y) {
+        if (bagSort === "level") return (y.it.req || 0) - (x.it.req || 0);
+        if (bagSort === "slot") {
+          var d = (SORD[x.it.slot] || 99) - (SORD[y.it.slot] || 99);
+          if (d) return d;
         }
+        var t2 = (TORD[y.it.tier] || 0) - (TORD[x.it.tier] || 0);
+        if (t2) return t2;
+        return (y.it.req || 0) - (x.it.req || 0);
+      });
+
+      /* 고른 것.
+       * ⚠ 세트는 분해가 안 된다. 그래서 **분해할 수 있는 것만** 센다 —
+       *   "7개" 라고 써 놓고 6개만 없어지면 하나를 잃어버린 줄 안다. */
+      var selCount = 0, selSet = 0;
+      for (var sc = 0; sc < bag.length; sc++) {
+        if (!bagSel[sc] || !bag[sc]) continue;
+        if (bag[sc].set) selSet++; else selCount++;
+      }
+
+      html += '<div class="bag-seltools">' +
+        '<button class="fchip" id="btnSelAll">전체 선택</button>' +
+        '<button class="fchip" id="btnSelNone">선택 해제</button>' +
+        '<button class="fchip danger" id="btnSalvageSel"' + (selCount ? '' : ' disabled') + '>' +
+        '분해하기' + (selCount ? ' (' + selCount + '개)' : '') + '</button>' +
+        (selSet ? '<span class="selnote warn">세트 ' + selSet + '개는 분해 안 됨</span>' : '') +
+        '<span class="selnote">' + shown.length + '개 보임' +
+        (shown.length !== bag.length ? ' / 전체 ' + bag.length : '') + '</span>' +
+        '</div>';
+
+      html += '<div class="arpg-bag-grid">';
+      for (var v = 0; v < shown.length; v++) {
+        var idx = shown[v].i, bit = shown[v].it;
+        var bTi = I.tierOf(bit.tier);
+        var bTierCol = bTi ? bTi.color : '#b8b2a4';
+        var canEq = I.canEquip(bit, hero.level);
+        var bEnhBadge = bit.enh ? '<span class="enh-badge">+' + bit.enh + '</span>' : '';
+        var lockBadge = !canEq ? '<span class="lock-badge">🔒</span>' : '';
+        html += '<div class="arpg-slot bag-slot filled tier-' + (bit.tier || 'common') +
+          (!canEq ? ' req-fail' : '') + (bagSel[idx] ? ' sel' : '') +
+          '" style="border-color:' + bTierCol + '" data-bag-idx="' + idx +
+          '" title="' + esc(bit.name) + ' · Lv.' + (bit.req || 1) + '">';
+        /* ⚠ 고르기 칸을 따로 둔다. "고르기 모드" 를 만들면 지금 어느 모드인지
+         *   늘 헷갈린다 — 칸은 누르면 열리고, 네모를 누르면 골라진다. */
+        html += '<span class="sel-box" data-sel="' + idx + '">' +
+                (bagSel[idx] ? '✔' : '') + '</span>';
+        html += getItemIconHtml(bit);
+        html += bEnhBadge;
+        html += lockBadge;
+        html += '<span class="lv-badge">' + (bit.req || 1) + '</span>';
+        html += '</div>';
+      }
+      for (var e2 = shown.length; e2 < S.BAG; e2++) {
+        html += '<div class="arpg-slot bag-slot empty"><div class="empty-dot"></div></div>';
       }
       html += '</div></div>';
 
@@ -805,6 +894,47 @@
           if (bag[bIdx]) openCtxMenu(ev2, bag[bIdx], false, bIdx);
         });
       });
+
+      /* 거르기·정렬 — 누르면 다시 그린다. ⚠ 고른 것은 **유지한다.**
+       * 거를 때마다 풀리면 여러 종류를 골라 한 번에 분해할 수가 없다. */
+      box.querySelectorAll("[data-fslot]").forEach(function (el) {
+        bindTapUI(el, function () { bagFilterSlot = el.getAttribute("data-fslot"); openBag(); });
+      });
+      box.querySelectorAll("[data-ftier]").forEach(function (el) {
+        bindTapUI(el, function () { bagFilterTier = el.getAttribute("data-ftier"); openBag(); });
+      });
+      box.querySelectorAll("[data-fsort]").forEach(function (el) {
+        bindTapUI(el, function () { bagSort = el.getAttribute("data-fsort"); openBag(); });
+      });
+
+      /* 네모를 누르면 골라진다. ⚠ 칸 누르기(물건 창)로 **번지지 않게** 막는다 */
+      box.querySelectorAll("[data-sel]").forEach(function (el) {
+        el.addEventListener("click", function (ev2) {
+          ev2.stopPropagation();
+          var i2 = Number(el.getAttribute("data-sel"));
+          if (bagSel[i2]) delete bagSel[i2]; else bagSel[i2] = true;
+          openBag();
+        });
+      });
+
+      var bSelAll = document.getElementById("btnSelAll");
+      if (bSelAll) bindTapUI(bSelAll, function () {
+        /* ⚠ **보이는 것만** 고른다. 걸러 놓고 "전체 선택" 을 눌렀는데 안 보이는
+         *   것까지 날아가면 그건 사고다. */
+        var bag2 = global.SAVE.liveBag(hero);
+        for (var i3 = 0; i3 < bag2.length; i3++) {
+          var x = bag2[i3];
+          if (!x) continue;
+          if (bagFilterSlot !== "all" && x.slot !== bagFilterSlot) continue;
+          if (bagFilterTier !== "all" && x.tier !== bagFilterTier) continue;
+          bagSel[i3] = true;
+        }
+        openBag();
+      });
+      var bSelNone = document.getElementById("btnSelNone");
+      if (bSelNone) bindTapUI(bSelNone, function () { bagSel = {}; openBag(); });
+      var bSalv = document.getElementById("btnSalvageSel");
+      if (bSalv) bindTapUI(bSalv, function () { salvageSelected(bSalv); });
 
       var btnSort = document.getElementById("btnSortBag");
       if (btnSort) {
@@ -937,6 +1067,62 @@
     S.save(hero);
     if (global.SFX) global.SFX.play("pickup");
     toast(it.name + " 분해: +" + gold + "금 · 영혼의 가루 +" + dust);
+    openBag();
+  }
+
+  /* 고른 것을 한 번에 분해한다.
+   *
+   * ⚠ **큰 번호부터 지운다.** 작은 것부터 지우면 뒤 번호가 밀려 엉뚱한 것이
+   *   날아간다. 이건 되돌릴 수 없는 사고다.
+   * ⚠ 값 셈은 한 개 분해(salvageOne)와 **같은 식**이다.
+   * ⚠ 세트와 **낀 물건**은 건너뛴다. 세트는 모으는 것이고, 낀 것은 가방에
+   *   없으니 애초에 안 걸리지만 한 번 더 막아 둔다.
+   * ⚠ 희귀·유물이 섞여 있으면 **한 번 더 묻는다.** 몇 개인지 숫자로 보여 준다
+   *   — "정말?" 만 물으면 무엇을 잃는지 모른 채 누른다. */
+  function salvageSelected(btn) {
+    var I = global.ITEMS, S = global.SAVE;
+    var bag = S.liveBag(hero);
+    var idxs = [];
+    for (var k in bagSel) {
+      var i = Number(k);
+      if (bag[i] && !bag[i].set) idxs.push(i);
+    }
+    var bagSelBefore = {};
+    for (var pre in bagSel) if (bagSel[pre] && bag[Number(pre)]) bagSelBefore[pre] = true;
+    if (!idxs.length) return toast("고른 것이 없다 (세트는 분해할 수 없다)");
+    idxs.sort(function (a, b) { return b - a; });        /* 큰 번호부터 */
+
+    var precious = 0;
+    for (var p = 0; p < idxs.length; p++) {
+      var t = bag[idxs[p]].tier;
+      if (t === "rare" || t === "relic") precious++;
+    }
+    if (precious && btn && btn.getAttribute("data-sure") !== "1") {
+      btn.setAttribute("data-sure", "1");
+      btn.textContent = "정말 분해한다 (희귀·유물 " + precious + "개 포함)";
+      return;
+    }
+
+    if (!hero.mats) hero.mats = { m_dust: 0, m_crystal: 0, m_essence: 0, m_scale: 0 };
+    var gold = 0, dust = 0;
+    for (var q = 0; q < idxs.length; q++) {
+      var it = bag[idxs[q]];
+      gold += Math.max(5, Math.round((it.val || 0) * 0.6));
+      dust += DUST_BY_TIER[it.tier] || 1;
+      hero.bag.splice(idxs[q], 1);
+    }
+    hero.gold += gold;
+    hero.mats.m_dust = (hero.mats.m_dust || 0) + dust;
+    bagSel = {};
+    if (world && world.applyHero) world.applyHero();
+    S.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    /* 건너뛴 것이 있으면 **말해 준다.** 조용히 남겨 두면 "왜 안 없어졌지" 가 된다 */
+    var skipped = 0;
+    for (var sk in bagSelBefore) if (bagSelBefore[sk]) skipped++;
+    skipped -= idxs.length;
+    toast(idxs.length + "개 분해: +" + gold + "금 · 영혼의 가루 +" + dust +
+          (skipped > 0 ? " · 세트 " + skipped + "개는 그대로 뒀다" : ""));
     openBag();
   }
 
