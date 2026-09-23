@@ -53,7 +53,13 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 await S("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 await S("Page.navigate", { url: "http://127.0.0.1:" + port + "/index.html" });
-await sleep(1200);
+/* ⚠ 고정 대기로 단정하지 않는다. 1,200ms 를 세고 물어보면 아직 스크립트가
+ *   안 붙은 판에서 "전역이 없다" 로 빨개진다 — 제품은 멀쩡한데 검사가
+ *   성급했던 것이다. 준비됐는지를 물어보고 기다린다. */
+for (let i = 0; i < 300; i++) {
+  if (await ev("!!(window.WORLD && window.VIEW && window.__w && window.__w())")) break;
+  await sleep(60);
+}
 
 const out = []; const add = (n, ok, note) => out.push([n, !!ok, note]);
 
@@ -182,24 +188,43 @@ if (up) {
    *   눌렀는데, 시작 자리 오른쪽이 벽인 판에서는 한 칸도 못 가 "시야가 안 는다" 로
    *   빨개졌다(단독으로는 통과, 묶어 돌리면 가끔 실패 — 가장 나쁜 종류다).
    *   제품이 아니라 검사가 불안정했던 자리다. */
-  await ev("window.__start({ seed: 4242 })");
-  await sleep(300);
-  const seen0 = await ev(`(function(){
-    var w = window.__w(); var n = 0;
-    for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];
-    return n;
-  })()`);
-  for (const k of ["KeyD", "KeyS", "KeyA", "KeyW"]) {
-    await ev(`window.__hold(["` + k + `"])`);
-    await sleep(420);
+  /* ⚠ 씨앗 하나에 기대지 않는다. 2026-09-23 에 던전 판을 40x28 로 줄이자
+   *   씨앗 4242 의 시작 방이 좁아져 **네 방향이 다 막혔고**, 한 칸도 못 간 채
+   *   "시야가 안 는다" 로 빨개졌다 — 제품은 멀쩡했다. 판 크기가 바뀔 때마다
+   *   씨앗을 다시 고르는 것은 검사가 아니라 메모다.
+   * ⚠ **움직였는지를 먼저 본다.** 한 칸도 못 간 판에서는 시야가 늘 이유가
+   *   없으므로, 그 판으로는 아무 것도 판정하지 않고 다음 씨앗으로 넘어간다. */
+  const SEEDS = [4242, 7, 1337, 99, 20260923, 55501];
+  let fov = null;
+  for (const sd of SEEDS) {
+    await ev(`window.__start({ seed: ${sd} })`);
+    await sleep(300);
+    const at0 = await ev(`(function(){
+      var w = window.__w(); var n = 0;
+      for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];
+      return { seen: n, x: w.player.x, y: w.player.y };
+    })()`);
+    for (const k of ["KeyD", "KeyS", "KeyA", "KeyW"]) {
+      await ev(`window.__hold(["` + k + `"])`);
+      await sleep(420);
+    }
+    const at1 = await ev(`(function(){
+      window.__hold([]); var w = window.__w(); var n = 0;
+      for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];
+      return { seen: n, x: w.player.x, y: w.player.y, steps: w.steps, fps: window.__fps() };
+    })()`);
+    const moved = Math.hypot(at1.x - at0.x, at1.y - at0.y);
+    fov = { seed: sd, seen0: at0.seen, seen: at1.seen, moved: +moved.toFixed(2), fps: at1.fps };
+    /* 네 방향을 돌면 제자리로 오므로 마지막 위치가 아니라 **시야가 늘었는가**로
+     * 본다. 움직임은 "이 판에서 판정할 수 있는가" 를 가르는 데만 쓴다. */
+    if (at1.seen > at0.seen) break;
+    if (moved > 1.5) break;              /* 움직였는데도 안 늘었다면 진짜 문제다 */
   }
-  const after = await ev(`(function(){
-    window.__hold([]); var w = window.__w(); var n = 0;
-    for (var i = 0; i < w.level.seen.length; i++) n += w.level.seen[i];
-    return { seen: n, steps: w.steps, fps: window.__fps() };
-  })()`);
-  add("시야 갱신", after.seen > seen0,
-    "걸어가며 알게 된 칸 " + seen0 + " → " + after.seen);
+  const after = { fps: fov.fps };
+  add("시야 갱신", fov.seen > fov.seen0,
+    "씨앗 " + fov.seed + " · 걸어가며 알게 된 칸 " + fov.seen0 + " → " + fov.seen +
+    " · 움직인 거리 " + fov.moved + "칸" +
+    (fov.seen > fov.seen0 ? "" : (fov.moved <= 1.5 ? " · ⚠ 사방이 막혀 판정 못 함" : "")));
   add("프레임", after.fps >= 30, after.fps + "fps (헤드리스 기준)");
 
   /* ── 정말 그려지는가 — 빈 화면이면 위가 다 통과해도 소용없다 ── */

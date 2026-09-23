@@ -59,7 +59,20 @@ const key = async (code) => {
   await sleep(40);
 };
 
-const reload = async () => { await S("Page.navigate", { url: URL0 }); await sleep(1100); };
+/* ⚠ **고정 대기로 단정하지 않는다.** 1,100ms 를 세고 물어보면 아직 스크립트가
+ *   안 붙은 판에서 undefined 가 돌아오고, 그 다음 줄이 "undefined 의 length"
+ *   로 죽는다 — 죽는 자리가 매번 달라 원인이 안 보인다(실제로 skill-check 가
+ *   그렇게 간헐로 죽었다). 준비됐는지를 **물어보고** 기다린다. */
+const ready = async (ms) => {
+  const until = Date.now() + (ms || 15000);
+  for (;;) {
+    const ok = await ev("!!(window.WORLD && window.SKILLS && window.ITEMS && window.SAVE && window.__hero)");
+    if (ok) return true;
+    if (Date.now() > until) throw new Error("화면이 " + (ms || 15000) + "ms 안에 안 떴다");
+    await sleep(60);
+  }
+};
+const reload = async () => { await S("Page.navigate", { url: URL0 }); await ready(); };
 
 await S("Emulation.setDeviceMetricsOverride", { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
 /* ⚠ 앞선 검사가 남긴 저장이 있으면 결과가 흔들린다. 지우려면 **먼저 그 주소를

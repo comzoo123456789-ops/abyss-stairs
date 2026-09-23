@@ -45,7 +45,11 @@ const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValu
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 await S("Emulation.setDeviceMetricsOverride", { width: 900, height: 620, deviceScaleFactor: 1, mobile: false });
 await S("Page.navigate", { url: "http://127.0.0.1:" + port + "/index.html" });
-await sleep(1100);
+/* ⚠ 고정 대기로 단정하지 않는다 — 소리표가 붙을 때까지 물어보고 기다린다 */
+for (let i = 0; i < 250; i++) {
+  if (await ev("!!(window.MUSIC && window.SFX)")) break;
+  await sleep(60);
+}
 
 const out = []; const add = (n, ok, note) => out.push([n, !!ok, note]);
 

@@ -52,9 +52,20 @@ const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValu
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 await S("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
-await S("Page.navigate", { url: URL0 }); await sleep(1100);
+/* ⚠ 고정 대기로 단정하지 않는다 — 준비됐는지를 물어보고 기다린다.
+ * 스크립트가 덜 붙은 판에서 undefined 가 돌아오면 한참 뒤 엉뚱한 줄에서 죽는다. */
+const ready = async (ms) => {
+  const until = Date.now() + (ms || 15000);
+  for (;;) {
+    const ok = await ev("!!(window.WORLD && window.SKILLS && window.ITEMS && window.SAVE && window.__hero)");
+    if (ok) return true;
+    if (Date.now() > until) throw new Error("화면이 안 떴다");
+    await sleep(60);
+  }
+};
+await S("Page.navigate", { url: URL0 }); await ready();
 await ev(`localStorage.clear()`);
-await S("Page.navigate", { url: URL0 }); await sleep(1100);
+await S("Page.navigate", { url: URL0 }); await ready();
 
 const out = []; const add = (n, ok, note) => out.push([n, !!ok, note]);
 

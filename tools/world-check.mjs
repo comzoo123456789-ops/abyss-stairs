@@ -51,7 +51,20 @@ const S = (m, p) => send(m, p, sessionId);
 await S("Page.enable"); await S("Runtime.enable");
 const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValue: true, awaitPromise: true })).result.value;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const reload = async () => { await S("Page.navigate", { url: URL0 }); await sleep(1100); };
+/* ⚠ **고정 대기로 단정하지 않는다.** 1,100ms 를 세고 물어보면 아직 스크립트가
+ *   안 붙은 판에서 undefined 가 돌아오고, 그 다음 줄이 "undefined 의 length"
+ *   로 죽는다 — 죽는 자리가 매번 달라 원인이 안 보인다(실제로 skill-check 가
+ *   그렇게 간헐로 죽었다). 준비됐는지를 **물어보고** 기다린다. */
+const ready = async (ms) => {
+  const until = Date.now() + (ms || 15000);
+  for (;;) {
+    const ok = await ev("!!(window.WORLD && window.SKILLS && window.ITEMS && window.SAVE && window.__hero)");
+    if (ok) return true;
+    if (Date.now() > until) throw new Error("화면이 " + (ms || 15000) + "ms 안에 안 떴다");
+    await sleep(60);
+  }
+};
+const reload = async () => { await S("Page.navigate", { url: URL0 }); await ready(); };
 
 await S("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 await reload();
@@ -323,20 +336,26 @@ add("무거운 층도 버틴다", perf.perStep < 3.0,
   perf.perStep + "ms (16.7ms 안에 들어야 한다)");
 
 /* ── ⑩ 화면 — 구역마다 색이 다른가 ───────────────────── */
+/* ⚠ **눈금 위에 선 값으로 판정하지 않는다.** 53픽셀마다 한 점씩 한 판만
+ *   재면 층이 무작위라 같은 코드가 어떤 날은 13, 어떤 날은 12 로 나온다
+ *   (문턱이 12 라 그대로 뒤집혔다). 촘촘히(7픽셀마다) 재고 판을 셋 돌려
+ *   평균한다 — 재는 값이 흔들리면 문턱을 아무리 잘 잡아도 소용없다. */
 const colors = await ev(`(async function(){
   var out = [];
-  for (var i = 0; i < 5; i++) {
-    var d = [3, 9, 15, 21, 27][i];
-    window.__hero().maxDepth = 30;
-    window.__depth(d);
-    await new Promise(function (r) { setTimeout(r, 260); });
-    var c = document.getElementById("view");
-    var g = c.getContext("2d");
-    var px = g.getImageData(0, 0, c.width, c.height).data;
+  var deps = [3, 9, 15, 21, 27];
+  for (var i = 0; i < deps.length; i++) {
     var r = 0, gg = 0, b = 0, n = 0;
-    for (var k = 0; k < px.length; k += 4 * 53) {
-      if (px[k] + px[k+1] + px[k+2] < 40) continue;
-      r += px[k]; gg += px[k+1]; b += px[k+2]; n++;
+    for (var t = 0; t < 3; t++) {
+      window.__hero().maxDepth = 30;
+      window.__depth(deps[i]);
+      await new Promise(function (res) { setTimeout(res, 260); });
+      var c = document.getElementById("view");
+      var g = c.getContext("2d");
+      var px = g.getImageData(0, 0, c.width, c.height).data;
+      for (var k = 0; k < px.length; k += 4 * 7) {
+        if (px[k] + px[k+1] + px[k+2] < 40) continue;
+        r += px[k]; gg += px[k+1]; b += px[k+2]; n++;
+      }
     }
     out.push(n ? [Math.round(r/n), Math.round(gg/n), Math.round(b/n)] : null);
   }

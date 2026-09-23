@@ -52,7 +52,20 @@ await S("Page.enable"); await S("Runtime.enable");
 const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValue: true, awaitPromise: true })).result.value;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* 진짜 새로고침 — 메모리 안 왕복이 아니라 **다시 띄운다** */
-const reload = async () => { await S("Page.navigate", { url: URL0 }); await sleep(1100); };
+/* ⚠ **고정 대기로 단정하지 않는다.** 1,100ms 를 세고 물어보면 아직 스크립트가
+ *   안 붙은 판에서 undefined 가 돌아오고, 그 다음 줄이 "undefined 의 length"
+ *   로 죽는다 — 죽는 자리가 매번 달라 원인이 안 보인다(실제로 skill-check 가
+ *   그렇게 간헐로 죽었다). 준비됐는지를 **물어보고** 기다린다. */
+const ready = async (ms) => {
+  const until = Date.now() + (ms || 15000);
+  for (;;) {
+    const ok = await ev("!!(window.WORLD && window.SKILLS && window.ITEMS && window.SAVE && window.__hero)");
+    if (ok) return true;
+    if (Date.now() > until) throw new Error("화면이 " + (ms || 15000) + "ms 안에 안 떴다");
+    await sleep(60);
+  }
+};
+const reload = async () => { await S("Page.navigate", { url: URL0 }); await ready(); };
 /* 저장소에 값을 **심고** 새로 띄운다.
  * ⚠ 심기 전에 저장을 잠가야 한다. 게임은 창을 닫을 때(beforeunload) 한 번 더
  *   저장하므로, 그냥 심고 새로고침하면 **내가 심은 값을 게임이 덮어쓴다**

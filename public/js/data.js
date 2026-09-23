@@ -220,8 +220,19 @@
   /* 층마다 몇 마리 — 깊이에 따라 늘되 **상한**을 둔다.
    * ⚠ 상한이 없으면 후반에 수십 마리가 몰려 프레임이 죽고, 피할 자리가 없어져
    *   실력이 아니라 운이 된다. */
-  function countAt(depth) {
-    return Math.min(22, 8 + Math.floor(depth * 0.7));
+  /* 기준 판의 걷는 칸 수 — 예전 56x40 을 실측한 값이다(685칸).
+   * ⚠ 판을 줄이면서 마릿수를 그대로 두면 **밀도가 1.8배**가 된다
+   *   (한 마리당 31.2칸 → 17.5칸). 판 크기는 "얼마나 걷나" 의 문제이고
+   *   밀도는 "얼마나 싸우나" 의 문제다 — 한 번에 둘을 바꾸면 무엇 때문에
+   *   달라졌는지 알 수가 없다. 걷는 칸에 비례해 마릿수를 맞춘다. */
+  var REF_WALK = 685;
+
+  function countAt(depth, walkable) {
+    var n = Math.min(22, 8 + Math.floor(depth * 0.7));
+    /* ⚠ 안 넘겨주면 옛 값 그대로다. 부르는 곳이 하나라 지금은 늘 넘어오지만,
+     *   빠뜨렸을 때 조용히 0 이 되면 몬스터 없는 층이 된다. */
+    if (!walkable) return n;
+    return Math.max(3, Math.round(n * walkable / REF_WALK));
   }
 
   function audit() {
@@ -279,6 +290,6 @@
   global.DATA = {
     ZONES: ZONES, MOBS: MOBS, BOSSES: BOSSES, MAX_DEPTH: 30,
     zoneAt: zoneAt, poolAt: poolAt, bossAt: bossAt,
-    statsAt: statsAt, scaleAt: scaleAt, countAt: countAt, audit: audit
+    statsAt: statsAt, scaleAt: scaleAt, countAt: countAt, REF_WALK: REF_WALK, audit: audit
   };
 })(window);

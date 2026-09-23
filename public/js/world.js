@@ -175,7 +175,18 @@
       this.zones = t.zones;
       startAt = t.start;
     } else {
-      this.level = D.generate(opt.w || 56, opt.h || 40, this.depth, seed);
+      /* 던전 판 크기. **56x40 에서 줄였다**(사용자: "던전에 들어가면 맵이
+       * 너무 크게 나온다"). 배율은 마을과 같으니 크게 그려지는 것이 아니라
+       * 판이 넓었던 것이다 — 마을 30x22 의 3.4배였다.
+       *
+       *   실측     56x40   걷는 칸 685 · 계단→계단 52걸음 · 13.0초
+       *            40x28   걷는 칸 384 · 계단→계단 34걸음 ·  8.5초
+       *
+       * ⚠ 1280 화면에서 1280x896 이라 한 화면에 거의 들어오고, 넓은 화면에서는
+       *   마을처럼 가운데 서서 여백이 생긴다. 40칸은 1280 뷰포트의 가로 칸 수다.
+       * ⚠ 더 줄이지 말 것. 36x26 이면 방이 여섯뿐이라 보스방과 보물방을 넣고
+       *   나면 고를 길이 사라진다. */
+      this.level = D.generate(opt.w || 40, opt.h || 28, this.depth, seed);
     }
     this.ents = [];
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
@@ -295,7 +306,11 @@
     var rng = D.makeRng(this.seed ^ 0x5bf03635);
     var lv = this.level, placed = 0, guard = 0;
     var pool = DT.poolAt(depth);
-    if (count === undefined) count = DT.countAt(depth);
+    /* ⚠ 걷는 칸을 함께 넘긴다 — 안 넘기면 판을 줄인 만큼 밀도가 올라
+     *   "맵만 줄였는데 왜 더 어렵지" 가 된다. 밀도는 따로 정할 일이다. */
+    var walk = 0;
+    for (var wi = 0; wi < lv.tiles.length; wi++) if (lv.tiles[wi] !== D.WALL) walk++;
+    if (count === undefined) count = DT.countAt(depth, walk);
 
     /* 보스가 먼저다 — **가장 먼 방**에 세운다. 들어서는 자리에 두면
      * 문을 여는 순간 끝나고, 준비할 틈이 없다. */

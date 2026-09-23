@@ -51,7 +51,20 @@ const S = (m, p) => send(m, p, sessionId);
 await S("Page.enable"); await S("Runtime.enable");
 const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValue: true, awaitPromise: true })).result.value;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const reload = async () => { await S("Page.navigate", { url: URL0 }); await sleep(1100); };
+/* ⚠ **고정 대기로 단정하지 않는다.** 1,100ms 를 세고 물어보면 아직 스크립트가
+ *   안 붙은 판에서 undefined 가 돌아오고, 그 다음 줄이 "undefined 의 length"
+ *   로 죽는다 — 죽는 자리가 매번 달라 원인이 안 보인다(실제로 skill-check 가
+ *   그렇게 간헐로 죽었다). 준비됐는지를 **물어보고** 기다린다. */
+const ready = async (ms) => {
+  const until = Date.now() + (ms || 15000);
+  for (;;) {
+    const ok = await ev("!!(window.WORLD && window.SKILLS && window.ITEMS && window.SAVE && window.__hero)");
+    if (ok) return true;
+    if (Date.now() > until) throw new Error("화면이 " + (ms || 15000) + "ms 안에 안 떴다");
+    await sleep(60);
+  }
+};
+const reload = async () => { await S("Page.navigate", { url: URL0 }); await ready(); };
 
 await S("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
 await reload();
