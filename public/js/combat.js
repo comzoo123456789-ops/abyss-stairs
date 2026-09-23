@@ -146,6 +146,16 @@
       if (world.spawnSparks) world.spawnSparks(to.x, to.y - 0.2, to.team !== 0 ? "#ffe9a8" : "#ff8d7a", 4);
     }
 
+    /* 되돌리기 — 기사의 방패 올리기.
+     * ⚠ `opt.noReflect` 로 되돌린 피해는 다시 안 되돌린다. 안 막으면
+     *   둘 다 방패를 들었을 때 서로 무한히 되돌린다.
+     * ⚠ 치명타를 안 굴린다. 되돌린 값이 또 두 배가 되면 방패 하나로
+     *   상대가 녹는다 — 되돌리는 것은 받은 만큼이지 새로 때리는 것이 아니다. */
+    if (!opt.noReflect && to.reflect > 0 && from && from !== to && !from.dead) {
+      var back = Math.round(n * to.reflect / 100);
+      if (back > 0) damage(world, to, from, back, { canCrit: false, noReflect: true });
+    }
+
     /* 흡혈 — 때린 **사람 수만큼** 회복된다(광역 무기의 값어치다) */
     if (from && from.lifeOnHit > 0 && from.hp < from.maxHp && !from.dead)
       from.hp = Math.min(from.maxHp, from.hp + from.lifeOnHit);

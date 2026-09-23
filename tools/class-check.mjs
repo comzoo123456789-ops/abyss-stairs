@@ -228,7 +228,11 @@ const create = await ev(`(function(){
            picks: b.querySelectorAll("[data-cls]").length,
            faces: b.querySelectorAll(".face").length };
 })()`);
-add("처음 켜면 직업부터", create.open && create.cards === 3 && create.picks === 3,
+/* ⚠ 개수를 못 박지 않는다. 기사를 더하자 "3개여야 한다" 로 빨개졌는데
+ *   제품은 넷을 멀쩡히 그리고 있었다 — 검사 안에 박힌 숫자는 제품의
+ *   진실이 아니라 검사의 기억이다. 목록에서 세어 맞춘다. */
+const wantCls = await ev("window.CLASSES.LIST.length");
+add("처음 켜면 직업부터", create.open && create.cards === wantCls && create.picks === wantCls,
   "창 " + (create.open ? "열림" : "⚠안 열림") + " · 직업 " + create.cards +
   "개 · 그림 " + create.faces + "개");
 
@@ -243,7 +247,7 @@ const faces = await ev(`(function(){
   });
   return out;
 })()`);
-add("직업 그림이 칠해진다", faces.length === 3 && faces.every(f => f > 400),
+add("직업 그림이 칠해진다", faces.length === wantCls && faces.every(f => f > 400),
   "칠해진 점 " + faces.join(" / "));
 
 await ev(`document.querySelector('[data-cls="mage"]').click()`);

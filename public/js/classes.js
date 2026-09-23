@@ -33,6 +33,24 @@
       start: { weapon: "sword", body: "tunic" }
     },
     {
+      /* 기사 — **막고 되받아친다.**
+       * ⚠ 전사와 갈리는 축이 수치가 아니라 **행동**이어야 한다. 전사는 체력이
+       *   가장 높고 먼저 때린다(베어넘기기·회전베기). 기사는 방어가 가장 높고
+       *   재주 넷이 전부 받아 넘기거나 끌어당기거나 밀어낸다 — 먼저 때리는
+       *   재주가 하나도 없다. 같은 장르가 기사와 전사를 가르는 축이 그것이다.
+       * ⚠ 가장 느리다(3.7). 방어를 가장 높게 주면서 발까지 빠르면 도망도
+       *   버티기도 다 되는 직업이 된다. */
+      id: "knight", name: "기사", sprite: "knight",
+      tag: "막고 되받아친다",
+      text: "방어가 가장 높고 가장 느리다. 맞아 주고 그만큼을 되돌려준다.",
+      hp: 56, hpPer: 13, spd: 3.7, armor: 6, critPct: 0,
+      stam: 110, stamRegen: 13,
+      likes: ["sword", "spear"],
+      likesText: "장검 · 장창",
+      skills: ["shieldup", "bash", "provoke", "shieldthrow"],
+      start: { weapon: "sword", body: "mail" }
+    },
+    {
       id: "rogue", name: "도적", sprite: "rogue",
       tag: "붙었다 빠진다",
       text: "빠르고 치명타가 높지만 잘 죽는다. 한 방을 노리고 들어갔다 물러난다.",

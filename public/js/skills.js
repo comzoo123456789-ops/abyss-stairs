@@ -108,7 +108,7 @@
 
     { id: "shout", type: "passive", name: "전장의 함성", kind: "buff", icon: "s_shout",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 30,
-      dur: 8.0, armor: 10, dmgPct: 20,
+      dur: 8.0, armor: 10, dmgPct: 20, taunt: 4.5, tauntSlow: 30, tauntSec: 2.5,
       text: "8초간 방어 +10 · 피해 +20% · 주변 적의 시선을 끈다",
       syn: [
         { id: "long",  name: "오래",    text: "지속 8 → 13초", s: { dur: 5 } },
@@ -179,6 +179,52 @@
       ] },
 
     /* ── 공용 ── */
+    /* ── 기사 전용 ──────────────────────────────────────
+     * 기사는 **막고 되받아친다.** 전사가 체력으로 버틴다면 기사는 방패로 받아
+     * 그 값을 상대에게 돌려준다 — 같은 장르(드래곤즈 도그마의 반격 방패,
+     * 블루 프로토콜의 이지스)가 기사와 전사를 가르는 축이 그것이다.
+     * ⚠ 수치만 다른 전사를 만들지 않는다. 기사의 재주 넷은 모두 **받아서
+     *   되돌리거나 · 끌어당기거나 · 밀어낸다** — 먼저 때리는 재주가 없다. */
+    { id: "shieldup", type: "active", name: "방패 올리기", kind: "buff", icon: "s_guard",
+      cd: 12.0, cast: 0.0, after: 0.12, stam: 24,
+      dur: 5.0, armor: 20, reflect: 60,
+      text: "5초간 방어 +20 · 맞은 만큼의 60% 를 되돌려준다",
+      syn: [
+        { id: "long",  name: "오래",  text: "지속 5 → 8초", s: { dur: 3 } },
+        { id: "thorn", name: "가시",  text: "되돌리기 60 → 110%", s: { reflect: 50 } },
+        { id: "wall",  name: "성벽",  text: "방어 +20 → +34", s: { armor: 14 } }
+      ] },
+
+    { id: "bash", type: "active", name: "방패치기", kind: "swing", icon: "s_bash",
+      cd: 6.0, cast: 0.18, after: 0.22, stam: 18,
+      mult: 1.3, reach: 1.6, arc: 110, push: 2.4, slow: 2.5, guard: 6,
+      text: "방패로 밀쳐 2.5초간 느리게 만든다 — 치는 동안 방어 +6",
+      syn: [
+        { id: "far",   name: "멀리",   text: "밀쳐내기 2.4 → 3.6칸", s: { push: 1.2 } },
+        { id: "hard",  name: "세게",   text: "위력 1.3 → 2.1배", s: { mult: 0.8 } },
+        { id: "quick", name: "빠르게", text: "재사용 6.0 → 4.0초", s: { cd: -2.0 } }
+      ] },
+
+    { id: "provoke", type: "active", name: "도발", kind: "buff", icon: "s_provoke",
+      cd: 14.0, cast: 0.15, after: 0.15, stam: 26,
+      dur: 6.0, armor: 8, taunt: 5.5, tauntSlow: 35, tauntSec: 3.0,
+      text: "5.5칸 안의 시선을 끌어 3초간 느리게 한다 · 6초간 방어 +8",
+      syn: [
+        { id: "wide",  name: "넓게",   text: "5.5 → 8칸", s: { taunt: 2.5 } },
+        { id: "grip",  name: "붙든다", text: "둔화 35 → 60% · 3 → 5초", s: { tauntSlow: 25, tauntSec: 2 } },
+        { id: "brace", name: "버팀",   text: "방어 +8 → +20", s: { armor: 12 } }
+      ] },
+
+    { id: "shieldthrow", type: "active", name: "방패 던지기", kind: "knives", icon: "s_throw",
+      cd: 8.0, cast: 0.22, after: 0.20, stam: 22,
+      mult: 2.0, count: 1, reach: 7.0,
+      text: "방패를 던진다 — 7칸까지 곧게 날아간다",
+      syn: [
+        { id: "far",   name: "멀리",   text: "7 → 11칸", s: { reach: 4 } },
+        { id: "heavy", name: "무겁게", text: "위력 2.0 → 3.0배", s: { mult: 1.0 } },
+        { id: "two",   name: "둘",     text: "두 장을 던진다", s: { count: 1 } }
+      ] },
+
     { id: "ward", name: "결의", kind: "buff", icon: "s_ward",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 25,
       dur: 6.0, armor: 8, apsPct: 25,
@@ -310,17 +356,26 @@
                           tick: sk.tick, dmg: dmg, from: p, slow: sk.slow || 0,
                           type: cast.id === "smoke" ? "smoke" : "fire" });
     } else if (sk.kind === "buff") {
+      /* `reflect` 는 기사의 방패 올리기가 쓴다 — 맞은 만큼을 되돌려준다.
+       * ⚠ 합산은 refreshBuffs 한 곳에서 한다. 여기서 몸에 직접 쓰면
+       *   버프가 끝날 때 무엇으로 되돌릴지 몰라 계속 쌓인다. */
       world.buffs.push({ until: world.time + sk.dur, armor: sk.armor || 0,
-                         apsPct: sk.apsPct || 0, dmgPct: sk.dmgPct || 0, id: cast.id });
+                         apsPct: sk.apsPct || 0, dmgPct: sk.dmgPct || 0,
+                         reflect: sk.reflect || 0, id: cast.id });
       if (sk.heal) p.hp = Math.min(p.maxHp, p.hp + Math.round(p.maxHp * sk.heal / 100));
-      if (cast.id === "shout") {
+      /* 시선 끌기. ⚠ 예전에는 `cast.id === "shout"` 로 박혀 있었다 —
+       *   기사의 도발이 같은 일을 하는데 이름이 달라 아무 일도 안 했을 것이다.
+       *   재주가 `taunt`(반경)를 적으면 끄는 것으로 본다. */
+      var tr = sk.taunt || 0;
+      if (tr > 0) {
+        var tsec = sk.tauntSec || 2.5, tpct = sk.tauntSlow || 30;
         for (var si = 0; si < world.ents.length; si++) {
           var se = world.ents[si];
           if (se.dead || se.team === p.team) continue;
-          if (Math.hypot(se.x - p.x, se.y - p.y) <= 4.5) {
+          if (Math.hypot(se.x - p.x, se.y - p.y) <= tr) {
             se.target = p;
-            se.slowUntil = world.time + 2.5;
-            se.slowPct = 30;
+            se.slowUntil = world.time + tsec;
+            se.slowPct = tpct;
           }
         }
       }

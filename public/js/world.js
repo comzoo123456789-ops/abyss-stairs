@@ -688,13 +688,18 @@
   World.prototype.refreshBuffs = function () {
     var p = this.player;
     if (p.baseDef === undefined) return;
-    var armor = 0, aps = 0, dmg = 0;
+    var armor = 0, aps = 0, dmg = 0, ref = 0;
     for (var i = 0; i < this.buffs.length; i++) {
       armor += this.buffs[i].armor || 0;
       aps += this.buffs[i].apsPct || 0;
       dmg += this.buffs[i].dmgPct || 0;
+      ref += this.buffs[i].reflect || 0;
     }
     p.def = Math.max(0, p.baseDef + armor);
+    /* 되돌리기 — 기사의 방패 올리기. combat.js 가 맞을 때 읽는다.
+     * ⚠ 버프가 없으면 반드시 0 이라야 한다. 더하고 빼는 식으로 두면
+     *   조금씩 남아 영영 되돌리는 몸이 된다. */
+    p.reflect = ref;
     if (p.swing && p.baseAps !== null) {
       p.swing.aps = p.baseAps * (1 + aps / 100);
       p.swing.dmg = Math.max(1, Math.round(p.baseDmg * (1 + dmg / 100)));
