@@ -115,7 +115,7 @@
       var nearestFoe = null, minD = 3.5;
       for (var ei = 0; ei < world.ents.length; ei++) {
         var ent = world.ents[ei];
-        if (ent.dead || ent === p || ent.team === p.team || ent.kind === "dummy") continue;
+        if (ent.dead || ent === p || ent.team === p.team) continue;
         var ed = Math.hypot(ent.x - p.x, ent.y - p.y);
         if (ed < minD) { minD = ed; nearestFoe = ent; }
       }

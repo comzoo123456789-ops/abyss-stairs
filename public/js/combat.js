@@ -26,8 +26,8 @@
     aps: 1.15,
     windup: 0.18,
     recover: 0.24,
-    reach: 1.25,
-    arc: 100,
+    reach: 1.45,
+    arc: 140,
     dmg: 6,
     push: 0.35,        /* 맞은 쪽이 밀리는 거리(칸) */
     sfx: "hit"
