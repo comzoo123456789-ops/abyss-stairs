@@ -1235,6 +1235,23 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   white-space: normal;
 }
 
+/* 직업 칸의 저장 상태 — 누르기 전에 무엇이 있는지 보여 준다 */
+.cls-save {
+  margin: 2px 0 8px;
+  padding: 5px 9px;
+  border-radius: 5px;
+  background: rgba(255, 210, 74, .1);
+  border: 1px solid rgba(255, 210, 74, .3);
+  color: #ffd24a;
+  font-size: 12px;
+}
+.cls-save b { color: #fff; }
+.cls-save.none {
+  background: rgba(255, 255, 255, .04);
+  border-color: rgba(255, 255, 255, .1);
+  color: #8d8474;
+}
+
 /* ══ 가방 거르기 · 정렬 · 고르기 ════════════════════════
  * ⚠ 칩은 **줄바꿈된다.** 좁은 화면에서 한 줄에 여덟 개를 욱여넣으면
  *   가방 격자를 밀어낸다. */

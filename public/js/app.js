@@ -2023,17 +2023,24 @@
     if (!box) return;
     var CL = global.CLASSES, SK = global.SKILLS;
     var html = '<h2>직업 선택 및 캐릭터 변경</h2>' +
-      '<p class="sub">전사, 도적, 마법사 중 원하는 직업을 선택하여 탐험을 시작하거나 바꿀 수 있습니다 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
+      '<p class="sub">직업마다 <b>따로 저장</b>된다 — 바꿔도 하던 것은 그대로 남고, 돌아오면 이어서 한다. 창고는 공용이다.</p>' +
       '<div class="cols-scroll-wrap">' +
       '<button class="scroll-arrow left" id="btnClsPrev" title="이전 직업">◀</button>' +
       '<div class="cols cls-cols" id="clsColsWrap">';
+    /* 어느 직업에 무엇이 있는지 **먼저 보여 준다.** 안 보이면 잃을까 봐 못 누른다 */
+    var saved = (global.SAVE && global.SAVE.slots) ? global.SAVE.slots() : {};
     for (var i = 0; i < CL.LIST.length; i++) {
       var c = CL.LIST[i];
       var isCurrent = hero && hero.cls === c.id;
+      var sv = saved[c.id];
       html += '<div class="col cls' + (isCurrent ? ' current' : '') + '">';
       html += '<canvas class="face" data-ico="' + esc(c.sprite) + '"></canvas>';
       html += '<h3>' + esc(c.name) + ' <span class="mt">' + esc(c.tag) + '</span>' +
         (isCurrent ? ' <b style="font-size:11px; color:#ffd24a;">[현재 직업]</b>' : '') + '</h3>';
+      html += '<div class="cls-save' + (sv ? '' : ' none') + '">' +
+        (sv ? '저장됨 · <b>Lv.' + sv.level + '</b> · 최고 ' + sv.maxDepth + '층 · ' +
+              sv.gold.toLocaleString() + '금'
+            : '아직 없음 · 누르면 새로 시작') + '</div>';
       html += '<p class="sub">' + esc(c.text) + '</p>';
       html += '<div class="tot">' +
         '<div>체력 ' + c.hp + ' (레벨마다 +' + c.hpPer + ')</div>' +
@@ -2057,7 +2064,9 @@
       }
       html += '</div>';
       html += '<button class="pick" data-cls="' + esc(c.id) + '">' +
-        (isCurrent ? '이 직업으로 계속하기' : esc(c.name) + '(으)로 변경') + '</button>';
+        (isCurrent ? '이 직업으로 계속하기'
+         : sv ? esc(c.name) + ' Lv.' + sv.level + ' 로 이어서'
+              : esc(c.name) + '(으)로 새로 시작') + '</button>';
       html += '</div>';
     }
     html += '</div>' +
@@ -2083,16 +2092,42 @@
     wire(box, "cls", function (v) { createHero(v); });
   }
 
+  /* 직업을 고른다 — 이미 키운 직업이면 **이어서 한다.**
+   *
+   * ⚠ 예전에는 고를 때마다 `S.blank(cls)` 로 새로 만들었다. 저장 칸이 하나라
+   *   그 위에 덮여서, 전사로 키운 레벨·가방·장비가 통째로 날아갔다.
+   *   바꿔 보려고 눌렀다가 잃는 것은 사고다.
+   * ⚠ 바꾸기 **전에 쓰던 것을 먼저 저장한다.** 안 하면 방금까지 한 것이
+   *   저장 칸에 안 들어간 채 사라진다.
+   * ⚠ 창고(stash)는 공용이다 — 옮겨 준다. 직업마다 따로 두면 전사가 넣은
+   *   것을 도적이 못 꺼낸다.
+   * ⚠ 같은 직업을 다시 고르면 **아무것도 안 한다.** 거기서 새로 만들면
+   *   "바꾼 것도 아닌데 초기화" 가 된다. */
   function createHero(cls) {
     var CL = global.CLASSES, I = global.ITEMS, S = global.SAVE, D = global.DUNGEON;
-    var prevGold = hero ? (hero.gold || 0) : 0;
-    var prevStash = hero ? (hero.stash || []) : [];
-    var prevMaxDepth = hero ? (hero.maxDepth || 1) : 1;
-    var fresh = S.blank(cls);
-    fresh.gold = Math.max(fresh.gold, prevGold);
-    fresh.stash = prevStash;
-    fresh.maxDepth = Math.max(1, prevMaxDepth);
     var c = CL.byId(cls);
+    var prevStash = hero ? (hero.stash || []) : [];
+
+    if (hero && hero.cls === cls) {
+      closePanel();
+      toast(c.name + " 그대로 이어서 합니다.");
+      return;
+    }
+    if (hero && hero.cls) S.save(hero);        /* 쓰던 것을 제 칸에 넣는다 */
+
+    var got = S.loadSlot ? S.loadSlot(cls) : null;
+    if (got) {
+      got.stash = prevStash;                   /* 창고는 공용 */
+      hero = S.sanitize(got);
+      S.save(hero);
+      closePanel();
+      toast(c.name + " Lv." + hero.level + " 로 돌아왔습니다. (이어서 합니다)");
+      start({ depth: 0 });
+      return;
+    }
+
+    var fresh = S.blank(cls);
+    fresh.stash = prevStash;
     var rng = D.makeRng(Date.now() & 0x7fffffff);
     for (var slot in c.start)
       fresh.equip[slot] = I.pack(I.roll(rng, { ilvl: 1, slot: slot,
@@ -2100,7 +2135,7 @@
     hero = S.sanitize(fresh);      /* 손잡이·시너지를 직업에 맞춰 정리시킨다 */
     S.save(hero);
     closePanel();
-    toast(c.name + "(으)로 직업이 선택되었습니다!");
+    toast(c.name + "(으)로 새로 시작합니다!");
     start({ depth: 0 });
   }
 

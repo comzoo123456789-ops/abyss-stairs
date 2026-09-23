@@ -247,14 +247,72 @@
 
   var lastText = "";
 
+  /* ── 직업마다 따로 저장한다 ─────────────────────────────
+   *
+   * 저장 칸이 **하나**였다. 직업을 바꾸면 그 위에 덮어써서 전사로 키운
+   * 레벨·가방·장비가 통째로 날아갔다. 바꿔 보려고 눌렀다가 잃는다.
+   *
+   * 이제 직업마다 제 칸이 있다. 바꿀 때 쓰던 것을 제 칸에 넣고, 가려는
+   * 직업의 칸을 꺼낸다. 없으면 그때 새로 만든다.
+   *
+   * ⚠ 본래 칸(KEY)도 **그대로 쓴다.** 그게 "지금 하던 직업" 이다. 옛 저장이
+   *   거기 있으니 지우면 지금까지 키운 것이 사라진다.
+   * ⚠ 창고(stash)는 **공용**이다. 직업마다 따로 두면 전사가 넣어 둔 것을
+   *   도적이 못 꺼낸다 — 보관함의 뜻이 사라진다. 바꿀 때 옮겨 준다. */
+  function slotKey(cls) { return KEY + ":cls:" + cls; }
+
   function save(s) {
     var ls = store();
     if (!ls) return false;
     var clean = sanitize(s);
     var text = JSON.stringify({ v: VERSION, t: Date.now(), d: clean });
+    /* ⚠ 직업 칸은 **본래 칸과 따로** 센다. 본래 칸이 안 바뀌었다고 건너뛰면
+     *   직업 칸이 영영 안 써진다. */
+    if (clean.cls) {
+      try { ls.setItem(slotKey(clean.cls), text); } catch (e) {}
+    }
     if (text === lastText) return true;        /* 안 바뀌었으면 안 쓴다 */
     try { ls.setItem(KEY, text); lastText = text; return true; }
     catch (e) { return false; }                /* 꽉 찼거나 막혔다 — 게임은 계속 돈다 */
+  }
+
+  /* 그 직업의 저장을 꺼낸다. 없으면 null.
+   * ⚠ 직업 칸이 아직 없고 **본래 칸이 그 직업**이면 그걸 쓴다. 칸을 나누기
+   *   전에 키운 것이 거기 있다 — 안 보면 첫 전환에서 한 번 더 날린다. */
+  function loadSlot(cls) {
+    var ls = store();
+    if (!ls) return null;
+    var txt = null;
+    try { txt = ls.getItem(slotKey(cls)); } catch (e) { txt = null; }
+    if (!txt) {
+      try { txt = ls.getItem(KEY); } catch (e) { txt = null; }
+      if (!txt) return null;
+      var probe;
+      try { probe = JSON.parse(txt); } catch (e) { return null; }
+      var pd = probe && (probe.d || probe);
+      if (!pd || pd.cls !== cls) return null;
+    }
+    var raw;
+    try { raw = JSON.parse(txt); } catch (e) { return null; }
+    var ver = Number(raw && raw.v);
+    if (!isFinite(ver) || ver < 1 || ver > VERSION) return null;
+    var got = sanitize(upgrade(raw, ver));
+    return (got && got.cls === cls) ? got : null;
+  }
+
+  /* 어느 직업에 무엇이 있나 — 직업 고르는 창이 "Lv.12" 를 보여 주는 데 쓴다 */
+  function slots() {
+    var ls = store();
+    var out = {};
+    if (!ls) return out;
+    var ids = (global.CLASSES && global.CLASSES.LIST)
+      ? global.CLASSES.LIST.map(function (c) { return c.id; })
+      : ["warrior", "rogue", "mage"];
+    for (var i = 0; i < ids.length; i++) {
+      var g = loadSlot(ids[i]);
+      if (g) out[ids[i]] = { level: g.level || 1, maxDepth: g.maxDepth || 1, gold: g.gold || 0 };
+    }
+    return out;
   }
 
   function wipe() {
@@ -292,6 +350,7 @@
     BAG: BAG, STASH: STASH,
     liveSkills: function (s) { return (s && s.skills) || {}; },
     liveEquip: liveEquip, liveBag: liveBag, liveStash: liveStash,
+    slotKey: slotKey, loadSlot: loadSlot, slots: slots,
     blocked: function () { return !store(); }
   };
 })(window);
