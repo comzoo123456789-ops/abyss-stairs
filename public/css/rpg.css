@@ -1811,5 +1811,13 @@ td.cmp-best b { color: #86e6ad; }
 /* 로그인해 있으면 단추에 표가 난다 — 안 나면 된 줄 모른다 */
 .tbtn.is-on { border-color: rgba(94, 214, 140, .55); }
 .tbtn.is-on .t-lbl { color: #86e6ad; }
+/* 글 속의 누를 수 있는 말 — 단추처럼 보이면 문단이 시끄러워진다 */
+.lnk {
+  background: none; border: 0; padding: 0; font: inherit; cursor: pointer;
+  color: #b4a9f0; text-decoration: underline; text-underline-offset: 2px;
+}
+.lnk:hover { color: #d5cee4; }
+.cls-acct { margin-top: -6px !important; }
+
 .mitem.is-on { color: #86e6ad; }
 .mitem.is-on .ico { filter: none; }

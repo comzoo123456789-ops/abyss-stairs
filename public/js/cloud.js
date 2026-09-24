@@ -140,8 +140,29 @@
       if (t) t.textContent = state.login ? ("계정 · " + state.login) : "계정 · 저장 남기기";
       m.classList.toggle("is-on", !!state.login);
     }
+    /* ⚠ **입력칸이 든 곳을 다시 그리면 친 글자가 날아간다.**
+     *   `submit()` 이 "보내는 중" 을 적으려고 paint 를 부르는데, 그 한 번에
+     *   아이디와 비밀번호가 지워져 **빈 값이 서버로 갔다** — 그래서 아무리
+     *   제대로 쳐도 "아이디는 영문 소문자…" 가 떴다(사용자 신고).
+     *   다시 그리기 전에 들고 있다가 되돌려 준다. 커서 자리까지. */
     var box = document.getElementById("acctBody");
-    if (box) box.innerHTML = bodyHtml();
+    if (!box) return;
+    var keep = {};
+    ["acId", "acPw"].forEach(function (k) {
+      var e = document.getElementById(k);
+      if (e) keep[k] = { v: e.value, s: e.selectionStart, e: e.selectionEnd,
+                         focus: document.activeElement === e };
+    });
+    box.innerHTML = bodyHtml();
+    Object.keys(keep).forEach(function (k) {
+      var e = document.getElementById(k);
+      if (!e) return;
+      e.value = keep[k].v;
+      if (keep[k].focus) {
+        e.focus();
+        try { e.setSelectionRange(keep[k].s, keep[k].e); } catch (x) {}
+      }
+    });
   }
 
   function bodyHtml() {
@@ -190,6 +211,9 @@
     ov.addEventListener("click", onClick);
     /* ⚠ 엔터로도 보낸다. 비밀번호 칸에서 엔터를 누르는 것이 기본 손짓이다 */
     ov.addEventListener("keydown", function (e) {
+      /* ⚠ 칸에 커서를 둔 채로도 닫혀야 한다. app.js 가 글자 칸에서는 게임
+       *   키를 안 먹지만 Esc 만은 넘겨 주므로, 여기서 받아 닫는다. */
+      if (e.key === "Escape") { e.preventDefault(); close(); return; }
       if (e.key !== "Enter") return;
       var t = e.target;
       if (t && (t.id === "acId" || t.id === "acPw")) {
@@ -224,10 +248,14 @@
 
   async function submit(kind) {
     if (state.busy) return;
+    /* ⚠ **그리기 전에 읽는다.** paint 가 칸을 다시 만들므로, 뒤에서 읽으면
+     *   방금 만들어진 빈 칸을 읽는다. 위의 되살리기와 **둘 다** 있어야 한다 —
+     *   하나만으로는 차례가 조금만 바뀌어도 같은 일이 난다. */
+    var login = val("acId"), pw = val("acPw");
     state.busy = true; state.note = "보내는 중…"; paint();
     var r = await api("/api/" + kind, {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ login: val("acId"), pw: val("acPw") })
+      body: JSON.stringify({ login: login, pw: pw })
     });
     state.busy = false;
     if (!r.ok) { state.note = r.error; paint(); return; }

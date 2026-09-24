@@ -124,6 +124,33 @@ try {
     if (await ev("!!(window.SAVE && window.CLASSES && window.__pick)")) break;
     await sleep(60);
   }
+  /* ── 새 기기: 직업 선택 창에도 로그인 길이 있는가 ─────
+   * ⚠ **첫 화면에서 재야 한다.** 저장이 없으면 이 창이 저절로 뜨고 상단
+   *   단추를 가린다 — 여기에 길이 없으면 캐릭터를 하나 만들기 전에는 서버에
+   *   있는 것을 내려받으러 올 수가 없다.
+   * ⚠ 뒤로 미루면 앞 판정이 캐릭터를 만들어 창이 안 뜬다(그렇게 빨갰다).
+   *   저장을 지우고 새로고침해도 안 돌아왔다 — 순서로 푼다. */
+  const first = await ev(`(function(){
+    var p = document.getElementById("panel"), l = document.getElementById("btnClsLogin");
+    var r = l ? l.getBoundingClientRect() : null;
+    var hit = r ? document.elementFromPoint(Math.round(r.left + r.width / 2),
+                                            Math.round(r.top + r.height / 2)) : null;
+    return { open: !!(p && !p.hidden), link: !!l,
+             w: r ? Math.round(r.width) : 0, h: r ? Math.round(r.height) : 0,
+             mine: !!(hit && l && (hit === l || l.contains(hit))) };
+  })()`);
+  let clsOpens = false;
+  if (first.mine) {
+    await tap("#btnClsLogin");
+    clsOpens = await ev(`!!document.getElementById("acctModal")`);
+    await ev(`(function(){ var m = document.getElementById("acctModal"); if (m) m.remove(); })()`);
+  }
+  add("새 기기에서 로그인 길", first.open && first.link && first.mine && clsOpens,
+    "직업 선택 창 " + (first.open ? "떠 있음" : "안 뜸") + " · 길 " +
+    (first.link ? first.w + "x" + first.h : "없음") +
+    " · 눌리는가 " + (first.mine ? "✔" : "⚠ 덮여 있다") +
+    " → 계정 창 " + (clsOpens ? "열림" : "안 열림"));
+
   const anon = await ev(`(function(){
     window.__pick("warrior");
     var h = window.__hero();
@@ -193,6 +220,49 @@ try {
     (opened.item ? "보임" : "안 보임") + " “" + opened.txt + "”" +
     " → 계정 창 " + (modal.modal ? "열림" : "안 열림") +
     " · 차림표 " + (modal.dropStillOpen ? "⚠ 남음" : "닫힘"));
+
+  /* ── 진짜 자판으로 계정을 만든다 ─────────────────────
+   * ⚠ 여태 이 검사는 **날 fetch 로만** 가입해 봤다. 그래서 화면에서
+   *   글자를 치면 게임 단축키가 먹고(q 물약 · e 조작 · r 재시작) 칸에는
+   *   아무것도 안 들어가는 것을, 그리고 submit 이 보내기 전에 화면을 다시
+   *   그려 **친 글자를 지우고 빈 값을 보내는** 것을 아무도 못 잡았다.
+   *   눌러서 치고 눌러서 보낸다.
+   * ⚠ keyDown 에 text 를 주면 char 가 저절로 난다. char 를 또 보내면
+   *   글자가 두 번 들어간다(내 시험 자판이 그랬다 — 제품 탓이 아니었다). */
+  async function type(text) {
+    for (const c of text) {
+      const code = /[a-z]/.test(c) ? "Key" + c.toUpperCase()
+        : (/[0-9]/.test(c) ? "Digit" + c : "Minus");
+      const vk = c.toUpperCase().charCodeAt(0);
+      await S("Input.dispatchKeyEvent", { type: "keyDown", code, key: c, text: c, unmodifiedText: c, windowsVirtualKeyCode: vk });
+      await S("Input.dispatchKeyEvent", { type: "keyUp", code, key: c, windowsVirtualKeyCode: vk });
+      await sleep(18);
+    }
+  }
+  await S("Emulation.setDeviceMetricsOverride", { width: 1280, height: 860, deviceScaleFactor: 1, mobile: false });
+  await sleep(350);
+  /* 새 기기에는 저장이 없어 **직업 선택 창이 먼저 뜬다.** 그 창이 상단
+   * 단추를 가린다 — 그 길은 위 「새 기기에서 로그인 길」이 따로 잰다. */
+  await tap("#btnAcct");
+  await tap("[data-ac=tab-signup]");
+  const uiId = tag + "u";
+  const g0 = await ev(`JSON.stringify({pot:window.__peek().potions, x:+window.__peek().x.toFixed(2), depth:window.__peek().depth})`);
+  await tap("#acId"); await type(uiId);
+  await tap("#acPw"); await type("abyss-test-1234");
+  const typed = await ev(`JSON.stringify({id:(document.getElementById("acId")||{}).value,
+    pw:((document.getElementById("acPw")||{}).value||"").length})`);
+  const g1 = await ev(`JSON.stringify({pot:window.__peek().potions, x:+window.__peek().x.toFixed(2), depth:window.__peek().depth})`);
+  await tap("#acctBody [data-ac=signup]");
+  await sleep(2600);
+  const done = await ev(`JSON.stringify(window.CLOUD.state())`);
+  const note = await ev(`(function(){var e=document.getElementById("acctBody");
+    return e ? e.textContent.replace(/\s+/g," ").trim().slice(0, 60) : "(창 닫힘)";})()`);
+  const st = JSON.parse(done), tp = JSON.parse(typed);
+  add("자판으로 계정을 만든다",
+    tp.id === uiId && tp.pw === 15 && g0 === g1 && st.login === uiId,
+    "친 것 “" + tp.id + "”(" + tp.pw + "자) · 게임 " +
+    (g0 === g1 ? "그대로" : "⚠ 단축키가 먹었다 " + g0 + "→" + g1) +
+    " · 만들어짐 " + (st.login || "⚠ 안 됨 — " + note));
 
   add("콘솔 오류", errs.length === 0, errs.length ? errs.slice(0, 2).join(" / ") : "0건");
   try { ws.close(); } catch (e) {}

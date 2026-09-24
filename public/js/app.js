@@ -2409,6 +2409,11 @@
     var CL = global.CLASSES, SK = global.SKILLS;
     var html = '<h2>직업 선택 및 캐릭터 변경</h2>' +
       '<p class="sub">직업마다 <b>따로 저장</b>된다 — 바꿔도 하던 것은 그대로 남고, 돌아오면 이어서 한다. 창고는 공용이다.</p>' +
+      /* ⚠ 여기에도 계정 길을 둔다. 새 기기에서는 이 창이 먼저 뜨고 그 위로
+       *   상단 단추가 가려, **캐릭터를 하나 만들기 전에는 로그인할 수가
+       *   없었다.** 그러면 서버에 있는 것을 내려받으러 올 수가 없다. */
+      '<p class="sub cls-acct">이미 계정이 있으십니까? ' +
+      '<button class="lnk" id="btnClsLogin">로그인해서 저장 불러오기</button></p>' +
       '<div class="cols-scroll-wrap">' +
       '<button class="scroll-arrow left" id="btnClsPrev" title="이전 직업">◀</button>' +
       '<div class="cols cls-cols" id="clsColsWrap">';
@@ -2463,6 +2468,8 @@
     addCloseButton(box);
 
     var cwrap = document.getElementById("clsColsWrap");
+    var bLogin = document.getElementById("btnClsLogin");
+    if (bLogin && global.CLOUD) bindTapUI(bLogin, function () { global.CLOUD.open(); });
     var cbtnP = document.getElementById("btnClsPrev");
     var cbtnN = document.getElementById("btnClsNext");
     if (cwrap && cbtnP && cbtnN) {
@@ -2894,8 +2901,26 @@
     if (loaded.fresh) openCreate();
 
     global.addEventListener("resize", function () { view.resize(); });
+    /* 글자를 치는 중인가.
+     * ⚠ 이 게임에는 여태 **글자를 치는 칸이 없었다.** 계정 창이 처음이다.
+     *   그래서 아이디에 qwer 을 치면 물약을 마시고 걸어가며 조작까지
+     *   했다(사용자 신고). 칸에 focus 가 있으면 게임 키를 통째로 넘긴다.
+     * ⚠ e.target 만 보지 않는다. 화면이 다시 그려지며 focus 가 옮겨 간
+     *   틈에는 target 이 body 다 — activeElement 도 함께 본다. */
+    function isField(t) {
+      if (!t || !t.tagName) return false;
+      var g = t.tagName;
+      return g === "INPUT" || g === "TEXTAREA" || g === "SELECT" || t.isContentEditable === true;
+    }
+    function typing(e) {
+      return isField(e && e.target) || isField(document.activeElement);
+    }
+
     global.addEventListener("keydown", function (e) {
       wakeAudio();
+      /* ⚠ Esc 는 넘기지 않는다 — 칸에 커서를 둔 채로도 창을 닫을 수 있어야
+       *   한다. 나머지는 전부 글자다. */
+      if (typing(e) && e.code !== "Escape") return;
       /* ESC 는 **한 겹만** 닫는다.
        * ⚠ 물건 창을 열어 놓고 ESC 를 누르면 가방까지 같이 닫혔다. 위에 뜬 것을
        *   먼저 닫고, 그게 없을 때만 패널을 닫는다.
