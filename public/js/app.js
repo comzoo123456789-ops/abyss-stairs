@@ -1257,6 +1257,9 @@
     { k: "spd",   name: "이동 속도",   dec: 2 },
     { k: "critPct",    name: "치명타",       dec: 0, unit: "%" },
     { k: "critDmgPct", name: "치명타 피해",  dec: 0, unit: "%" },
+    /* ⚠ 넘친 멫은 **보여 준다.** 치명타가 100% 에서 멈춰 있는데
+     * 치명타 반지를 끼우면 피해만 오르니, 설명이 없으면 고장으로 읽힌다. */
+    { k: "critOver", name: "넘친 치명타", dec: 0, unit: "%p", sub: "치명타 피해로" },
     { k: "lifeOnHit",  name: "타격 회복",    dec: 0 },
     { k: "goldPct",    name: "금화",         dec: 0, unit: "%" },
     { k: "xpPct",      name: "경험치",       dec: 0, unit: "%" }
@@ -3348,6 +3351,9 @@
     global.__give = giveTestItems;
     global.__openCompare = openCompare;
     global.__closepanel = closePanel;
+    /* 검사가 "그 줄이 표에 있긴 한가" 를 볼 수 있어야 한다 —
+     * 값이 안 달라지면 줄은 숨는 것이 이 표의 규칙이라 화면만 봐서는 못 가린다. */
+    global.__cmprows = CMP_ROWS.map(function (r) { return r.k; });
     global.__autoeq = openAutoEq;
     global.__aeplan = aeMake;
     global.__aekey = function (k) { if (k) autoKey = k; return autoKey; };

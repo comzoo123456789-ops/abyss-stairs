@@ -549,6 +549,10 @@
    *   applyHero 도 이 함수를 쓴다 — 셈이 **한 곳**이라야 둘이 같은 말을 한다.
    * ⚠ 버프는 안 얹는다. 버프는 지금 몸에 걸린 것이라 "이걸 끼면" 과 무관하고,
    *   refreshBuffs 가 기준값 위에 따로 얹는다. */
+  /* 넘친 치명타 1%p 를 치명타 피해 몇 %p 로 바꾸나. ⚠ 숫자를 두 곳에
+   * 적지 말 것 — 검사가 이 값을 읽어서 견준다. */
+  var CRIT_OVER_TO_DMG = 2;
+
   World.prototype.derive = function (eq) {
     var I = global.ITEMS, CL = global.CLASSES, h = this.hero;
     var lv = h ? h.level : 1;
@@ -562,8 +566,23 @@
     o.def = (cls ? cls.armor : 0) + (t.armor || 0);
     var spdBonus = Math.max(-0.25, Math.min(0.35, (t.spdPct || 0) / 100));
     o.spd = (cls ? cls.spd : 4.0) * (1 + spdBonus);
-    o.critPct = (cls ? cls.critPct : 0) + (t.critPct || 0);
-    o.critDmgPct = t.critDmgPct || 0;
+    /* 치명타는 **100% 에서 막고, 넘친 몫은 치명타 피해로 바꾼다.**
+     *
+     * ⚠ combat.js 는 `random() * 100 < critPct` 로 굴린다 — 100 을 넘는 몫은
+     *   **한 번도 쓰이지 않는다.** 그런데 여기에 상한이 없어서 전투력이 그것을
+     *   값으로 쳤다(실측 2026-09-25 · 도적 Lv.20: 치명타 142% · 전투력 표시
+     *   8,308 인데 실제로 가능한 것은 6,267 — **25% 가 거품**이었다).
+     *   더 나쁜 것은 자동장착이 그 **죽은 능력치를 쫓았다**는 점이다.
+     * ⚠ 막기만 하면 치명타 반지가 통째로 쓰레기가 된다. 넘친 1%p 를
+     *   **치명타 피해 +2%p** 로 바꾼다. 상한에서 그 둘의 값이 정확히 같아서
+     *   (1%p 피해 = 배수 +0.01 · 넘친 1%p = +0.02 = 2×0.01) 눈금이 안 어긋난다.
+     *   상한 아래에서 얻던 것보다는 적다 — 그래야 무한히 쌓을 까닭이 없어진다.
+     * ⚠ **여기가 유일한 자리다.** `applyHero` 가 이 값을 몸에 그대로 붙이고
+     *   combat 은 몸을 본다. 상한을 combat 에 두면 전투력과 다시 갈린다. */
+    var critRaw = (cls ? cls.critPct : 0) + (t.critPct || 0);
+    o.critOver = Math.max(0, critRaw - 100);
+    o.critPct = Math.min(100, critRaw);
+    o.critDmgPct = (t.critDmgPct || 0) + o.critOver * CRIT_OVER_TO_DMG;
     o.lifeOnHit = t.lifeOnHit || 0;
     o.goldPct = t.goldPct || 0;
     o.xpPct = t.xpPct || 0;
@@ -1226,6 +1245,9 @@
   global.WORLD = {
     SIM_DT: SIM_DT, SIM_HZ: SIM_HZ, BODY: BODY, FOV_R: FOV_R,
     World: World, Entity: Entity,
+    /* ⚠ 검사가 이 값을 **읽어서** 견준다 — 검사에 2 를 박으면
+     * 전환율을 고칠 때 한쪽만 고쳐진다. */
+    CRIT_OVER_TO_DMG: CRIT_OVER_TO_DMG,
     boxFree: boxFree, moveBy: moveBy, solid: solid
   };
 })(window);
