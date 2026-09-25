@@ -88,106 +88,12 @@
 
   /* 이 직업이 쓸 수 있는 재주 — **전용 + 공용.**
    * ⚠ 순서가 곧 손잡이 기본 배치다. 전용을 앞에 둔다(그게 그 직업의 정체다). */
-  /* ── 1차 전직 (Lv.15) ─────────────────────────────────── */
-  var ADVANCEMENTS = {
-    warrior: [
-      {
-        id: "berserker", name: "광전사", base: "warrior", reqLvl: 15,
-        tag: "피의 폭주",
-        text: "체력이 깎일수록 피의 광란을 일으키며 생명력을 흡수하는 죽음의 투사.",
-        skills: ["bloodrage", "leap"],
-        bonusText: "HP +15% · 공격속도 +15% · 흡혈 +10%"
-      },
-      {
-        id: "dreadnought", name: "파괴자", base: "warrior", reqLvl: 15,
-        tag: "대지 파괴",
-        text: "묵직한 한 방으로 대지를 뒤흔들고 적의 방어구를 부수는 중장거리 파괴자.",
-        skills: ["shatter", "decimate"],
-        bonusText: "피해량 +20% · 방어력 +10 · 넉백거리 +50%"
-      }
-    ],
-    knight: [
-      {
-        id: "paladin", name: "성기사", base: "knight", reqLvl: 15,
-        tag: "신성한 수호",
-        text: "천상의 빛으로 무적 결계를 치며 신성 심판을 내리는 요새.",
-        skills: ["aegis", "judgment"],
-        bonusText: "방어력 +15 · 피해 반사 +20% · 신성 피해 +25%"
-      },
-      {
-        id: "darkknight", name: "암흑기사", base: "knight", reqLvl: 15,
-        tag: "영혼 흡수",
-        text: "적에게 암흑 저주를 걸고 영혼을 빨아들여 버티는 저주받은 기사.",
-        skills: ["brand", "souldrain"],
-        bonusText: "HP +20% · 흡혈 +12% · 저주 피해 +20%"
-      }
-    ],
-    rogue: [
-      {
-        id: "assassin", name: "암살자", base: "rogue", reqLvl: 15,
-        tag: "그림자 암습",
-        text: "은신 상태로 순간이동하여 급소를 베어 강렬한 치명타를 가하는 섀도우.",
-        skills: ["stealth", "fatalslash"],
-        bonusText: "치명타율 +15% · 치명타 피해 +50% · 이동속도 +10%"
-      },
-      {
-        id: "shadowblade", name: "섀도우댄서", base: "rogue", reqLvl: 15,
-        tag: "환영 난무",
-        text: "분신을 생성하고 화면 전체를 가르는 초고속 그림자 난무를 펼치는 댄서.",
-        skills: ["mirrorimage", "shadowdance"],
-        bonusText: "공격속도 +25% · 회피율 +15% · 이동속도 +15%"
-      }
-    ],
-    mage: [
-      {
-        id: "archmage", name: "원소술사", base: "mage", reqLvl: 15,
-        tag: "파멸의 원소",
-        text: "하늘에서 거대한 운석을 떨어뜨리고 연쇄 전뇌를 쏘아 대지를 잿더미로 만드는 대마법사.",
-        skills: ["meteor", "chainlightning"],
-        bonusText: "기력 회복 +8 · 마법 피해 +30% · 사거리 +2.0"
-      },
-      {
-        id: "necromancer", name: "사령술사", base: "mage", reqLvl: 15,
-        tag: "언데드 군단",
-        text: "언데드 해골 군단을 부리고 부패의 아우라로 적들을 서서히 좀먹는 흑마법사.",
-        skills: ["summonundead", "decayaura"],
-        bonusText: "소환수 체력 +40% · 저주 피해 +25% · 기력 +30"
-      }
-    ]
-  };
-
-  function advancementsOf(baseId) {
-    return ADVANCEMENTS[baseId] || [];
+  function skillsOf(id) {
+    return byId(id).skills.concat(SHARED);
   }
 
-  function advancementById(advId) {
-    if (!advId) return null;
-    for (var k in ADVANCEMENTS) {
-      var list = ADVANCEMENTS[k];
-      for (var i = 0; i < list.length; i++) {
-        if (list[i].id === advId) return list[i];
-      }
-    }
-    return null;
-  }
-
-  function skillsOf(heroOrId, advId) {
-    var baseId = (typeof heroOrId === "object" && heroOrId) ? heroOrId.cls : heroOrId;
-    var aId = advId || (typeof heroOrId === "object" && heroOrId ? heroOrId.advClass : null);
-    var list = byId(baseId).skills.concat(SHARED);
-    if (aId) {
-      var adv = advancementById(aId);
-      if (adv && adv.skills) {
-        for (var s = 0; s < adv.skills.length; s++) {
-          if (list.indexOf(adv.skills[s]) < 0) list.push(adv.skills[s]);
-        }
-      }
-    }
-    return list;
-  }
-
-  function canUse(heroOrId, skillId, advId) {
-    return skillsOf(heroOrId, advId).indexOf(skillId) >= 0;
+  function canUse(id, skillId) {
+    return skillsOf(id).indexOf(skillId) >= 0;
   }
 
   /* 든 무기가 적성인가 */
@@ -204,12 +110,14 @@
       var c = CLASSES[i];
       if (seen[c.id]) bad.push("직업 id 가 겹친다: " + c.id);
       seen[c.id] = 1;
+      /* ⚠ 전용 4개 + 공용 2개 구조 */
       if (c.skills.length !== 4) bad.push(c.name + " 의 전용 재주가 4개가 아니다");
       if (SK) for (j = 0; j < c.skills.length; j++)
         if (!SK.byId(c.skills[j])) bad.push(c.name + " 의 재주 " + c.skills[j] + " 가 없다");
       if (I) for (j = 0; j < c.likes.length; j++)
         if (!I.BASES.weapon.some(function (b) { return b.id === c.likes[j]; }))
           bad.push(c.name + " 의 적성 무기 " + c.likes[j] + " 가 없다");
+      /* 시작 장비도 실제로 있는 것이어야 한다 */
       if (I) for (var slot in c.start)
         if (!I.BASES[slot] || !I.BASES[slot].some(function (b) { return b.id === c.start[slot]; }))
           bad.push(c.name + " 의 시작 장비 " + slot + ":" + c.start[slot] + " 가 없다");
@@ -218,13 +126,19 @@
     }
     if (SK) for (i = 0; i < SHARED.length; i++)
       if (!SK.byId(SHARED[i])) bad.push("공용 재주 " + SHARED[i] + " 가 없다");
+    /* ⚠ **모든 재주가 누군가의 것이어야** 한다. 아무도 못 쓰는 재주는 죽은 표다. */
+    if (SK) for (i = 0; i < SK.LIST.length; i++) {
+      var id = SK.LIST[i].id;
+      var owned = SHARED.indexOf(id) >= 0 ||
+        CLASSES.some(function (c) { return c.skills.indexOf(id) >= 0; });
+      if (!owned) bad.push("재주 " + id + " 를 아무도 못 쓴다");
+    }
     return bad;
   }
 
   global.CLASSES = {
-    LIST: CLASSES, SHARED: SHARED, ADEPT_BONUS: ADEPT_BONUS, ADVANCEMENTS: ADVANCEMENTS,
+    LIST: CLASSES, SHARED: SHARED, ADEPT_BONUS: ADEPT_BONUS,
     byId: byId, skillsOf: skillsOf, skills: skillsOf, canUse: canUse, adept: adept, audit: audit,
-    advancementsOf: advancementsOf, advancementById: advancementById,
     ids: function () { return CLASSES.map(function (c) { return c.id; }); }
   };
 })(window);

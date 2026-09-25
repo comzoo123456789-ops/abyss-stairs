@@ -43,7 +43,7 @@
     "#..#a.o..B#,,,,,,,#M.C..v#...#",
     "#..#b.c...#,,,,,,,#..c..b#...#",
     "#..###s####..,,,..####s###...#",
-    "#....l.....A.eKe.......l.....#",
+    "#....l.......eKe.......l.....#",
     "#..u.t.e.....,,,.....e.t.u...#",
     "#..c.X.o.....,@,.....o.X.c...#",
     "#....l..e....,f,....e..l.....#",
@@ -66,8 +66,7 @@
     M: { id: "shop",   sprite: "merchant",  label: "잡화 상인",   verb: "거래한다",   reach: 1.5 },
     B: { id: "smith",  sprite: "blacksmith",label: "대장장이",    verb: "강화한다",   reach: 1.5 },
     C: { id: "craft",  sprite: "t_stall",   label: "연금술사",    verb: "제작한다",   reach: 1.5 },
-    W: { id: "well",   sprite: "t_well",    label: "회복의 샘",   verb: "마신다",     reach: 1.4 },
-    A: { id: "altar",  sprite: "t_gate",    label: "전직의 제단", verb: "전직한다",   reach: 1.8 }
+    W: { id: "well",   sprite: "t_well",    label: "회복의 샘",   verb: "마신다",     reach: 1.4 }
   };
 
   /* 장식 — **규칙에 아무 영향이 없다.** 그림만 얹는다.

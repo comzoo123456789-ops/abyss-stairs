@@ -589,18 +589,6 @@
     o.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
     o.stamRegen = cls ? cls.stamRegen : 12;
 
-    var adv = (CL && h && h.advClass) ? CL.advancementById(h.advClass) : null;
-    if (adv) {
-      if (adv.id === "berserker") { o.maxHp = Math.round(o.maxHp * 1.15); o.lifeOnHit += 10; }
-      else if (adv.id === "dreadnought") { o.def += 10; }
-      else if (adv.id === "paladin") { o.def += 15; }
-      else if (adv.id === "darkknight") { o.maxHp = Math.round(o.maxHp * 1.20); o.lifeOnHit += 12; }
-      else if (adv.id === "assassin") { o.critPct += 15; o.critDmgPct += 50; }
-      else if (adv.id === "shadowblade") { o.spd *= 1.15; }
-      else if (adv.id === "archmage") { o.stamRegen += 8; }
-      else if (adv.id === "necromancer") { o.stamMax += 30; }
-    }
-
     o.swing = null;
     o.adept = false;
     var sw = I ? I.swingOf(eq, t) : null;
@@ -1149,7 +1137,7 @@
   /* 스킬을 쓴다. **왜 못 쓰는지**를 돌려준다 — null 이면 성공. */
   World.prototype.useSkill = function (id, aimX, aimY, taken) {
     if (!global.SKILLS) return "재주가 없다";
-    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero);
+    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero && this.hero.cls);
   };
 
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */
