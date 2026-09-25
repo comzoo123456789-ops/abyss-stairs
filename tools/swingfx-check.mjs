@@ -11,6 +11,7 @@
  *   ④ 화면을 안 덮는다      쏘는 무기의 효과가 2칸 안쪽이다
  *   ⑤ 날아가는 것도 다르다  지팡이 마력탄과 활 화살의 kind 가 갈린다
  *   ⑥ 예고도 보인다        선딜 동안에도 칠한 칸이 0 이 아니다
+ *   ⑦ 쓸려 지나간다      한 번 휘두르는 동안 그림이 바뀜다
  *
  * ⚠ ④ 가 있는 까닭: 쏘는 무기의 `reach` 는 7.5~9칸이다. 그 값을 반지름으로
  *   쓰면 효과가 **화면을 통째로 덮는다** — 안 보이는 것을 고치려다 반대쪽
@@ -30,6 +31,10 @@ const URL_ARG = ui >= 0 ? process.argv[ui + 1] : null;
 if (URL_ARG && OLD) { console.error("--url 과 OLD=1 은 같이 못 쓴다"); process.exit(2); }
 
 const REVERT = [
+  /* 한 장이 통째로 떴다 사라지던 때로 — 머리와 꼬리를 끝에 박는다 */
+  ["/js/view.js", /var headK = eOut\(sw \/ 0\.45\);/, "var headK = 1;"],
+  ["/js/view.js", /var tailK = Math\.max\(eOut\(\(sw - 0\.30\) \/ 0\.70\), headK - 0\.45\);/, "var tailK = 0;"],
+  ["/js/view.js", /var rel = eOut\(sw\);/, "var rel = 1;"],
   /* 진짜 결함이었던 자리 — 몸이 아니라 빈 객체에서 무기를 찾던 때로
    * 되돌린다. 이것 하나로 일곱 무기가 전부 장검으로 떨어진다. */
   ["/js/view.js", /var wId = \(e\.swing && e\.swing\.base\) \|\| "";/,
@@ -137,7 +142,10 @@ const M = await ev(`(function(){
     window.__aimAt(p.x + 3, p.y);
     if (!p.atk) return null;
     p.atk.ang = 0;
-    p.atk.t = (p.atk.m.windup || 0.2) * (liveOn ? 1 : 0.7) + (liveOn ? 0.01 : 0);
+    /* ⚠ 모양을 견주는 순간은 **휘두름 한가운데**다. 맨 처음을 재면
+     * 일곱이 다 같은 자리의 얇은 조각이라 장검과 철퇴가 18.5% 로 닮았다. */
+    p.atk.t = liveOn ? (p.atk.m.windup + p.atk.m.recover * 0.5)
+                     : (p.atk.m.windup || 0.2) * 0.7;
     var before = document.createElement("canvas");
     /* 효과 없이 한 장 — 그 차이가 곧 휘두름이다 */
     var keep = p.atk; p.atk = null; view.draw(w, 1);
@@ -204,6 +212,77 @@ const M = await ev(`(function(){
   return { rows: rows, tile: TILE, worst: pairs.slice(0, 3), same: pairs.filter(function (p) { return p.d < 20; }) };
 })()`);
 
+/* ⑦ 한 번 휘두르는 동안 그림이 바뀔는가 — 이번 판의 핵심이다.
+ * ⚠ 예전에는 후딜 내내 **같은 한 장**이 떠 있었다. 그래서 무기를
+ *   바꿔도 "불이 켜졌다 꺼졌다" 로만 보였다. */
+const mv = await ev(`(function(){
+  var I = window.ITEMS, D = window.DUNGEON;
+  var bases = I.BASES.weapon.map(function (b) { return b.id; });
+  var STEPS = [0.15, 0.5, 0.85];
+  /* \u26a0 **\uc790\ub974\uc9c0 \uc54a\ub294\ub2e4.** \uce74\uba54\ub77c\uac00 \ub808\ubca8 \uacbd\uacc4\uc5d0\uc11c \ubb3c\ub9ac\uba74 \uc8fc\uc778\uacf5\uc774
+   *   \ud654\uba74 \ud55c\uac00\uc6b4\ub370\uac00 \uc544\ub2c8\ub77c, \uc5b4\ub9bc\uc7241 \uc790\ub978 \uce78\uc5d0 \ud6a8\uacfc\uac00 \uc548 \ub4e4\uc5b4 **\uc77c\uacf1 \uc911 \uc5ec\uc12f\uc774
+   *   0 \uc73c\ub85c \ub098\uc654\ub2e4.** \ud6a8\uacfc\uac00 \uc788\uace0 \uc5c6\uace0\uc758 \ucc28\uc774\ub97c \ud654\uba74 \uc804\uccb4\uc5d0\uc11c \uc7ac\uba74
+   *   \uc8fc\uc778\uacf5\uc774 \uc5b4\ub514 \uc788\ub4e0 \uc0c1\uad00\uc5c6\ub2e4. */
+  function maskOf(g, w2, h2, base) {
+    var d = g.getImageData(0, 0, w2, h2).data;
+    var m = new Uint8Array(w2 * h2);
+    for (var i = 0, j = 0; i < d.length; i += 4, j++)
+      m[j] = (Math.abs(d[i]-base[i]) + Math.abs(d[i+1]-base[i+1]) + Math.abs(d[i+2]-base[i+2]) > 24) ? 1 : 0;
+    return m;
+  }
+  function count(m) { var n = 0; for (var i = 0; i < m.length; i++) n += m[i]; return n; }
+  /* ⚠ **주인공 몸은 제외한다.** 공격할 때 스프라이트가 앞으로 내딛는데
+   *   (motionOf 의 push), 그 움직임까지 세면 **효과가 멈춰 있어도
+   *   바뀜 칸이 생긴다** — 대조군이 그것으로 통과했다(실측 182칸). */
+  function moved(a, b, w2, cxp, cyp) {
+    var n = 0;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] === b[i]) continue;
+      var x = i % w2, y = (i / w2) | 0;
+      var dx = x - cxp, dy = y - cyp;
+      if (dx * dx + dy * dy < 26 * 26) continue;
+      n++;
+    }
+    return n;
+  }
+
+  var out = [];
+  bases.forEach(function (b) {
+    window.__start({ depth: 1 });
+    var w = window.__w(), view = window.__view();
+    w.level.tiles.fill(D.FLOOR); w.level.visible.fill(1); w.level.seen.fill(1);
+    w.refreshFov = function () { this.level.visible.fill(1); return false; };
+    w.ents.length = 1; w.shots.length = 0;
+    var h = window.__hero(); h.level = 20;
+    var it = I.roll(D.makeRng(3), { slot: "weapon", base: b, tier: "rare", ilvl: 12 });
+    h.equip.weapon = I.pack(it);
+    w.applyHero();
+    var p = w.player;
+    window.__aimAt(p.x + 3, p.y);
+    if (!p.atk) { out.push({ b: b, miss: true }); return; }
+    p.atk.ang = 0;
+    var m = p.atk.m, keep = p.atk;
+    var c = document.getElementById("game") || document.querySelector("canvas");
+    var g = c.getContext("2d");
+    p.atk = null; view.draw(w, 1);
+    var base = g.getImageData(0, 0, c.width, c.height).data;
+    p.atk = keep;
+    var ms = STEPS.map(function (k) {
+      p.atk.t = m.windup + m.recover * k;
+      view.draw(w, 1);
+      return maskOf(g, c.width, c.height, base);
+    });
+    var TILE = window.VIEW.TILE;
+    var cxp = p.x * TILE + view.ox, cyp = p.y * TILE + view.oy;
+    var area = (count(ms[0]) + count(ms[1]) + count(ms[2])) / 3;
+    out.push({ b: b, area: Math.round(area),
+               d01: moved(ms[0], ms[1], c.width, cxp, cyp),
+               d12: moved(ms[1], ms[2], c.width, cxp, cyp),
+               d02: moved(ms[0], ms[2], c.width, cxp, cyp),
+               r02: area ? Math.round(moved(ms[0], ms[2], c.width, cxp, cyp) / area * 1000) / 10 : 0 });
+  });
+  return out;
+})()`);
 /* ⑤ 날아가는 것 — 무기마다 kind 가 갈리는가 */
 const fly = await ev(`(function(){
   var I = window.ITEMS, D = window.DUNGEON;
@@ -221,7 +300,7 @@ const fly = await ev(`(function(){
     w.shots.length = 0;
     var p = w.player;
     window.__aimAt(p.x + 3, p.y);
-    /* ⚠ 이 세계의 한 걸음은 step() 이다 (tick 은 없다) */
+    /* 이 세계의 한 걸음은 step() 이다 (tick 은 없다) */
     for (var t = 0; t < 240 && !w.shots.length; t++) w.step();
     got[b] = w.shots.length ? (w.shots[0].kind || "(없음)") : "(안 쐈다)";
   });
@@ -231,6 +310,20 @@ const fly = await ev(`(function(){
 let fails = 0;
 const out = [];
 const add = (n, ok, note) => { if (!ok) fails++; out.push([n, !!ok, note]); };
+
+const mvOk = mv.filter(function (x) { return !x.miss; });
+/* ⚠ **칸 수로 문턱을 두지 않는다.** 120칸으로 두었더니 효과 자체가
+ *   작은 단검(769칸)이 불리해졌다 — 큰 무기만 통과하는 잣대다.
+ *   **제 넓이 대비**로 재면 무기 크기와 상관없다. 대조군은 0.5% 이다. */
+/* ⚠ 문턱은 **대조군과 제품 사이**에 둔다. 대조군 0.5% · 가장 낮은
+ * 제품 값이 활 24.7% 이다. 25 로 두면 활이 **눈썭 차로** 빨개져
+ * 언젠가 흔들리는 판정이 된다(이 저장소에서 이미 두 번 겪었다). */
+const still = mvOk.filter(function (x) { return x.r02 < 15; });
+add("쓸려 지나간다", mvOk.length >= 7 && still.length === 0,
+  "휘두름 처음(15%)과 끝(85%)이 얼마나 달라졌나 — " +
+  mvOk.map(function (x) { return x.b + " " + x.r02 + "%"; }).join(" · ") +
+  (still.length ? " ← " + still.map(function (x) { return x.b; }).join(",") + " 가 멈춰 있다"
+                : " (제 넓이의 15% 넘게 움직여야 한다 · 대조군 0.5%)"));
 
 const ok = M.rows.filter(r => !r.miss);
 const blank = ok.filter(r => r.ink === 0);

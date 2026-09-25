@@ -193,6 +193,10 @@ function View(canvas) {
     else ox = Math.min(0, Math.max(this.viewW - mapW, ox));
     if (mapH <= this.viewH) oy = (this.viewH - mapH) / 2;
     else oy = Math.min(0, Math.max(this.viewH - mapH, oy));
+    /* ⚠ 카메라가 지금 얼마나 밀렸는지를 남긴다. 이것이 없으면
+     * 밖에서는 주인공이 화면 어디에 있는지 알 길이 없다 — 레벨 경계에서는
+     * 한가운데가 아니라서, 검사가 그것을 어림하다 빈 칸만 재다. */
+    this.ox = ox; this.oy = oy;
     /* 기기 픽셀 격자에 맞춘다 — 안 맞추면 도트 가장자리가 지글거린다 */
     ox = Math.round(ox * q) / q;
     oy = Math.round(oy * q) / q;
@@ -908,16 +912,56 @@ function View(canvas) {
       return;
     }
 
-    /* 부채꼴 한 벌 — 바깥 반지름 · 안쪽 반지름 · 색 셋만 다르다 */
+    /* ── 쓸려 지나간다 ──────────────────────────────────
+     *
+     * ⚠ 예전에는 부채꼴 **한 장이 통째로** 떴다가 사라졌다. 그래서 무기를
+     *   바꿔도 "불이 켜졌다 꺼졌다" 로만 보였다(훈님 지적 2026-09-25:
+     *   "왜 공격 이펙트가 다 똑같아? 라이트 비추는 효과냐").
+     *   진짜 베기는 **날이 한쪽 끝에서 다른 쪽 끝으로 지나간다.**
+     *
+     *   sw   0 → 1   후딜(recover) 동안의 진행. 여기가 휘두름의 전부다.
+     *   head            날이 지금 있는 자리 — 앞의 45% 에 다 지나간다(빠르다)
+     *   tail            자국의 꼬리 — 30% 부터 뒤따라와 끝에서 만난다(사라진다)
+     *
+     * ⚠ 머리와 꼬리를 **같은 속도로 움직이지 말 것.** 같이 가면 폭이 일정한
+     *   띠가 미끄러지는 꼴이라 칼이 아니라 자가 지나가는 것처럼 보인다.
+     * ⚠ 꼬리가 머리를 따라잡으면 폭이 0 이 되어 저절로 사라진다 — 따로
+     *   투명도를 깎지 않는다(깎으면 끝에서 흐릿하게 뭉개진다). */
+    var sw = Math.min(1, Math.max(0, (a.t - m.windup) / Math.max(0.02, m.recover || 0.2)));
+    function eOut(x) { x = Math.min(1, Math.max(0, x)); return 1 - Math.pow(1 - x, 3); }
+    function eIn(x) { x = Math.min(1, Math.max(0, x)); return x * x; }
+    var headK = eOut(sw / 0.45);
+    /* ⚠ 꼬리가 너무 뒤에 처지면 중간에 **부채를 꽉 채운 불빛**이 된다
+     *   (실측: 35% 지점에서 띄 폭이 부채의 98% 였다). 자국 길이를
+     *   부채의 45% 로 묶는다 — 그것이 날이 지나간 자리로 읽히는 폭이다. */
+    /* ⚠ 꼬리를 `eIn` 으로 당겼더니 **뒷절반이 거의 멈춰 있었다**
+     *   (50%→85% 사이에 바뀜 칸이 32칸뿐). `eOut` 이어야 자국이
+     *   눈에 보이게 걱혀 사라진다 — 날이 지나간 자리는 마지막까지 움직인다. */
+    var tailK = Math.max(eOut((sw - 0.30) / 0.70), headK - 0.45);
+    var span = half * 2;
+    var aTail = a.ang - half + span * tailK;
+    var aHead = a.ang - half + span * headK;
+
+    /* 자국 한 벌. 띠를 몇 조각으로 갈라 **뒤로 갈수록 옅게** 칠한다 —
+     * 그래야 지나간 자리로 읽힌다(한 색으로 칠하면 그냥 부채다). */
     function wedge(outR, inR, c0, c1, c2) {
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius * outR, a.ang - half, a.ang + half);
-      ctx.arc(cx, cy, radius * inR, a.ang + half, a.ang - half, true);
-      ctx.closePath();
-      var g = ctx.createRadialGradient(cx, cy, radius * inR, cx, cy, radius * outR);
-      g.addColorStop(0, c0); g.addColorStop(0.5, c1); g.addColorStop(1, c2);
-      ctx.fillStyle = g;
-      ctx.fill();
+      var N = 6;
+      for (var wi = 0; wi < N; wi++) {
+        var t0 = aTail + (aHead - aTail) * (wi / N);
+        var t1 = aTail + (aHead - aTail) * ((wi + 1) / N);
+        if (t1 - t0 < 1e-4) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.22 + 0.78 * ((wi + 1) / N);
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * outR, t0, t1);
+        ctx.arc(cx, cy, radius * inR, t1, t0, true);
+        ctx.closePath();
+        var g = ctx.createRadialGradient(cx, cy, radius * inR, cx, cy, radius * outR);
+        g.addColorStop(0, c0); g.addColorStop(0.5, c1); g.addColorStop(1, c2);
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.restore();
+      }
     }
 
     if (style === "stab") {
@@ -931,31 +975,50 @@ function View(canvas) {
        * 충격 고리를 둔다. ⚠ 도끼와 같은 불꽃을 쓰지 말 것 — 둘이 한
        * 무기로 보인다(전에 그랬다). */
       wedge(0.95, 0.45, "rgba(255,255,255,0.95)", "rgba(210,210,225,0.75)", "rgba(140,140,160,0)");
-      var ix = cx + Math.cos(a.ang) * radius * 0.95;
-      var iy = cy + Math.sin(a.ang) * radius * 0.95;
-      ctx.strokeStyle = "rgba(255,255,255,.85)";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(ix, iy, 9, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = "rgba(200,200,215,.55)";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(ix, iy, 15, 0, Math.PI * 2); ctx.stroke();
-      for (var qi = 0; qi < 4; qi++) {
-        var qa = a.ang + (qi - 1.5) * 0.5;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(Math.round(ix + Math.cos(qa) * 13) - 1,
-                     Math.round(iy + Math.sin(qa) * 13) - 1, 3, 3);
+      /* ⚠ **닿고 나서** 고리가 퍼진다. 처음부터 띄우면 때리기도 전에
+       *   충격이 있는 꼴이라 찧는 맛이 사라진다. 날이 앞쪽(60%)을 지난 뒤부터. */
+      /* ⚠ headK 로 몰았더니 sw 0.45 에 이미 1 이 돼 **절반 지점에서는
+       *   고리가 사라진다.** 그러면 남는 것은 회색 초승달뿐이라 단검과
+       *   14.5% 밖에 안 달랐다(실측). 찜는 맛은 이 고리에 있으니
+       *   **휘두름 끝까지** 퍼져 나가게 한다. */
+      if (sw > 0.25) {
+        var hk = (sw - 0.25) / 0.75;
+        var ix = cx + Math.cos(a.ang) * radius * 0.95;
+        var iy = cy + Math.sin(a.ang) * radius * 0.95;
+        ctx.save();
+        ctx.globalAlpha = 1 - eIn(hk);
+        ctx.strokeStyle = "rgba(255,255,255,.9)";
+        ctx.lineWidth = 3 - 1.5 * hk;
+        ctx.beginPath(); ctx.arc(ix, iy, 6 + 16 * hk, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = "rgba(200,200,215,.6)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(ix, iy, 3 + 26 * hk, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
       }
     } else if (style === "thrust") {
-      /* 장창 — 원뿔형 찌르기 */
-      var tx = cx + Math.cos(a.ang) * radius * 1.25;
-      var ty = cy + Math.sin(a.ang) * radius * 1.25;
+      /* 장창 — **찌르는 것은 돌지 않는다.** 각도로 쓸지 말고 앞으로 뻗었다
+       * 되돌아온다. 뻗는 데 45% · 빼는 데 나머지. */
+      var reachK = (sw < 0.45) ? eOut(sw / 0.45) : (1 - eIn((sw - 0.45) / 0.55));
+      var far = radius * (0.35 + 0.95 * reachK);
+      var tx = cx + Math.cos(a.ang) * far;
+      var ty = cy + Math.sin(a.ang) * far;
+      var wide = 5 + 9 * reachK;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.65 * reachK;
       ctx.beginPath();
       ctx.moveTo(cx, cy);
-      ctx.lineTo(tx + Math.cos(a.ang + 1.57) * 14, ty + Math.sin(a.ang + 1.57) * 14);
-      ctx.lineTo(tx - Math.cos(a.ang + 1.57) * 14, ty - Math.sin(a.ang + 1.57) * 14);
+      ctx.lineTo(tx + Math.cos(a.ang + 1.57) * wide, ty + Math.sin(a.ang + 1.57) * wide);
+      ctx.lineTo(tx - Math.cos(a.ang + 1.57) * wide, ty - Math.sin(a.ang + 1.57) * wide);
       ctx.closePath();
       ctx.fillStyle = "rgba(255, 240, 160, 0.85)";
       ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,.95)";      /* 촉 — 끝에서 가장 밝다 */
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a.ang) * radius * 0.3, cy + Math.sin(a.ang) * radius * 0.3);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+      ctx.restore();
     } else if (style === "cast") {
       /* 지팡이 — **휘두른다.** 마법진을 손에 띄워 두었더니
        * 효과 층이 **개체보다 먼저** 그려져 스프라이트 밑에 깔렸고,
@@ -974,37 +1037,57 @@ function View(canvas) {
       /* ⚠ 처음에 활대 14 · 시위 13 으로 두었더니 칠한 칸이 544 로
        *   일곱 중 꼴찌였고, 화면에서는 갈색 얼룩으로 보였다.
        *   활은 **마름모가 큰 무기**다 — 크게 그려야 활로 읽힌다. */
+      /* ⚠ 활은 부채꼴이 없어 그대로 두면 **한 장이 박혀 있다**(실측:
+       *   휘두르는 동안 바뀜 칸 2칸). 시위가 **뒤에서 앞으로 튕겨** 나가고
+       *   그 뒤에 활대가 사라져야 쌀다는 것을 본다. */
       var ux = Math.cos(a.ang), uy = Math.sin(a.ang);
       var pxn = -uy, pyn = ux;
+      /* ⚠ sw / 0.35 로 두었더니 **처음 15% 안에 튕김이 다 끝나**
+       *   나머지는 멈춰 있었다(실측: 15%→85% 사이 11.4% 밖에 안 달라졌다).
+       *   후딜 전체에 펌다 — 빠르게 튕기고 천천히 멈춘다. */
+      var rel = eOut(sw);                                /* 0 당김 → 1 튕김 */
+      var fade = 1 - eIn(Math.max(0, (sw - 0.45) / 0.55));
+      ctx.save();
+      ctx.globalAlpha = fade;
+      /* 활대 — 당겼을 때는 깊게 휘고, 놓으면 **펎지면서 되튀다.**
+       * ⚠ 활대를 박아 두었더니 그것이 칠한 칸의 대부분이라, 시위만
+       *   움직여서는 휘두름 전체가 11.3% 밖에 안 달라졌다(실측). */
+      var bowR = 19 + 6 * rel;
+      var bowH = 1.30 - 0.28 * rel;
+      var bowB = 6 + 6 * rel;                            /* 되튀어 물러난다 */
       ctx.strokeStyle = "rgba(200,160,90,.85)";
-      ctx.lineWidth = 4;
-      ctx.beginPath();                                   /* 활대 */
-      ctx.arc(hx - ux * 6, hy - uy * 6, 22, a.ang - 1.15, a.ang + 1.15);
+      ctx.lineWidth = 4 - 1.2 * rel;
+      ctx.beginPath();
+      ctx.arc(hx - ux * bowB, hy - uy * bowB, bowR, a.ang - bowH, a.ang + bowH);
       ctx.stroke();
+      /* 시위 — 뒤로 당겼다가(-14) 앞으로(+14) 지나간다 */
+      var pull = -14 + 28 * rel;
       ctx.strokeStyle = "rgba(255,250,230,.95)";
       ctx.lineWidth = 2;
-      ctx.beginPath();                                   /* 튕겨 나간 시위 */
-      ctx.moveTo(hx - ux * 6 + pxn * 20, hy - uy * 6 + pyn * 20);
-      ctx.quadraticCurveTo(hx + ux * 12, hy + uy * 12,
-                           hx - ux * 6 - pxn * 20, hy - uy * 6 - pyn * 20);
+      ctx.beginPath();
+      ctx.moveTo(hx - ux * bowB + pxn * bowR * 0.9, hy - uy * bowB + pyn * bowR * 0.9);
+      ctx.quadraticCurveTo(hx + ux * pull, hy + uy * pull,
+                           hx - ux * bowB - pxn * bowR * 0.9, hy - uy * bowB - pyn * bowR * 0.9);
       ctx.stroke();
-      ctx.strokeStyle = "rgba(255,235,175,.55)";         /* 되튀는 잔상 */
+      ctx.strokeStyle = "rgba(255,235,175,.45)";         /* 지나온 자리 */
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(hx - ux * 6 + pxn * 20, hy - uy * 6 + pyn * 20);
-      ctx.lineTo(hx - ux * 6 - pxn * 20, hy - uy * 6 - pyn * 20);
+      ctx.moveTo(hx - ux * bowB + pxn * bowR * 0.9, hy - uy * bowB + pyn * bowR * 0.9);
+      ctx.quadraticCurveTo(hx + ux * (pull - 10), hy + uy * (pull - 10),
+                           hx - ux * bowB - pxn * bowR * 0.9, hy - uy * bowB - pyn * bowR * 0.9);
       ctx.stroke();
       ctx.strokeStyle = "rgba(255,255,230,.8)";          /* 나간 쪽 섬광 */
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(hx + ux * 10, hy + uy * 10);
-      ctx.lineTo(hx + ux * 30, hy + uy * 30);
+      ctx.moveTo(hx + ux * (10 + 26 * rel), hy + uy * (10 + 26 * rel));
+      ctx.lineTo(hx + ux * (30 + 46 * rel), hy + uy * (30 + 46 * rel));
       ctx.stroke();
       var gB = ctx.createRadialGradient(hx, hy, 0, hx, hy, 18);
-      gB.addColorStop(0, "rgba(255,255,255,.85)");
+      gB.addColorStop(0, "rgba(255,255,255," + (0.85 * (1 - rel * 0.6)).toFixed(2) + ")");
       gB.addColorStop(1, "rgba(255,210,120,0)");
       ctx.fillStyle = gB;
       ctx.beginPath(); ctx.arc(hx, hy, 18, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     } else if (style === "claw") {
       /* 몬스터 — 붉은 발톱 */
       wedge(1, 0.45, "rgba(255,50,40,0.7)", "rgba(255,50,40,0.7)", "rgba(255,50,40,0.7)");
@@ -1019,11 +1102,14 @@ function View(canvas) {
      *   바닥에서 그것이 **산탄처럼** 보였다(훈님 지적 2026-09-25).
      *   베는 것은 알이 튀는 것이 아니다 — 날이 지나간 **한 줄**이다.
      * ⚠ 점을 찍지 말 것. 넣는 순간 다시 산탄으로 보인다. */
-    if (e.team === 0 && !shoots) {
-      ctx.strokeStyle = "rgba(255,255,255,.9)";
-      ctx.lineWidth = 2;
+    if (e.team === 0 && !shoots && aHead - aTail > 1e-3) {
+      /* ⚠ **지금 날이 있는 자리**에 긋는다. 부채 전체에 두르면 다시 정지
+       *   화면이 된다 — 움직이는 것은 이 한 줄이다. */
+      ctx.strokeStyle = "rgba(255,255,255,.95)";
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * 0.98, a.ang - half * 0.92, a.ang + half * 0.92);
+      ctx.moveTo(cx + Math.cos(aHead) * radius * 0.30, cy + Math.sin(aHead) * radius * 0.30);
+      ctx.lineTo(cx + Math.cos(aHead) * radius * 1.02, cy + Math.sin(aHead) * radius * 1.02);
       ctx.stroke();
     }
     ctx.restore();
