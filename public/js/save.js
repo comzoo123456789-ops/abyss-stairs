@@ -178,6 +178,16 @@
       }
     }
 
+    /* ── 잠근 칸. 자동장착이 손대지 않을 자리다.
+     * ⚠ **표에 있는 슬롯만** 남긴다. 낯선 키가 들어오면 자동장착이
+     *   영영 못 고르는 유령 칸이 생기는데 오류는 한 줄도 안 난다. */
+    out.locks = {};
+    if (I) {
+      var rawL = (raw.locks && typeof raw.locks === "object") ? raw.locks : {};
+      for (var lk = 0; lk < I.SLOTS.length; lk++)
+        if (rawL[I.SLOTS[lk]]) out.locks[I.SLOTS[lk]] = true;
+    }
+
     /* 서로 어긋난 값 바로잡기 — 칸별로만 보면 못 잡는 종류다 */
     if (out.born <= 0) out.born = Date.now();
     return out;

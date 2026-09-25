@@ -555,7 +555,7 @@
      *   그 둘 안에서 난 클릭은 건너뛴다.
      * ⚠ 새 창을 `body` 에 붙일 때마다 여기 이름을 더해야 한다. 안 더하면
      *   같은 증상이 조용히 되살아난다. */
-    var OVER_PANEL = "#itemModal, #itemCtx, #cmpModal";
+    var OVER_PANEL = "#itemModal, #itemCtx, #cmpModal, #aeModal";
     var _outsideClose = function(e) {
       if (e.target && e.target.closest && e.target.closest(OVER_PANEL)) return;
       if (!box.hidden && !box.contains(e.target)) {
@@ -751,6 +751,7 @@
       '</div>' +
       (currentBagTab === "equip" ? '<div class="bag-action-row">' +
         '<button id="btnSortBag" class="btn-sort-bag">⚡ 자동 정렬</button>' +
+        '<button id="btnAutoEq" class="btn-auto-eq">🧲 자동장착</button>' +
         '<button id="btnTestItems" class="btn-test-items">🎁 테스트 장비 획득</button></div>' : '') +
       '</div></div>';
     
@@ -1034,6 +1035,9 @@
         if (!picks.length) return toast("견줄 장비를 고르십시오");
         openCompare(picks);
       });
+
+      var btnAE = document.getElementById("btnAutoEq");
+      if (btnAE) bindTapUI(btnAE, function () { openAutoEq(); });
 
       var btnSort = document.getElementById("btnSortBag");
       if (btnSort) {
@@ -1351,6 +1355,196 @@
     }
     h += '<button class="cmp-more" data-act="compare">자세히 견주기</button></div>';
     return h;
+  }
+
+  /* ── 자동장착 ───────────────────────────────
+   * 가방에 있는 것까지 함께 놓고 가장 센 한 벌을 찾아 **보여 주고 묻는다.**
+   *
+   * ⚠ **바로 입히지 않는다.** 한 수에 일곱 칸이 바뀌는 일이라, 세트가
+   *   깨지거나 아끼던 것이 가방으로 돌아가는 것을 본 뒤에 정해야 한다.
+   *   미리보기는 값도 거의 안 든다 · 견주기의 줄(CMP_ROWS)을 그대로 쓴다.
+   * ⚠ 그래서 되돌리기를 따로 두지 않는다. 물어보고 입혔으면 되돌릴 일이 없고,
+   *   장치가 둘이면 한쪽만 고쳐진다.
+   * ⚠ 잠금은 `hero.locks` 에 남는다(저장된다). 자동장착은 그 칸을
+   *   아예 후보에서 뺀다 — 금화 반지나 격맞추는 맛은 그것으로 지킨다.
+   */
+  var autoKey = "mix";
+
+  function aeLocks() {
+    if (!hero.locks || typeof hero.locks !== "object") hero.locks = {};
+    return hero.locks;
+  }
+  function aeMake() {
+    var S = global.SAVE;
+    if (!global.AUTOEQ || !world) return null;
+    return global.AUTOEQ.plan(world, {
+      eq: S.liveEquip(hero), bag: S.liveBag(hero),
+      level: hero.level, locks: aeLocks(), key: autoKey
+    });
+  }
+
+  /* 달라지는 칸 한 줄 */
+  function aeRow(c) {
+    var I = global.ITEMS;
+    function chip(it) {
+      if (!it) return '<span class="ae-none">비움</span>';
+      var ti = I.tierOf(it.tier);
+      return '<span class="ae-it" style="color:' + ti.color + '">' + esc(it.name) +
+        ((it.enh || 0) ? ' +' + it.enh : '') + '</span>';
+    }
+    return '<div class="ae-row"><span class="ae-slot">' + esc(I.SLOT_NAME[c.slot]) + '</span>' +
+      '<span class="ae-val">' + chip(c.from) + '<span class="ae-arw">→</span>' + chip(c.to) +
+      '</span></div>';
+  }
+
+  /* 전과 후. ⚠ 줄은 CMP_ROWS 한 곳에서 온다 — 여기서 따로 적으면
+   *   견주기 화면과 두 벌이 되어 한쪽만 고쳐진다. */
+  function aeStats(p) {
+    var h = '<table class="ae-t"><thead><tr><th></th><th>지금</th><th>바꾼 뒤</th><th></th></tr></thead><tbody>';
+    var n = 0;
+    for (var r = 0; r < CMP_ROWS.length; r++) {
+      var row = CMP_ROWS[r];
+      var a = cmpVal(row, p.before), b = cmpVal(row, p.after);
+      var differs = Math.abs(a - b) > 1e-9;
+      if (!row.always && !differs) continue;
+      n++;
+      h += '<tr' + (r < 2 ? ' class="ae-key"' : '') + '><th>' + row.name + '</th>' +
+        '<td>' + cmpFmt(row, a) + '</td>' +
+        '<td><b>' + cmpFmt(row, b) + '</b></td>' +
+        '<td>' + cmpDelta(row, b, a) + '</td></tr>';
+    }
+    h += '</tbody></table>';
+    return n ? h : "";
+  }
+
+  /* 잠금 칩 일곱 — 잠긴 칸도 여기 서 있어야 풀 수 있다.
+   * ⚠ 잠긴 칸은 후보에서 빠져 위의 줄에 안 나온다 — 여기까지 없으면
+   *   한 번 잠그고 나면 다시 못 푸는 칸이 된다. */
+  function aeLockBar() {
+    var I = global.ITEMS, L = aeLocks(), S = global.SAVE, eq = S.liveEquip(hero);
+    var h = '<div class="ae-locks"><span class="ae-lab">손대지 않을 칸</span>';
+    for (var i = 0; i < I.SLOTS.length; i++) {
+      var s = I.SLOTS[i], on = !!L[s];
+      h += '<button class="ae-lk' + (on ? " on" : "") + '" data-aelock="' + s + '" title="' +
+        esc(eq[s] ? eq[s].name : "비어 있음") + '">' +
+        (on ? "🔒" : "🔓") + " " + esc(I.SLOT_NAME[s]) + '</button>';
+    }
+    return h + '</div>';
+  }
+
+  function aePaint(ov) {
+    var p = aeMake();
+    if (!p) return;
+    ov.__plan = p;
+    var K = global.AUTOEQ.KEYS;
+    var chips = '<div class="ae-keys">';
+    for (var i = 0; i < K.length; i++)
+      chips += '<button class="ae-key-chip' + (K[i].id === autoKey ? " on" : "") +
+        '" data-aekey="' + K[i].id + '">' + K[i].name +
+        '<em>' + K[i].sub + '</em></button>';
+    chips += '</div>';
+
+    var body;
+    if (!p.changes.length) {
+      body = '<div class="ae-same">이미 가장 센 한 벌입니다. 갈아 끼울 것이 없습니다.</div>';
+    } else {
+      body = '<div class="ae-list">';
+      for (var c = 0; c < p.changes.length; c++) body += aeRow(p.changes[c]);
+      body += '</div>' + aeStats(p);
+    }
+    if (p.later)
+      body += '<div class="ae-later">Lv.' + p.laterReq + ' 부터 쓸 수 있는 것 ' +
+        p.later + '개는 빼고 골람습니다</div>';
+    body += aeLockBar();
+
+    ov.querySelector(".ae-body").innerHTML = chips + body;
+    var go = ov.querySelector("[data-act=aego]");
+    if (go) {
+      go.disabled = !p.changes.length;
+      go.textContent = p.changes.length
+        ? ("이대로 입기 (" + p.changes.length + "곳)")
+        : "바뀜 것 없음";
+    }
+    ov.querySelectorAll("[data-aekey]").forEach(function (b) {
+      bindTapUI(b, function () { autoKey = b.getAttribute("data-aekey"); aePaint(ov); });
+    });
+    ov.querySelectorAll("[data-aelock]").forEach(function (b) {
+      bindTapUI(b, function () {
+        var s2 = b.getAttribute("data-aelock"), L = aeLocks();
+        if (L[s2]) delete L[s2]; else L[s2] = true;
+        global.SAVE.save(hero);
+        aePaint(ov);
+      });
+    });
+  }
+
+  function openAutoEq() {
+    if (!global.AUTOEQ) return toast("자동장착을 불러오지 못했습니다");
+    var old = document.getElementById("aeModal");
+    if (old) old.remove();
+    var ov = document.createElement("div");
+    ov.id = "aeModal";
+    ov.className = "item-modal-overlay";
+    ov.innerHTML =
+      '<div class="item-modal-card ae-card">' +
+        '<button class="item-modal-close" data-act="close" aria-label="닫기">×</button>' +
+        '<div class="ae-head">자동장착' +
+          '<span class="ae-hint">가방에 있는 것까지 함께 놓고 가장 센 한 벌을 찾습니다</span>' +
+        '</div>' +
+        '<div class="ae-body"></div>' +
+        '<div class="card-act-row">' +
+          '<button class="btn-card-act equip" data-act="aego">이대로 입기</button>' +
+          '<button class="btn-card-act cancel" data-act="close">그만두기</button>' +
+        '</div>' +
+      '</div>';
+    function close() { if (ov.parentNode) ov.parentNode.removeChild(ov); }
+    ov.addEventListener("click", function (e) { if (e.target === ov) close(); });
+    ov.querySelectorAll("[data-act=close]").forEach(function (b) { bindTapUI(b, close); });
+    bindTapUI(ov.querySelector("[data-act=aego]"), function () {
+      var p = ov.__plan;
+      close();
+      if (p) applyAuto(p);
+    });
+    document.body.appendChild(ov);
+    aePaint(ov);
+  }
+
+  /* 입힌다. ⚠ 빼는 일과 넣는 일을 **한 번에** 한다 — 한 칸씩 바꾸면
+   *   가방 번호가 그때마다 밀려 엉뚱한 것을 꺼낸다. */
+  function applyAuto(p) {
+    var I = global.ITEMS, S = global.SAVE;
+    if (!p || !p.changes.length) return toast("갈아 끼울 것이 없습니다");
+    /* ⚠ 번호는 `liveBag` 기준이다. 길이가 어긋나면 중간에 못 푸는 칸이
+     *   있다는 뜻이라 번호가 밀린다 — 그때는 손대지 않는다. */
+    if (S.liveBag(hero).length !== hero.bag.length)
+      return toast("가방을 읽지 못했습니다. 다시 여십시오");
+
+    var take = [], back = 0, i;
+    for (i = 0; i < p.changes.length; i++) {
+      if (p.changes[i].where >= 0) take.push(p.changes[i].where);
+      if (p.changes[i].from) back++;
+    }
+    if (hero.bag.length - take.length + back > S.BAG)
+      return toast("가방이 가득 찼습니다. 자리를 비우고 다시 하십시오");
+
+    var out = [];
+    for (i = 0; i < p.changes.length; i++) {
+      var sl = p.changes[i].slot;
+      if (hero.equip[sl]) out.push(hero.equip[sl]);
+    }
+    take.sort(function (a, b) { return b - a; });   /* 뒤에서부터 빼야 번호가 안 밀린다 */
+    for (i = 0; i < take.length; i++) hero.bag.splice(take[i], 1);
+    for (i = 0; i < p.changes.length; i++) {
+      var c = p.changes[i];
+      if (c.to) hero.equip[c.slot] = I.pack(c.to); else delete hero.equip[c.slot];
+    }
+    for (i = 0; i < out.length; i++) hero.bag.push(out[i]);
+
+    world.applyHero();
+    S.save(hero);
+    if (global.SFX) global.SFX.play("pickup");
+    toast(p.changes.length + "곳을 갈아 끼웠습니다");
+    openBag();
   }
 
   function openItemModal(it, equipped, where) {
@@ -2930,6 +3124,8 @@
         if (document.getElementById("itemCtx")) { closeCtxMenu(); return; }
         /* 견주기 창이 물건 창보다 **위**다 — 물건 창에서 열고 들어간다.
          * ⚠ 차례를 뒤집으면 견주다가 ESC 를 눌렀는데 뒤의 물건 창이 닫힌다. */
+        var ovA = document.getElementById("aeModal");
+        if (ovA) { if (ovA.parentNode) ovA.parentNode.removeChild(ovA); return; }
         var ovC = document.getElementById("cmpModal");
         if (ovC) { if (ovC.parentNode) ovC.parentNode.removeChild(ovC); return; }
         var ov = document.getElementById("itemModal");
@@ -3056,6 +3252,15 @@
      *   장비를 끼우는 길만 두면, 그 길이 막히는 날 조준 검사까지 같이 죽는다. */
     global.__give = giveTestItems;
     global.__openCompare = openCompare;
+    global.__autoeq = openAutoEq;
+    global.__aeplan = aeMake;
+    global.__aekey = function (k) { if (k) autoKey = k; return autoKey; };
+    global.__aelock = function (s2, on) {
+      var L = aeLocks();
+      if (on) L[s2] = true; else delete L[s2];
+      global.SAVE.save(hero);
+      return Object.keys(L);
+    };
     global.__equipBag = equipFromBag;
     global.__findBag = function (kind) {
       /* ⚠ `hero.bag` 는 **눌러 담은 것**이다(`I.pack`). 거기서 `.base` 를

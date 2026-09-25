@@ -1821,3 +1821,123 @@ td.cmp-best b { color: #86e6ad; }
 
 .mitem.is-on { color: #86e6ad; }
 .mitem.is-on .ico { filter: none; }
+
+/* ── 자동장착 ────────────────────────────────────
+ * 견주기(.cmp-*)와 **같은 결**이다. 그쪽 값을 그대로 베끼지 말 것 —
+ * 하나만 고쳐지면 두 창이 다른 모양이 된다. 다른 것만 적는다. */
+.btn-auto-eq {
+  background: linear-gradient(135deg, #7a6cd6, #4c3fa8) !important;
+  color: #fff !important;
+  font-weight: bold !important;
+  border: 1px solid rgba(122, 108, 214, .6) !important;
+  padding: 6px 12px !important;
+  border-radius: 6px !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  box-shadow: 0 0 10px rgba(122, 108, 214, .35) !important;
+  transition: transform .15s ease !important;
+}
+.btn-auto-eq:active { transform: scale(.95) !important; }
+
+.ae-card { width: min(96vw, 560px); max-width: 96vw; max-height: 88vh; overflow-y: auto; }
+.ae-head {
+  font-size: 16px; font-weight: 800; color: #e8e6f0;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 10px; padding-right: 28px;
+}
+.ae-hint { font-size: 11px; font-weight: 500; color: #8a8aa0; }
+
+/* 기준 둘. ⚠ 셋 이상으로 늘리지 말 것 — autoeq.js 의 주석에 재본 숫자가 있다 */
+.ae-keys { display: flex; gap: 6px; margin-bottom: 12px; }
+.ae-key-chip {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 7px 8px; font-size: 13px; font-weight: 700; font-family: inherit;
+  color: #a09580; background: #201a28;
+  border: 1px solid #3a3350; border-radius: 8px; cursor: pointer;
+}
+.ae-key-chip em { font-style: normal; font-size: 10px; font-weight: 500; color: #7d7a92; }
+.ae-key-chip:hover { background: #2b2336; color: #d9cfb8; }
+.ae-key-chip.on {
+  color: #cfc6ff; background: rgba(122, 108, 214, .18); border-color: #7a6cd6;
+}
+.ae-key-chip.on em { color: #9a93c8; }
+
+.ae-list {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-bottom: 12px; padding: 8px 10px;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 8px;
+}
+/* ⚠ 눈 맞춤으로 두지 말 것. 긴 이름이 접히면 둘째 줄이 칸 왜쪽
+ *   끝으로 돌아가 어느 칸 이야기인지가 사라진다(실측 390px: 갑옷 줄).
+ *   칸 이름을 제 칸에 못 박아 둔다. */
+.ae-row {
+  display: grid; grid-template-columns: 48px 1fr; gap: 2px 6px;
+  align-items: baseline; font-size: 12px;
+}
+.ae-row > :nth-child(n+2) { grid-column: 2; }
+.ae-val {
+  display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap;
+}
+.ae-slot {
+  grid-column: 1; grid-row: 1;
+  font-size: 11px; font-weight: 700; color: #9a93c8;
+}
+.ae-it { font-weight: 700; }
+.ae-none { color: #6b6880; }
+.ae-arw { color: #7d7a92; }
+
+.ae-same {
+  padding: 14px 10px; text-align: center;
+  font-size: 13px; color: #9b98ad;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.ae-t { width: 100%; border-collapse: collapse; font-size: 12px; color: #d6d3e4; }
+.ae-t th, .ae-t td {
+  padding: 4px 8px; text-align: right; white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, .06);
+}
+.ae-t thead th {
+  font-size: 10px; color: #7d7a92; font-weight: 600;
+  border-bottom: 1px solid rgba(255, 255, 255, .16);
+}
+.ae-t tbody th { text-align: left; font-weight: 600; color: #9b98ad; }
+.ae-t td b { font-weight: 700; color: #ece9f6; }
+/* 굴림은 맨 위 둘이다. 나머지는 그것을 이루는 조각이라 눈이 먼저 가면 안 된다 */
+.ae-t tr.ae-key th, .ae-t tr.ae-key td { background: rgba(122, 108, 214, .10); }
+.ae-t tr.ae-key td b { font-size: 13px; }
+.ae-t .cmp-d { display: inline; margin: 0; }
+
+.ae-later { margin-top: 8px; font-size: 11px; color: #c9a86a; }
+
+/* ⚠ 줄이 열셋이라 좋은 화면에서는 [이대로 입기] 가 표 아래로 밀려
+ *   **굴려야 보였다**(실측 390px). 누를 것은 늘 보이게 바닥에 붙인다.
+ * ⚠ `.card-act-row` 는 물건 창도 쓴다 — 이 카드 안에서만 건드린다. */
+.ae-card .card-act-row {
+  position: sticky; bottom: -14px; z-index: 3;
+  margin-top: 12px; padding: 10px 0 4px;
+  background: linear-gradient(180deg, rgba(27, 26, 38, 0) 0%, #1b1a26 22%);
+}
+
+.ae-locks {
+  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+}
+.ae-lab { font-size: 10px; font-weight: 700; color: #8a8aa0; margin-right: 2px; }
+.ae-lk {
+  padding: 3px 7px; font-size: 11px; font-family: inherit;
+  color: #7d7a92; background: transparent;
+  border: 1px solid #332d44; border-radius: 6px; cursor: pointer;
+}
+.ae-lk:hover { background: #2b2336; color: #d9cfb8; }
+.ae-lk.on { color: #e6c88a; background: rgba(201, 168, 106, .14); border-color: #9a7f45; }
+
+@media (max-width: 560px) {
+  .ae-t { font-size: 11px; }
+  .ae-t th, .ae-t td { padding: 4px 5px; }
+  .ae-key-chip { font-size: 12px; }
+}
