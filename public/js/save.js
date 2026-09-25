@@ -368,6 +368,23 @@
     try { ls.removeItem(KEY); lastText = ""; return true; } catch (e) { return false; }
   }
 
+  function wipeAll() {
+    var ls = store();
+    if (!ls) return false;
+    try {
+      ls.removeItem(KEY);
+      var ids = (global.CLASSES && global.CLASSES.LIST)
+        ? global.CLASSES.LIST.map(function (c) { return c.id; })
+        : clsList();
+      for (var i = 0; i < ids.length; i++) {
+        ls.removeItem(slotKey(ids[i]));
+        ls.removeItem(slotKey(ids[i]) + ":bak");
+      }
+      lastText = "";
+      return true;
+    } catch (e) { return false; }
+  }
+
   /* ── 성장 ───────────────────────────────────────────────
    * 필요 경험치는 **한 곳에서만** 정한다. 화면에 쓰는 값과 올리는 값이 갈리면
    * "바가 꽉 찼는데 레벨이 안 오른다" 가 된다. */
@@ -392,7 +409,7 @@
 
   global.SAVE = {
     KEY: KEY, VERSION: VERSION, FIELDS: FIELDS, AUTO_EVERY: AUTO_EVERY,
-    load: load, save: save, wipe: wipe, blank: blank, sanitize: sanitize,
+    load: load, save: save, wipe: wipe, wipeAll: wipeAll, blank: blank, sanitize: sanitize,
     needFor: needFor, gainXp: gainXp,
     BAG: BAG, STASH: STASH,
     liveSkills: function (s) { return (s && s.skills) || {}; },

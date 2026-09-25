@@ -533,11 +533,6 @@
       if (global.SFX) global.SFX.play("level");
       /* 레벨이 오르면 **그 자리에서 체력이 늘고 다 찬다.** 실시간에서는 숨 돌릴
        * 틈이 없으므로 이게 유일한 회복 순간이다(물약이 붙기 전까지). */
-      if (this.hero.level >= 15 && !this.hero.advClass && global.openAdvancementModal) {
-        setTimeout(function() {
-          global.openAdvancementModal();
-        }, 300);
-      }
       this.applyHero();
       this.player.hp = this.player.maxHp;
     }
@@ -594,23 +589,6 @@
     o.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
     o.stamRegen = cls ? cls.stamRegen : 12;
 
-    /* 1차 전직 보너스 적용 */
-    if (CL && h && h.advClass && CL.ADVANCED_CLASSES && CL.ADVANCED_CLASSES[h.advClass]) {
-      var advB = CL.ADVANCED_CLASSES[h.advClass].bonuses || {};
-      if (advB.hpMult) o.maxHp = Math.round(o.maxHp * advB.hpMult);
-      if (advB.armorAdd) o.def += advB.armorAdd;
-      if (advB.spdMult) o.spd *= advB.spdMult;
-      if (advB.critPctAdd) {
-        critRaw += advB.critPctAdd;
-        o.critOver = Math.max(0, critRaw - 100);
-        o.critPct = Math.min(100, critRaw);
-      }
-      if (advB.critDmgAdd) o.critDmgPct += advB.critDmgAdd;
-      if (advB.stamAdd) o.stamMax += advB.stamAdd;
-      if (advB.stamRegenAdd) o.stamRegen += advB.stamRegenAdd;
-      if (advB.leechPct) o.lifeOnHit += advB.leechPct;
-    }
-
     o.swing = null;
     o.adept = false;
     var sw = I ? I.swingOf(eq, t) : null;
@@ -621,9 +599,6 @@
        * 쓰레기가 되어 줍는 재미가 사라진다. */
       o.adept = !!(CL && h && eq.weapon && CL.adept(h.cls, eq.weapon));
       if (o.adept) raw *= (1 + CL.ADEPT_BONUS / 100);
-      if (CL && h && h.advClass && CL.ADVANCED_CLASSES && CL.ADVANCED_CLASSES[h.advClass] && CL.ADVANCED_CLASSES[h.advClass].bonuses && CL.ADVANCED_CLASSES[h.advClass].bonuses.dmgMult) {
-        raw *= CL.ADVANCED_CLASSES[h.advClass].bonuses.dmgMult;
-      }
       o.swing = {
         aps: sw.aps, windup: sw.windup, recover: sw.recover,
         reach: sw.reach, arc: sw.arc, push: sw.push,
@@ -633,7 +608,7 @@
          *   무기마다 다르게 그리려면 이것이 필요한데, 예전에는 swing 에
          *   없어서 화면이 `e.equipped` 를 따로 뒤졌다(주인공만 되는 길이다). */
         base: (eq.weapon && eq.weapon.base) || "",
-        /* ⚠ **직업도 싣는다.** 전리와 기사는 둘 다 장검으로 시작해서
+        /* ⚠ **직업도 싣는다.** 전사와 기사는 둘 다 장검으로 시작해서
          *   무기만 보면 **한 글자도 안 다른 그림**이 나온다(실측). 기사는
          *   한손검에 방패라 어깨로 짧게 통제해 벤다 — 두 손으로 허리를
          *   돌려 크게 쓰는 전사와 결이 다르다(MoCap Online). */

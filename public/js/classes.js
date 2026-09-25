@@ -76,58 +76,6 @@
     }
   ];
 
-  /* ── 1차 전직 목록 (Lv 15 달성 시 선택) ─────────────────────── */
-  var ADVANCED_CLASSES = {
-    berserker: {
-      id: "berserker", base: "warrior", name: "광전사", icon: "warrior",
-      tag: "피투성이 폭주", text: "체력과 공격력이 모두 증폭된 분노의 전사. 체력 +10%, 공격력 +15%, 이동속도 +10%.",
-      skills: ["bloodrage", "leap"],
-      bonuses: { hpMult: 1.10, dmgMult: 1.15, spdMult: 1.10 }
-    },
-    dreadnought: {
-      id: "dreadnought", base: "warrior", name: "드레드노트", icon: "warrior",
-      tag: "절대 방벽 파쇄자", text: "상대를 가루로 만드는 파쇄 전사. 체력 +20%, 방어력 +5, 공격력 +5%.",
-      skills: ["shatter", "decimate"],
-      bonuses: { hpMult: 1.20, armorAdd: 5, dmgMult: 1.05 }
-    },
-    paladin: {
-      id: "paladin", base: "knight", name: "성기사", icon: "knight",
-      tag: "신성 가호와 징벌", text: "빛으로 자신을 수호하고 적을 신벌하는 성기사. 체력 +15%, 방어력 +8, 기력회복 +3.",
-      skills: ["aegis", "judgment"],
-      bonuses: { hpMult: 1.15, armorAdd: 8, stamRegenAdd: 3 }
-    },
-    darkknight: {
-      id: "darkknight", base: "knight", name: "암흑기사", icon: "knight",
-      tag: "영혼 수확자", text: "적의 영혼을 갈취하여 본인을 치유하는 마기사. 체력 +10%, 공격력 +15%, 타격회복 +10.",
-      skills: ["brand", "souldrain"],
-      bonuses: { hpMult: 1.10, dmgMult: 1.15, leechPct: 10 }
-    },
-    assassin: {
-      id: "assassin", base: "rogue", name: "암살자", icon: "rogue",
-      tag: "은형의 일격", text: "치명적인 급소를 사냥하는 은신의 사냥꾼. 치명타율 +15%, 치명타피해 +30%, 이동속도 +10%.",
-      skills: ["stealth", "fatalslash"],
-      bonuses: { critPctAdd: 15, critDmgAdd: 30, spdMult: 1.10 }
-    },
-    shadowblade: {
-      id: "shadowblade", base: "rogue", name: "그림자검", icon: "rogue",
-      tag: "환영 춤꾼", text: "분신과 함께 환형으로 이동하며 춤추듯 사냥하는 쾌검사. 이동속도 +20%, 기력회복 +5, 치명타율 +10%.",
-      skills: ["mirrorimage", "shadowdance"],
-      bonuses: { spdMult: 1.20, stamRegenAdd: 5, critPctAdd: 10 }
-    },
-    archmage: {
-      id: "archmage", base: "mage", name: "대마법사", icon: "mage",
-      tag: "원소 폭격", text: "하늘에서 메테오와 연쇄 벼락을 내리치는 대원소 마법사. 스킬 피해 +25%, 기력 +30, 기력회복 +5.",
-      skills: ["meteor", "chainlightning"],
-      bonuses: { dmgMult: 1.25, stamAdd: 30, stamRegenAdd: 5 }
-    },
-    necromancer: {
-      id: "necromancer", base: "mage", name: "네크로맨서", icon: "mage",
-      tag: "사령의 부패", text: "해골 군단을 소환하고 부패의 오라로 사멸시키는 흑마법사. 지속 피해 +30%, 체력 흡수 +8%, 체력 +15%.",
-      skills: ["summonundead", "decayaura"],
-      bonuses: { hpMult: 1.15, dmgMult: 1.15, leechPct: 8 }
-    }
-  };
-
   /* 셋이 함께 쓰는 재주. */
   var SHARED = ["dash", "ward"];
 
@@ -138,25 +86,14 @@
     return CLASSES[0];
   }
 
-  function getAdvancements(baseId) {
-    var res = [];
-    for (var k in ADVANCED_CLASSES) {
-      if (ADVANCED_CLASSES[k].base === baseId) res.push(ADVANCED_CLASSES[k]);
-    }
-    return res;
+  /* 이 직업이 쓸 수 있는 재주 — **전용 + 공용.**
+   * ⚠ 순서가 곧 손잡이 기본 배치다. 전용을 앞에 둔다(그게 그 직업의 정체다). */
+  function skillsOf(id) {
+    return byId(id).skills.concat(SHARED);
   }
 
-  /* 이 직업이 쓸 수 있는 재주 — **전용 + 공용 + (전직 시) 전직 스킬.** */
-  function skillsOf(id, advClass) {
-    var baseList = byId(id).skills.concat(SHARED);
-    if (advClass && ADVANCED_CLASSES[advClass]) {
-      return baseList.concat(ADVANCED_CLASSES[advClass].skills);
-    }
-    return baseList;
-  }
-
-  function canUse(id, skillId, advClass) {
-    return skillsOf(id, advClass).indexOf(skillId) >= 0;
+  function canUse(id, skillId) {
+    return skillsOf(id).indexOf(skillId) >= 0;
   }
 
   /* 든 무기가 적성인가 */
@@ -193,17 +130,15 @@
     if (SK) for (i = 0; i < SK.LIST.length; i++) {
       var id = SK.LIST[i].id;
       var owned = SHARED.indexOf(id) >= 0 ||
-        CLASSES.some(function (c) { return c.skills.indexOf(id) >= 0; }) ||
-        Object.keys(ADVANCED_CLASSES).some(function (k) { return ADVANCED_CLASSES[k].skills.indexOf(id) >= 0; });
+        CLASSES.some(function (c) { return c.skills.indexOf(id) >= 0; });
       if (!owned) bad.push("재주 " + id + " 를 아무도 못 쓴다");
     }
     return bad;
   }
 
   global.CLASSES = {
-    LIST: CLASSES, SHARED: SHARED, ADEPT_BONUS: ADEPT_BONUS, ADVANCED_CLASSES: ADVANCED_CLASSES,
-    byId: byId, getAdvancements: getAdvancements, skillsOf: skillsOf, skills: skillsOf, canUse: canUse, adept: adept, audit: audit,
+    LIST: CLASSES, SHARED: SHARED, ADEPT_BONUS: ADEPT_BONUS,
+    byId: byId, skillsOf: skillsOf, skills: skillsOf, canUse: canUse, adept: adept, audit: audit,
     ids: function () { return CLASSES.map(function (c) { return c.id; }); }
   };
 })(window);
-

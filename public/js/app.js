@@ -421,7 +421,6 @@
       if (pr.id === "stash") return openStash();
       if (pr.id === "smith") return openSmith();
       if (pr.id === "craft") return openCraft();
-      if (pr.id === "altar") return openAdvancementModal();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -2405,16 +2404,8 @@
     if (!box) return;
     var SK = global.SKILLS;
     var html = '<h2>스킬북</h2><p class="sub">남은 점수 <b>' + hero.points +
-      '</b> · 스킬 슬롯 1·2·3·4 (◀ ▶ 버튼 또는 좌우 스크롤)</p>';
-
-    if (hero.level >= 15 && !hero.advClass) {
-      html += '<div style="background:#3d2f09; border:1px solid #ffd700; border-radius:6px; padding:10px 14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">' +
-        '<span style="color:#ffe9a8; font-size:13px; font-weight:bold;">⚔️ 레벨 15 달성! 전용 전직 스킬을 배울 수 있는 1차 전직이 가능합니다.</span>' +
-        '<button id="btnBookAdv" style="background:linear-gradient(to bottom,#ffe875,#c99318); color:#000; border:none; padding:6px 14px; border-radius:4px; font-weight:bold; cursor:pointer;">1차 전직하러 가기</button>' +
-        '</div>';
-    }
-
-    html += '<div class="skill-tabs">' +
+      '</b> · 스킬 슬롯 1·2·3·4 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
+      '<div class="skill-tabs">' +
       '<button id="stabActive" class="stab-btn active">⚡ 액티브 스킬</button>' +
       '<button id="stabPassive" class="stab-btn">🛡️ 패시브 / 버프</button>' +
       '</div>' +
@@ -2422,10 +2413,13 @@
       '<button class="scroll-arrow left" id="btnSkillPrev" title="이전 스킬">◀</button>' +
       '<div class="cols skill-cols" id="skillColsWrap">';
 
-    var mine = global.CLASSES ? global.CLASSES.skills(hero.cls, hero.advClass) : [];
+    var mine = global.CLASSES ? global.CLASSES.skills(hero.cls) : [];
 
     for (var i = 0; i < mine.length; i++) {
       var sId = mine[i];
+      /* ⚠ `SK.by` 가 아니라 **`SK.byId`** 다. skills.js 는 by 를 안 내보낸다.
+       *   그래서 스킬북이 첫 반복에서 터졌고, 창을 보이게 하는 줄에 아예
+       *   닿지 못했다 — 눌러도 **아무 일도 안 일어나는** 것으로 보였다. */
       var def = SK.byId(sId);
       if (!def) continue;
 
@@ -2434,6 +2428,8 @@
       var isPassive = (def.type === "passive" || def.kind === "buff");
       var stype = isPassive ? "passive" : "active";
 
+      /* ⚠ `SK.calc` 도 없다. `SK.resolve(id, 가진것)` 이다 — 인자도 다르다.
+       *   이름만 바꾸면 def 를 id 자리에 넣게 되어 조용히 null 이 된다. */
       var r = SK.resolve(def.id, hero.skills);
 
       html += '<div class="col skill" data-type="' + stype + '">' +
@@ -2481,13 +2477,6 @@
     box.className = "panel wide";
     box.hidden = false; box.style.display = "";
     addCloseButton(box);
-
-    var btnBookAdvEl = document.getElementById("btnBookAdv");
-    if (btnBookAdvEl) {
-      btnBookAdvEl.addEventListener("click", function() {
-        openAdvancementModal();
-      });
-    }
 
     var filterSkills = function(type) {
       box.querySelectorAll(".col.skill").forEach(function(el) {
@@ -2837,128 +2826,6 @@
   }
 
   /* ── 상세 정보 팝업 ──────────────────────────────────── */
-  /* ── 1차 전직 팝업 ────────────────────────────────────── */
-  function openAdvancementModal() {
-    var box = document.getElementById("panel");
-    if (!box) return;
-    var CL = global.CLASSES, SK = global.SKILLS;
-    if (!hero || hero.level < 15) {
-      toast("1차 전직은 레벨 15 이상부터 가능합니다! (현재 Lv." + (hero ? hero.level : 1) + ")");
-      return;
-    }
-    var baseCls = CL.byId(hero.cls);
-    var options = CL.getAdvancements(hero.cls);
-
-    var html = '<h2>⚔️ 1차 전직 선택 (' + baseCls.name + ')</h2>' +
-      '<p class="sub">레벨 15 달성을 축하합니다! 세분화된 전직 경로를 선택하여 폭발적인 능력을 획득하세요.</p>';
-
-    if (hero.advClass && CL.ADVANCED_CLASSES[hero.advClass]) {
-      var currentAdv = CL.ADVANCED_CLASSES[hero.advClass];
-      html += '<div style="background:#1d2919; border:2px solid #529642; border-radius:8px; padding:12px; margin-bottom:15px; text-align:center;">' +
-        '<h3 style="color:#81d472; font-size:16px; margin:0 0 4px 0;">✔ 현재 전직 완료: ' + currentAdv.name + '</h3>' +
-        '<p style="color:#d0e6cc; font-size:12px; margin:0;">' + currentAdv.text + '</p>' +
-        '</div>';
-    }
-
-    html += '<div class="cols-scroll-wrap">' +
-      '<div class="cols cls-cols" style="justify-content:center; gap:20px;">';
-
-    for (var i = 0; i < options.length; i++) {
-      var adv = options[i];
-      var isCurrent = hero.advClass === adv.id;
-      html += '<div class="col cls' + (isCurrent ? ' current' : '') + '" style="min-width:270px; max-width:310px; background:#1b1926; border:1px solid #4a3b69; border-radius:8px; padding:14px; display:flex; flex-direction:column; justify-content:space-between;">';
-      html += '<div>';
-      html += '<div style="text-align:center; margin-bottom:8px;"><canvas class="face" data-ico="' + esc(adv.icon) + '" style="width:56px; height:56px; border:2px solid #ffd24a; border-radius:50%; background:#000;"></canvas></div>';
-      html += '<h3 style="color:#ffd24a; font-size:18px; text-align:center; margin-bottom:4px;">' + esc(adv.name) + '</h3>';
-      html += '<p style="color:#9e92b8; font-size:12px; text-align:center; font-weight:bold; margin-bottom:8px;">[' + esc(adv.tag) + ']</p>';
-      html += '<p class="sub" style="font-size:12px; line-height:1.5; color:#d8d2e8; margin-bottom:10px;">' + esc(adv.text) + '</p>';
-      
-      html += '<div style="background:#12101a; border-radius:6px; padding:8px 10px; margin-bottom:10px; font-size:12px; line-height:1.7;">';
-      html += '<div style="color:#ffd24a; font-weight:bold; margin-bottom:4px;">✨ 전직 특성 & 보너스</div>';
-      if (adv.bonuses.hpMult) html += '<div>• 최대 체력 <b style="color:#72d472;">+' + Math.round((adv.bonuses.hpMult - 1) * 100) + '%</b></div>';
-      if (adv.bonuses.dmgMult) html += '<div>• 피해량 <b style="color:#ff7272;">+' + Math.round((adv.bonuses.dmgMult - 1) * 100) + '%</b></div>';
-      if (adv.bonuses.spdMult) html += '<div>• 이동속도 <b style="color:#72c4ff;">+' + Math.round((adv.bonuses.spdMult - 1) * 100) + '%</b></div>';
-      if (adv.bonuses.armorAdd) html += '<div>• 방어력 <b style="color:#e0e0e0;">+' + adv.bonuses.armorAdd + '</b></div>';
-      if (adv.bonuses.critPctAdd) html += '<div>• 치명타율 <b style="color:#ffd24a;">+' + adv.bonuses.critPctAdd + '%</b></div>';
-      if (adv.bonuses.critDmgAdd) html += '<div>• 치명타 피해 <b style="color:#ffd24a;">+' + adv.bonuses.critDmgAdd + '%</b></div>';
-      if (adv.bonuses.stamAdd) html += '<div>• 최대 기력 <b style="color:#72c4ff;">+' + adv.bonuses.stamAdd + '</b></div>';
-      if (adv.bonuses.leechPct) html += '<div>• 타격 적중시 흡혈 <b style="color:#ff72b8;">+' + adv.bonuses.leechPct + '%</b></div>';
-      html += '</div>';
-
-      html += '<div class="clsk" style="margin-bottom:10px;">';
-      html += '<div style="color:#ffd24a; font-size:12px; font-weight:bold; margin-bottom:6px;">⚡ 신규 전용 스킬 2종 습득</div>';
-      for (var j = 0; j < adv.skills.length; j++) {
-        var skDef = SK.byId(adv.skills[j]);
-        if (skDef) {
-          html += '<div class="one" style="margin-bottom:4px; padding:4px 6px; background:#242033; border-radius:4px; display:flex; align-items:center; gap:6px;">' +
-            '<canvas class="ico" data-ico="' + esc(skDef.icon) + '" style="width:26px; height:26px; flex-shrink:0;"></canvas>' +
-            '<div><b style="color:#fff; font-size:12px; display:block;">' + esc(skDef.name) + '</b><span style="color:#a89ebf; font-size:11px;">' + esc(skDef.text) + '</span></div>' +
-            '</div>';
-        }
-      }
-      html += '</div>';
-      html += '</div>';
-
-      if (isCurrent) {
-        html += '<button style="width:100%; padding:8px; background:#46573c; color:#9fd29a; border:1px solid #6fa85e; border-radius:6px; font-weight:bold; cursor:default;">현재 전직 완료됨</button>';
-      } else {
-        html += '<button class="pick-adv" data-adv="' + esc(adv.id) + '" style="width:100%; padding:10px; background:linear-gradient(to bottom, #d4a037, #966513); color:#fff; border:1px solid #ffe9a8; border-radius:6px; font-weight:bold; font-size:14px; cursor:pointer; text-shadow:0 1px 2px #000;">' +
-          (hero.advClass ? esc(adv.name) + '(으)로 변경' : esc(adv.name) + '(으)로 전직하기') + '</button>';
-      }
-      html += '</div>';
-    }
-
-    html += '</div></div>';
-    html += '<p class="sub" style="margin-top:10px;">Esc 또는 ✕ 닫기 버튼으로 닫는다</p>';
-
-    box.innerHTML = html;
-    box.className = "panel wide";
-    box.hidden = false; box.style.display = "";
-    addCloseButton(box);
-
-    box.querySelectorAll("canvas[data-ico]").forEach(function (cv) {
-      paintIcon(cv, cv.getAttribute("data-ico"),
-        cv.className.indexOf("face") >= 0 ? 56 : 26);
-    });
-
-    box.querySelectorAll(".pick-adv").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var advId = this.getAttribute("data-adv");
-        doAdvance(advId);
-      });
-    });
-  }
-
-  function doAdvance(advId) {
-    var CL = global.CLASSES;
-    var advDef = CL.ADVANCED_CLASSES[advId];
-    if (!advDef) return;
-    
-    hero.advClass = advId;
-    for (var i = 0; i < advDef.skills.length; i++) {
-      var skId = advDef.skills[i];
-      if (hero.bar.indexOf(skId) < 0) {
-        var emptyIdx = hero.bar.indexOf(null);
-        if (emptyIdx >= 0) hero.bar[emptyIdx] = skId;
-        else if (hero.bar.length < 6) hero.bar.push(skId);
-      }
-    }
-    
-    global.SAVE.save(hero);
-    if (world) {
-      world.applyHero();
-      if (world.player) world.player.hp = world.player.maxHp;
-      world.spawnSparks(world.player.x, world.player.y, "#ffd700", 25);
-      world.addShake(0.3, 5);
-    }
-    if (global.SFX) global.SFX.play("level");
-    closePanel();
-    toast("✨ 1차 전직 완료! [" + advDef.name + "](으)로 새로 태어났습니다!");
-  }
-
-  global.openAdvancementModal = openAdvancementModal;
-
-  /* ── 상세 정보 팝업 ──────────────────────────────────── */
   function openInfo() {
     var box = document.getElementById("panel");
     if (!box) return;
@@ -2970,15 +2837,10 @@
     var place = world.inTown ? "마을 (0층)" : world.depth + "층 (심연의 던전)";
     var xpPct = need ? Math.min(100, Math.round((hero.xp || 0) / need * 100)) : 0;
 
-    var clsTitle = (world.cls ? world.cls.name : "방랑자");
-    if (hero.advClass && global.CLASSES && global.CLASSES.ADVANCED_CLASSES[hero.advClass]) {
-      clsTitle += " (" + global.CLASSES.ADVANCED_CLASSES[hero.advClass].name + ")";
-    }
-
     var html = '<h2>캐릭터 정보</h2><div class="sub">현재 탐험 및 보유 상태</div>' +
       '<div class="cols" style="flex-direction:column; gap:8px;">' +
         '<div class="col" style="width:100%; font-size:13px; line-height:1.95; word-break:break-word;">' +
-          '<div>• 직업 / 레벨: <b style="color:#ffd24a;">' + clsTitle + ' (Lv.' + hero.level + ')</b></div>' +
+          '<div>• 직업 / 레벨: <b style="color:#ffd24a;">' + (world.cls ? world.cls.name : "방랑자") + ' (Lv.' + hero.level + ')</b></div>' +
           '<div>• 현재 위치: <b>' + place + '</b></div>' +
           '<div>• 보유 금화: <b style="color:#ffe9a8;">' + hero.gold + ' GOLD</b></div>' +
           '<div>• 보유 물약: <b style="color:#9fd29a;">' + hero.potions + '개</b></div>' +
@@ -2987,28 +2849,13 @@
           '<div>• 경험치: <b>' + (hero.xp || 0) + ' / ' + need + ' (' + xpPct + '%)</b></div>' +
           '<div>• 최고 도달 층: <b>' + hero.maxDepth + '층</b></div>' +
         '</div>' +
-      '</div>';
-
-    if (hero.level >= 15 && !hero.advClass) {
-      html += '<div style="margin-top:12px; text-align:center;">' +
-        '<button id="btnInfoAdv" style="background:linear-gradient(to bottom, #ffe875, #c99318); color:#1a1000; border:1px solid #fff; font-weight:bold; padding:8px 16px; border-radius:6px; cursor:pointer; font-size:14px; box-shadow:0 0 10px #ffd700;">⚔️ Lv.15 달성! 1차 전직 진행하기 (클릭)</button>' +
-        '</div>';
-    }
-
-    html += '<p class="sub" style="margin-top:10px;">Esc 또는 ✕ 닫기 버튼으로 닫는다</p>';
+      '</div><p class="sub" style="margin-top:10px;">Esc 또는 ✕ 닫기 버튼으로 닫는다</p>';
 
     box.innerHTML = html;
     box.className = "panel";
     box.hidden = false;
     box.style.display = "";
     addCloseButton(box);
-
-    var bAdv = document.getElementById("btnInfoAdv");
-    if (bAdv) {
-      bAdv.addEventListener("click", function() {
-        openAdvancementModal();
-      });
-    }
   }
 
   function diag() {
@@ -3020,20 +2867,8 @@
       if (!world.ents[i].dead && world.ents[i].team !== 0 && world.ents[i].kind !== "dummy") alive++;
     var need = global.SAVE.needFor(hero.level);
     var place = world.inTown ? "마을" : world.depth + "층";
-
-    var clsDisp = (world.cls ? world.cls.name : "방랑자");
-    if (hero && hero.advClass && global.CLASSES && global.CLASSES.ADVANCED_CLASSES[hero.advClass]) {
-      clsDisp = global.CLASSES.ADVANCED_CLASSES[hero.advClass].name;
-    }
-
-    var advNoticeBtn = "";
-    if (hero && hero.level >= 15 && !hero.advClass) {
-      advNoticeBtn = '<button id="btnAdvNoticeTop" style="background:linear-gradient(to bottom, #ffe875, #c99318); color:#1a1000; border:1px solid #fff; font-weight:bold; font-size:12px; padding:3px 10px; border-radius:12px; cursor:pointer; margin-left:8px; box-shadow:0 0 10px #ffd700;" title="클릭하여 1차 전직 진행">⚔️ 1차 전직 가능! (클릭)</button>';
-    }
-
     el.innerHTML =
-      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + clsDisp + ' <b>Lv.' + hero.level + '</b></span></div>' +
-      advNoticeBtn +
+      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></span></div>' +
       '<div class="d-info">' +
         '<span>' + place + '</span>' +
         '<span>금화 <b>' + hero.gold + '</b></span>' +
@@ -3041,14 +2876,6 @@
         (alive > 0 ? '<span class="d-foe">적 <b>' + alive + '</b></span>' : '') +
       '</div>' +
       '<div class="d-fps">' + fps.v + 'fps</div>';
-
-    var btnAdvTop = document.getElementById("btnAdvNoticeTop");
-    if (btnAdvTop) {
-      btnAdvTop.addEventListener("click", function(e) {
-        e.stopPropagation();
-        openAdvancementModal();
-      });
-    }
   }
 
   function start(opt) {
@@ -3567,6 +3394,25 @@
       return pr ? pr.id : (world.onStairs() ? "stairs" : (world.nearDoor() ? "door" : null));
     };
     global.__save = function () { return global.SAVE.save(hero); };
+    global.__resetGameToFresh = function () {
+      if (global.SAVE && global.SAVE.wipeAll) global.SAVE.wipeAll();
+      hero = global.SAVE.blank("warrior");
+      if (panelOpen()) closePanel();
+      start({ depth: 0 });
+      toast("로그아웃 되었습니다. 로컬 접속 정보가 안전하게 초기화되었습니다.");
+    };
+
+    global.__reloadFromCloud = function () {
+      var loaded = global.SAVE.load();
+      hero = loaded.save;
+      if (panelOpen()) closePanel();
+      start({ depth: 0 });
+      var cName = (hero.advClass && global.CLASSES && global.CLASSES.ADVANCED_CLASSES[hero.advClass])
+        ? global.CLASSES.ADVANCED_CLASSES[hero.advClass].name
+        : (global.CLASSES && global.CLASSES.byId(hero.cls) ? global.CLASSES.byId(hero.cls).name : "캐릭터");
+      toast("✨ [" + (global.CLOUD ? global.CLOUD.state().login : "계정") + "] 접속 완료! " + cName + " Lv." + hero.level + " 데이터를 불러왔습니다.");
+    };
+
     global.__reload = function () {
       hero = global.SAVE.load().save;
       start({ depth: 1 });
