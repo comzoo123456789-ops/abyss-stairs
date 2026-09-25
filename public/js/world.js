@@ -589,6 +589,18 @@
     o.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
     o.stamRegen = cls ? cls.stamRegen : 12;
 
+    var adv = (CL && h && h.advClass) ? CL.advancementById(h.advClass) : null;
+    if (adv) {
+      if (adv.id === "berserker") { o.maxHp = Math.round(o.maxHp * 1.15); o.lifeOnHit += 10; }
+      else if (adv.id === "dreadnought") { o.def += 10; }
+      else if (adv.id === "paladin") { o.def += 15; }
+      else if (adv.id === "darkknight") { o.maxHp = Math.round(o.maxHp * 1.20); o.lifeOnHit += 12; }
+      else if (adv.id === "assassin") { o.critPct += 15; o.critDmgPct += 50; }
+      else if (adv.id === "shadowblade") { o.spd *= 1.15; }
+      else if (adv.id === "archmage") { o.stamRegen += 8; }
+      else if (adv.id === "necromancer") { o.stamMax += 30; }
+    }
+
     o.swing = null;
     o.adept = false;
     var sw = I ? I.swingOf(eq, t) : null;
@@ -607,7 +619,7 @@
         /* ⚠ **무기 종류를 함께 싣는다.** 화면이 휘두름과 날아가는 것을
          *   무기마다 다르게 그리려면 이것이 필요한데, 예전에는 swing 에
          *   없어서 화면이 `e.equipped` 를 따로 뒤졌다(주인공만 되는 길이다). */
-        base: (eq.weapon && (eq.weapon.base || eq.weapon.id)) || "",
+        base: (eq.weapon && eq.weapon.base) || "",
         /* ⚠ **직업도 싣는다.** 전사와 기사는 둘 다 장검으로 시작해서
          *   무기만 보면 **한 글자도 안 다른 그림**이 나온다(실측). 기사는
          *   한손검에 방패라 어깨로 짧게 통제해 벤다 — 두 손으로 허리를
@@ -1137,7 +1149,7 @@
   /* 스킬을 쓴다. **왜 못 쓰는지**를 돌려준다 — null 이면 성공. */
   World.prototype.useSkill = function (id, aimX, aimY, taken) {
     if (!global.SKILLS) return "재주가 없다";
-    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero && this.hero.cls);
+    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero);
   };
 
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */

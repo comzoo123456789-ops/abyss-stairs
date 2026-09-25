@@ -421,6 +421,7 @@
       if (pr.id === "stash") return openStash();
       if (pr.id === "smith") return openSmith();
       if (pr.id === "craft") return openCraft();
+      if (pr.id === "altar") return openAdvancementModal();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -2556,6 +2557,72 @@
     openBook();
   }
 
+  function openAdvancementModal() {
+    if (!hero) return;
+    if (hero.level < 15) {
+      return toast("전직은 레벨 15부터 가능합니다 (현재 Lv." + hero.level + ")");
+    }
+    if (hero.advClass) {
+      var currAdv = global.CLASSES.advancementById(hero.advClass);
+      var name = currAdv ? currAdv.name : hero.advClass;
+      return toast("이미 1차 전직이 완료되었습니다: " + name);
+    }
+    var baseCls = global.CLASSES.byId(hero.cls);
+    var advList = global.CLASSES.advancementsOf(hero.cls);
+    if (!advList || !advList.length) return toast("전직할 수 있는 클래스가 없습니다");
+
+    var box = openPanel("⚔️ 1차 전직 — " + baseCls.name + " (Lv.15)");
+    var html = '<div style="padding:10px; color:#e0e0e0; font-size:14px; text-align:center;">' +
+      '전직을 선택하십시오. 1차 전직 완료 시 <strong>특화 패시브 보너스</strong>와 <strong>2개의 신규 전용 스킬</strong>이 해금됩니다.' +
+      '</div>';
+    html += '<div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:10px;">';
+
+    for (var i = 0; i < advList.length; i++) {
+      var a = advList[i];
+      html += '<div style="flex:1; min-width:240px; max-width:320px; background:#1b2330; border:2px solid #3c4f6d; border-radius:8px; padding:12px; text-align:left;">';
+      html += '<div style="font-size:18px; font-weight:bold; color:#ffd166; margin-bottom:4px;">' + a.name + ' <span style="font-size:12px; color:#48cae4;">[' + a.tag + ']</span></div>';
+      html += '<div style="font-size:13px; color:#b0c4de; margin-bottom:8px;">' + a.text + '</div>';
+      html += '<div style="font-size:13px; color:#90e0ef; background:#101824; padding:6px; border-radius:4px; margin-bottom:8px;"><strong>패시브 보너스:</strong><br>' + a.bonusText + '</div>';
+      html += '<div style="font-size:13px; color:#ffe660; margin-bottom:10px;"><strong>신규 스킬:</strong><br>';
+      for (var s = 0; s < a.skills.length; s++) {
+        var sk = global.SKILLS.byId(a.skills[s]);
+        if (sk) html += '• ' + sk.name + ': ' + sk.text + '<br>';
+      }
+      html += '</div>';
+      html += '<button class="btn btn-primary do-advance" data-id="' + a.id + '" style="width:100%; padding:8px; font-weight:bold; font-size:15px; cursor:pointer;">' + a.name + '(으)로 전직하기</button>';
+      html += '</div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+    addCloseButton(box);
+
+    var btns = box.querySelectorAll(".do-advance");
+    for (var b = 0; b < btns.length; b++) {
+      btns[b].addEventListener("click", function (e) {
+        var advId = this.getAttribute("data-id");
+        doAdvance(advId);
+        closePanel();
+      });
+    }
+  }
+
+  function doAdvance(advId) {
+    if (!hero) return;
+    var adv = global.CLASSES.advancementById(advId);
+    if (!adv) return;
+    hero.advClass = advId;
+    var avail = global.CLASSES.skillsOf(hero);
+    for (var i = 0; i < avail.length; i++) {
+      if (!hero.skills) hero.skills = {};
+      if (!hero.bar) hero.bar = [];
+      if (hero.bar.indexOf(avail[i]) < 0 && hero.bar.length < 6) hero.bar.push(avail[i]);
+    }
+    if (world && world.applyHero) world.applyHero();
+    global.SAVE.save(hero);
+    if (global.SFX) global.SFX.play("level");
+    toast("🎉 [전직 완료!] " + adv.name + "(으)로 성공적으로 전직하였습니다!");
+  }
+
   /* 화면 아래 스킬 줄 — **쿨다운이 보여야** 언제 쓸지 안다.
    * ⚠ 매 프레임 innerHTML 을 다시 만들지 말 것(초당 60번이면 눈에 띄게 끊긴다).
    *   칸은 한 번만 만들고 **채움만** 고친다. */
@@ -2574,18 +2641,17 @@
   }
 
   var barEls = null;
+  var KEY_LABELS = ["1", "2", "3", "4", "5", "R"];
   function buildBar() {
     var el = document.getElementById("skillbar");
     if (!el) return;
     el.innerHTML = "";
     barEls = [];
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
       var d = document.createElement("div");
       d.className = "sk";
-      /* ⚠ 아이콘이 **덮개(.cool) 밑**에 와야 쿨다운이 아이콘을 덮는다.
-       *   순서를 바꾸면 덮개가 아이콘에 가려 남은 시간이 안 읽힌다. */
       d.innerHTML = '<canvas class="ico"></canvas>' +
-                    '<i class="cool"></i><b class="key">' + (i + 1) +
+                    '<i class="cool"></i><b class="key">' + KEY_LABELS[i] +
                     '</b><span class="nm"></span><span class="cd"></span>';
       el.appendChild(d);
       barEls.push({ root: d, cool: d.querySelector(".cool"),
@@ -2597,8 +2663,8 @@
     if (!barEls) buildBar();
     if (!barEls) return;
     var SK = global.SKILLS;
-    for (var i = 0; i < 4; i++) {
-      var id = hero.bar[i], e = barEls[i];
+    for (var i = 0; i < barEls.length; i++) {
+      var id = hero ? hero.bar[i] : null, e = barEls[i];
       if (!id) {
         e.root.className = "sk empty";
         e.nm.textContent = "—"; e.cd.textContent = "";
@@ -2606,10 +2672,10 @@
         e.painted = null;
         continue;
       }
-      var def = SK.byId(id), r = SK.resolve(id, hero.skills);
-      /* ⚠ **바뀌었을 때만** 다시 굽는다(위 주석 참조). */
+      var def = SK.byId(id), r = SK.resolve(id, hero ? hero.skills : {});
+      if (!def) continue;
       if (e.painted !== def.icon) { paintIcon(e.ico, def.icon, 40); e.painted = def.icon; }
-      var left = SK.cdLeft(world, id, hero.skills);
+      var left = SK.cdLeft(world, id, hero ? hero.skills : {});
       var lowStam = world.player.stam < r.stam;
       e.root.className = "sk" + (left > 0 ? " cooling" : "") + (lowStam ? " nostam" : "");
       e.nm.textContent = def.name;
@@ -3250,10 +3316,9 @@
       /* QWER 이 아니라 **1234** 다 — Q 는 물약이고, WASD 가 이동이라
        * Q·W·E·R 은 이미 넷 중 셋이 다른 일을 한다(전에 그렇게 배선했다가
        * W 를 누르면 걸으면서 스킬이 나갔다). 숫자 줄이 비어 있다. */
-      var slot = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
+      var slot = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, KeyR: 5 }[e.code];
       if (slot !== undefined) { castSlot(slot); e.preventDefault(); return; }
       if (e.code === "KeyT") { world.recallStart(); return; }
-      if (e.code === "KeyR" && !world.inTown) start({ depth: world.depth });
       /* 스페이스로도 친다 — 마우스에 손이 없어도 때릴 수 있어야 한다 */
       if (e.code === "Space") { var a = aim(); world.swing(a.x, a.y); e.preventDefault(); }
     });
