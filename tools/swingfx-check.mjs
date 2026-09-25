@@ -6,7 +6,7 @@
  * 눈에 보이는 것이 없었고, 날아가는 것마저 활과 **같은 호박색 짧은 선**이었다.
  *
  *   ① 일곱이 다 그린다     칠한 칸이 0 인 무기가 없다
- *   ② 서로 다르다          모든 짝이 20% 넘게 다르다
+ *   ② 서로 다르다          모든 짝이 30% 넘게 다르다(모양 결이 갈린다)
  *   ③ 표에 빠진 것이 없다   무기 베이스가 전부 SWING_STYLE 에 있다
  *   ④ 화면을 안 덮는다      쏘는 무기의 효과가 2칸 안쪽이다
  *   ⑤ 날아가는 것도 다르다  지팡이 마력탄과 활 화살의 kind 가 갈린다
@@ -31,6 +31,8 @@ const URL_ARG = ui >= 0 ? process.argv[ui + 1] : null;
 if (URL_ARG && OLD) { console.error("--url 과 OLD=1 은 같이 못 쓴다"); process.exit(2); }
 
 const REVERT = [
+  /* 직업별 결을 끄면 전사와 기사가 같은 장검으로 똑같아진다 */
+  ["/js/view.js", /var CLS_STYLE = \{ knight: \{[^}]*\} \};/, "var CLS_STYLE = {};"],
   /* 한 장이 통째로 떴다 사라지던 때로 — 머리와 꼬리를 끝에 박는다 */
   ["/js/view.js", /var headK = eOut\(sw \/ 0\.45\);/, "var headK = 1;"],
   ["/js/view.js", /var tailK = Math\.max\(eOut\(\(sw - 0\.30\) \/ 0\.70\), headK - 0\.45\);/, "var tailK = 0;"],
@@ -209,7 +211,7 @@ const M = await ev(`(function(){
     for (var j = i + 1; j < masks.length; j++)
       pairs.push({ a: masks[i].b, b: masks[j].b, d: diff(masks[i].m, masks[j].m) });
   pairs.sort(function (x, y) { return x.d - y.d; });
-  return { rows: rows, tile: TILE, worst: pairs.slice(0, 3), same: pairs.filter(function (p) { return p.d < 20; }) };
+  return { rows: rows, tile: TILE, worst: pairs.slice(0, 3), same: pairs.filter(function (p) { return p.d < 30; }) };
 })()`);
 
 /* ⑦ 한 번 휘두르는 동안 그림이 바뀔는가 — 이번 판의 핵심이다.
@@ -307,6 +309,75 @@ const fly = await ev(`(function(){
   return got;
 })()`);
 
+/* ⑧ 직업 넷이 **자기 무기로** 서로 다른가 — 훈님이 짚은 자리다.
+ * ⚠ 무기만 키로 쓰면 **전사와 기사가 한 글자도 안 다르다**(둘 다 장검으로
+ *   시작한다). 같은 칼이라도 몸이 다르게 쓴다는 것이 직업이다. */
+const cls = await ev(`(function(){
+  var I = window.ITEMS, D = window.DUNGEON, CL = window.CLASSES;
+  var out = [], masks = [];
+  CL.LIST.forEach(function (c) {
+    window.__pick(c.id);
+    window.__start({ depth: 1 });
+    var w = window.__w(), view = window.__view();
+    w.level.tiles.fill(D.FLOOR); w.level.visible.fill(1); w.level.seen.fill(1);
+    w.refreshFov = function () { this.level.visible.fill(1); return false; };
+    w.ents.length = 1; w.shots.length = 0;
+    var h = window.__hero(); h.level = 20;
+    var wb = (c.start && c.start.weapon) || "sword";
+    var it = I.roll(D.makeRng(3), { slot: "weapon", base: wb, tier: "rare", ilvl: 12 });
+    h.equip.weapon = I.pack(it);
+    w.applyHero();
+    var p = w.player;
+    window.__aimAt(p.x + 3, p.y);
+    if (!p.atk) { out.push({ id: c.id, miss: true }); return; }
+    p.atk.ang = 0;
+    var m = p.atk.m, keep = p.atk;
+    var cv = document.getElementById("game") || document.querySelector("canvas");
+    var g = cv.getContext("2d");
+    p.atk = null; view.draw(w, 1);
+    var off = g.getImageData(0, 0, cv.width, cv.height).data;
+    p.atk = keep; p.atk.t = m.windup + m.recover * 0.5;
+    view.draw(w, 1);
+    var on = g.getImageData(0, 0, cv.width, cv.height).data;
+    /* \uc790\ub9ac\uc5d0 \uc548 \ud754\ub4e4\ub9ac\ub3c4\ub85d **\ud6a8\uacfc\uc758 \ud55c\uac00\uc6b4\ub370\ub85c \ub9de\ucd94\uc5b4** \ubcf8\ub2e4 \u2014
+     * \uce74\uba54\ub77c\uac00 \ub808\ubca8 \uacbd\uacc4\uc5d0\uc11c \ubb3c\ub9ac\uba74 \uc8fc\uc778\uacf5\uc774 \ud654\uba74 \ud55c\uac00\uc6b4\ub370\uac00 \uc544\ub2c8\ub2e4. */
+    /* ⚠ **몸은 뻐다.** 공격할 때 스프라이트가 앞으로 내딛는데, 직업마다
+     * 그림이 다르니 그 움직임만으로도 마스크가 갈라 — 효과가 똑같아도
+     * 52.4% 로 나왔다(대조군 실측). 재려는 것은 휘두름이지 스프라이트가 아니다. */
+    var TILEc = window.VIEW.TILE;
+    var bx = p.x * TILEc + view.ox, by = p.y * TILEc + view.oy;
+    var R = 130, pts = [], sxA = 0, syA = 0, n = 0;
+    for (var y = 0; y < cv.height; y++) for (var x = 0; x < cv.width; x++) {
+      var i2 = (y * cv.width + x) * 4;
+      if (Math.abs(on[i2]-off[i2]) + Math.abs(on[i2+1]-off[i2+1]) + Math.abs(on[i2+2]-off[i2+2]) > 24) {
+        var ddx = x - bx, ddy = y - by;
+        if (ddx * ddx + ddy * ddy < 26 * 26) continue;
+        pts.push(x, y); sxA += x; syA += y; n++;
+      }
+    }
+    if (!n) { out.push({ id: c.id, ink: 0 }); masks.push({ id: c.id, m: new Uint8Array(R * R) }); return; }
+    var ccx = Math.round(sxA / n), ccy = Math.round(syA / n);
+    var mk = new Uint8Array(R * R);
+    for (var q = 0; q < pts.length; q += 2) {
+      var rx = pts[q] - ccx + R / 2, ry = pts[q+1] - ccy + R / 2;
+      if (rx >= 0 && ry >= 0 && rx < R && ry < R) mk[(ry | 0) * R + (rx | 0)] = 1;
+    }
+    out.push({ id: c.id, name: c.name || c.id, w: wb, ink: n });
+    masks.push({ id: c.id, m: mk });
+  });
+  function diff(a, b) {
+    var n2 = 0, u = 0;
+    for (var i = 0; i < a.length; i++) { if (a[i] || b[i]) u++; if (a[i] !== b[i]) n2++; }
+    return u ? Math.round(n2 / u * 1000) / 10 : 0;
+  }
+  var pairs = [];
+  for (var i = 0; i < masks.length; i++)
+    for (var j = i + 1; j < masks.length; j++)
+      pairs.push({ a: masks[i].id, b: masks[j].id, d: diff(masks[i].m, masks[j].m) });
+  pairs.sort(function (x, y) { return x.d - y.d; });
+  return { rows: out, pairs: pairs };
+})()`);
+
 let fails = 0;
 const out = [];
 const add = (n, ok, note) => { if (!ok) fails++; out.push([n, !!ok, note]); };
@@ -325,6 +396,13 @@ add("쓸려 지나간다", mvOk.length >= 7 && still.length === 0,
   (still.length ? " ← " + still.map(function (x) { return x.b; }).join(",") + " 가 멈춰 있다"
                 : " (제 넓이의 15% 넘게 움직여야 한다 · 대조군 0.5%)"));
 
+const clsBad = cls.pairs.filter(function (p) { return p.d < 30; });
+add("직업 넷이 다르다", cls.rows.every(function (r) { return r.ink > 0; }) && clsBad.length === 0,
+  "각자 제 무기로 — " + cls.rows.map(function (r) { return (r.name || r.id) + "(" + r.w + ") " + r.ink; }).join(" · ") +
+  " · 가장 닮은 짝 " + cls.pairs.slice(0, 2).map(function (p) { return p.a + "/" + p.b + " " + p.d + "%"; }).join(" · ") +
+  (clsBad.length ? " ← " + clsBad.map(function (p) { return p.a + "/" + p.b; }).join(",") + " 가 닮았다"
+                 : " (30% 넘게 달라야 한다)"));
+
 const ok = M.rows.filter(r => !r.miss);
 const blank = ok.filter(r => r.ink === 0);
 add("일곱이 다 그린다", ok.length >= 7 && blank.length === 0,
@@ -333,7 +411,7 @@ add("일곱이 다 그린다", ok.length >= 7 && blank.length === 0,
 
 add("서로 다르다", M.same.length === 0,
   "가장 닮은 짝 — " + M.worst.map(p => p.a + "/" + p.b + " " + p.d + "%").join(" · ") +
-  " (20% 넘게 달라야 한다)" + (M.same.length ? " ← 닮은 짝 " + M.same.length + "쌍" : ""));
+  " (30% 넘게 달라야 한다 · 옛 부채꼴 한 벌일 때 21.1% 였다)" + (M.same.length ? " ← 닮은 짝 " + M.same.length + "쌍" : ""));
 
 const notIn = ok.filter(r => !r.inTable);
 add("표에 빠진 것이 없다", notIn.length === 0,

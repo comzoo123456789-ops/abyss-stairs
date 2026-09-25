@@ -855,6 +855,8 @@ function View(canvas) {
     staff: "cast",
     bow: "draw"
   };
+  /* ⚠ guard 는 무기가 아니라 **직업**이 고르는 결이다. 위 표에
+   *   넣으면 무기 이름이 아니어서 검사가 헷갈린다 — 아래 CLS_STYLE 이 고른다. */
 
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
@@ -875,10 +877,15 @@ function View(canvas) {
      *   지팡이·활은 그 장검 부채꼴을 arc 0 으로 그려 **아무것도 안 나왔다.**
      * ⚠ swing.base 는 derive 가 넣고 applyHero 가 몸에 붙인다 — 그것이
      *   유일한 진실원이다. 화면이 저장을 다시 뒤지게 두지 말 것. */
+    /* 기사는 장검을 들어도 전사와 다르게 벤다. ⚠ 무기만 키로 쓰면 둘이
+     * 똑같아진다 — **같은 칼이라도 몸이 다르게 쓴다**는 것이 직업이다. */
+    var CLS_STYLE = { knight: { slash: "guard", stab: "guard", crush: "guard" } };
     var style = "claw";
     if (e.team === 0) {
       var wId = (e.swing && e.swing.base) || "";
       style = SWING_STYLE[wId] || "slash";
+      var byCls = CLS_STYLE[(e.swing && e.swing.cls) || ""];
+      if (byCls && byCls[style]) style = byCls[style];
     }
     var shoots = (style === "cast" || style === "draw");
     if (shoots) { radius = TILE * 0.9; half = Math.PI / 5; }
@@ -942,21 +949,31 @@ function View(canvas) {
     var aTail = a.ang - half + span * tailK;
     var aHead = a.ang - half + span * headK;
 
-    /* 자국 한 벌. 띠를 몇 조각으로 갈라 **뒤로 갈수록 옅게** 칠한다 —
-     * 그래야 지나간 자리로 읽힌다(한 색으로 칠하면 그냥 부채다). */
+    /* 자국 한 벌 — **깃발꼴**이다.
+     *
+     * ⚠ 예전에는 안쪽 반지름을 못 박아 **두께가 일정한 띠**였다. 그러면
+     *   베기가 아니라 부채(불빛)로 읽힌다. 베기의 기본은 **꼬리가 머리보다
+     *   가늘 것** — 좁아지는 끝이 "지나간 시간" 을 말한다
+     *   (Slash Shape Fundamentals · jasontomlee).
+     * ⚠ 그래서 조각마다 **안쪽 반지름을 바깥쪽으로 당긴다.** 꼬리 조각은
+     *   바깥 테두리에 붙어 실처럼 얇고, 머리 조각만 제 두께를 갖는다.
+     * ⚠ 옅기(alpha)만 깎아서는 안 된다. 두께가 같으면 흐린 띠일 뿐이다. */
     function wedge(outR, inR, c0, c1, c2) {
-      var N = 6;
+      var N = 7;
       for (var wi = 0; wi < N; wi++) {
         var t0 = aTail + (aHead - aTail) * (wi / N);
         var t1 = aTail + (aHead - aTail) * ((wi + 1) / N);
         if (t1 - t0 < 1e-4) continue;
+        var k = (wi + 1) / N;                 /* 0 꼬리 → 1 머리 */
+        var thick = 0.10 + 0.90 * (k * k);    /* 두께가 머리 쪽에서만 붙는다 */
+        var inHere = outR - (outR - inR) * thick;
         ctx.save();
-        ctx.globalAlpha = 0.22 + 0.78 * ((wi + 1) / N);
+        ctx.globalAlpha = 0.18 + 0.82 * k;
         ctx.beginPath();
         ctx.arc(cx, cy, radius * outR, t0, t1);
-        ctx.arc(cx, cy, radius * inR, t1, t0, true);
+        ctx.arc(cx, cy, radius * inHere, t1, t0, true);
         ctx.closePath();
-        var g = ctx.createRadialGradient(cx, cy, radius * inR, cx, cy, radius * outR);
+        var g = ctx.createRadialGradient(cx, cy, radius * inHere, cx, cy, radius * outR);
         g.addColorStop(0, c0); g.addColorStop(0.5, c1); g.addColorStop(1, c2);
         ctx.fillStyle = g;
         ctx.fill();
@@ -965,8 +982,42 @@ function View(canvas) {
     }
 
     if (style === "stab") {
-      /* 단검 — 빠르고 날카로운 이중 민트/청록 베기 */
-      wedge(1.05, 0.35, "rgba(255,255,255,0.98)", "rgba(100,240,255,0.85)", "rgba(0,180,220,0)");
+      /* 단검 — **베지 않는다. 두 번 파고든다.**
+       *
+       * ⚠ 예전에는 장검과 같은 초승달이었다. 단검의 결은 `tight movement
+       *   economy` — 짧고 빠르게, 몸을 붙여 찌른다(MoCap Online). 초승달을
+       *   쓰면 작은 장검이 되어 직업이 안 갈린다.
+       * ⚠ **두 번**이다. 하나는 일찍, 하나는 늦게 — 그 시차가 "빠르다" 를
+       *   만든다. 같은 때 그리면 그냥 X 자 무늬다. */
+      var jab = [{ off: -0.30, t0: 0.00, t1: 0.48 },
+                 { off: 0.26, t0: 0.34, t1: 0.92 }];
+      for (var ji = 0; ji < 2; ji++) {
+        var J = jab[ji];
+        var jk = (sw - J.t0) / (J.t1 - J.t0);
+        if (jk <= 0 || jk >= 1) continue;
+        var reachJ = eOut(jk / 0.4);
+        var fadeJ = 1 - eIn(Math.max(0, (jk - 0.45) / 0.55));
+        var ja = a.ang + J.off;
+        var jux = Math.cos(ja), juy = Math.sin(ja);
+        var jpx = -juy, jpy = jux;
+        var tipR = radius * (0.35 + 0.95 * reachJ);
+        var wJ = 4.5 * (1 - 0.35 * reachJ);
+        ctx.save();
+        ctx.globalAlpha = fadeJ;
+        /* 가늘고 뾰족한 쐐기 — 몸 쪽이 넓고 끝이 한 점 */
+        ctx.beginPath();
+        ctx.moveTo(cx + jux * tipR, cy + juy * tipR);
+        ctx.lineTo(cx + jux * radius * 0.2 + jpx * wJ, cy + juy * radius * 0.2 + jpy * wJ);
+        ctx.lineTo(cx + jux * radius * 0.2 - jpx * wJ, cy + juy * radius * 0.2 - jpy * wJ);
+        ctx.closePath();
+        var gJ = ctx.createLinearGradient(cx, cy, cx + jux * tipR, cy + juy * tipR);
+        gJ.addColorStop(0, "rgba(0,180,220,0)");
+        gJ.addColorStop(0.55, "rgba(100,240,255,0.8)");
+        gJ.addColorStop(1, "rgba(255,255,255,0.98)");
+        ctx.fillStyle = gJ;
+        ctx.fill();
+        ctx.restore();
+      }
     } else if (style === "crush") {
       /* 전투도끼 — 무겁고 붉은 화염 궤적 */
       wedge(1.25, 0.25, "rgba(255,255,220,0.98)", "rgba(255,120,30,0.88)", "rgba(255,30,10,0)");
@@ -995,6 +1046,49 @@ function View(canvas) {
         ctx.beginPath(); ctx.arc(ix, iy, 3 + 26 * hk, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
+    } else if (style === "guard") {
+      /* 기사 — **짧고 통제된 베기 + 방패.**
+       *
+       * ⚠ 전사는 허리를 돌려 크게 쓸고 길게 끌지만, 기사는 한손검이라
+       *   어깨로 **짧게 끊어** 벤다(MoCap Online: one-handed sword uses full
+       *   shoulder rotation with contralateral counterbalance).
+       *   그래서 부채를 0.72배로 좁히고 자국도 짧게 문다.
+       * ⚠ **반대쪽 손에 방패가 있다.** 그것이 기사를 기사로 보이게 하는
+       *   유일한 조각이다 — 베는 반대편에 짧은 테두리를 세운다.
+       * ⚠ 색은 강철빛이다. 전사의 황금과 갈라야 한 화면에서 구별된다. */
+      var gHalf = half * 0.72;
+      var gT = a.ang - gHalf + gHalf * 2 * Math.max(0, tailK);
+      var gH = a.ang - gHalf + gHalf * 2 * headK;
+      for (var gi = 0; gi < 7; gi++) {
+        var q0 = gT + (gH - gT) * (gi / 7), q1 = gT + (gH - gT) * ((gi + 1) / 7);
+        if (q1 - q0 < 1e-4) continue;
+        var gk = (gi + 1) / 7;
+        var gin = 1.0 - (1.0 - 0.52) * (0.10 + 0.90 * gk * gk);
+        ctx.save();
+        ctx.globalAlpha = 0.20 + 0.80 * gk;
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius * 1.0, q0, q1);
+        ctx.arc(cx, cy, radius * gin, q1, q0, true);
+        ctx.closePath();
+        var gg = ctx.createRadialGradient(cx, cy, radius * gin, cx, cy, radius);
+        gg.addColorStop(0, "rgba(255,255,255,0.98)");
+        gg.addColorStop(0.5, "rgba(200,222,245,0.85)");
+        gg.addColorStop(1, "rgba(120,160,200,0)");
+        ctx.fillStyle = gg;
+        ctx.fill();
+        ctx.restore();
+      }
+      /* 방패 — 베는 반대쪽. 버티고 선 것이 보여야 한다 */
+      var sAng = a.ang + Math.PI * 0.62;
+      var sfd = 1 - eIn(Math.max(0, (sw - 0.5) / 0.5));
+      ctx.save();
+      ctx.globalAlpha = 0.55 * sfd;
+      ctx.strokeStyle = "rgba(210,228,255,.95)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.72, sAng - 0.5, sAng + 0.5);
+      ctx.stroke();
+      ctx.restore();
     } else if (style === "thrust") {
       /* 장창 — **찌르는 것은 돌지 않는다.** 각도로 쓸지 말고 앞으로 뻗었다
        * 되돌아온다. 뻗는 데 45% · 빼는 데 나머지. */
@@ -1020,18 +1114,48 @@ function View(canvas) {
       ctx.stroke();
       ctx.restore();
     } else if (style === "cast") {
-      /* 지팡이 — **휘두른다.** 마법진을 손에 띄워 두었더니
-       * 효과 층이 **개체보다 먼저** 그려져 스프라이트 밑에 깔렸고,
-       * 화면에는 둘레 아무것도 없이 **알만 날아갔다**(실측 2026-09-25).
-       * 몸 밖으로 뻗는 초승달이어야 휘두른 것으로 보인다.
-       * ⚠ 반지름은 여전히 손 언저리다 — reach(7.5칸)를 쓰면 화면을 덮는다. */
-      wedge(1.45, 0.55, "rgba(255,255,255,0.95)", "rgba(150,170,255,0.8)", "rgba(110,80,220,0)");
-      /* 손에서 피어나가는 지팡이 끝의 빛 */
-      var gM = ctx.createRadialGradient(hx, hy, 0, hx, hy, 11);
-      gM.addColorStop(0, "rgba(255,255,255,.9)");
-      gM.addColorStop(1, "rgba(120,150,255,0)");
+      /* 지팡이 — **베지 않는다. 푼다.**
+       *
+       * ⚠ 초승달을 쓰면 파란 장검이 된다. 이 세계의 마법사는 지팡이를
+       *   휘두르는 사람이 아니라 **재는 사람**이다(sprites-art.js 주석).
+       *   디아블로 2 의 소서리스도 지팡이로 때리지 않고 볼트를 쏜다.
+       * ⚠ 그러니 여기서 그릴 것은 **지팡이 끝에서 열리는 룬 고리**다.
+       *   고리가 커지며 밝아지고, 그 가운데서 마력이 앞으로 뻗는다.
+       * ⚠ 반지름은 손 언저리에 못 박는다 — reach 7.5칸을 쓰면 화면을 덮는다. */
+      var ck = eOut(sw / 0.55);
+      var cfade = 1 - eIn(Math.max(0, (sw - 0.5) / 0.5));
+      var ring = 6 + 16 * ck;
+      ctx.save();
+      ctx.globalAlpha = cfade;
+      /* 바깥으로 번지는 빛 */
+      var gM = ctx.createRadialGradient(hx, hy, 0, hx, hy, ring + 10);
+      gM.addColorStop(0, "rgba(255,255,255,.85)");
+      gM.addColorStop(0.45, "rgba(150,190,255,.6)");
+      gM.addColorStop(1, "rgba(90,120,255,0)");
       ctx.fillStyle = gM;
-      ctx.beginPath(); ctx.arc(hx, hy, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(hx, hy, ring + 10, 0, Math.PI * 2); ctx.fill();
+      /* 룬 고리 둘 — 반대로 돈다. 하나만 두면 그냥 빛덩이다 */
+      ctx.strokeStyle = "rgba(200,225,255,.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hx, hy, ring, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(160,195,255,.7)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(hx, hy, ring * 0.62, 0, Math.PI * 2); ctx.stroke();
+      for (var ri = 0; ri < 6; ri++) {
+        var ra = a.ang + ck * 2.2 + ri * Math.PI / 3;
+        ctx.fillStyle = (ri % 2) ? "#cfe0ff" : "#ffffff";
+        ctx.fillRect(Math.round(hx + Math.cos(ra) * ring) - 1.5,
+                     Math.round(hy + Math.sin(ra) * ring) - 1.5, 3, 3);
+      }
+      /* 앞으로 뻗어 나가는 마력 — 이것이 곧 날아갈 것이다 */
+      ctx.strokeStyle = "rgba(210,230,255,.8)";
+      ctx.lineWidth = 4 * (1 - ck * 0.5);
+      ctx.beginPath();
+      ctx.moveTo(hx + Math.cos(a.ang) * ring, hy + Math.sin(a.ang) * ring);
+      ctx.lineTo(hx + Math.cos(a.ang) * (ring + 10 + 26 * ck),
+                 hy + Math.sin(a.ang) * (ring + 10 + 26 * ck));
+      ctx.stroke();
+      ctx.restore();
     } else if (style === "draw") {
       /* 활 — 시위가 튕긴다. 앞으로 터지는 것이 아니라 **뒤로 되튀는** 결이다 */
       /* ⚠ 처음에 활대 14 · 시위 13 으로 두었더니 칠한 칸이 544 로

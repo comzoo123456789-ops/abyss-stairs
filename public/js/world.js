@@ -608,6 +608,11 @@
          *   무기마다 다르게 그리려면 이것이 필요한데, 예전에는 swing 에
          *   없어서 화면이 `e.equipped` 를 따로 뒤졌다(주인공만 되는 길이다). */
         base: (eq.weapon && eq.weapon.base) || "",
+        /* ⚠ **직업도 싣는다.** 전사와 기사는 둘 다 장검으로 시작해서
+         *   무기만 보면 **한 글자도 안 다른 그림**이 나온다(실측). 기사는
+         *   한손검에 방패라 어깨로 짧게 통제해 벤다 — 두 손으로 허리를
+         *   돌려 크게 쓰는 전사와 결이 다르다(MoCap Online). */
+        cls: (h && h.cls) || "",
         ranged: !!(eq.weapon && eq.weapon.ranged),
         shotSpeed: (eq.weapon && eq.weapon.shotSpeed) || 12,
         pierce: (eq.weapon && eq.weapon.pierce) || 1
