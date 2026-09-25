@@ -1516,52 +1516,47 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   flex-wrap: wrap;
 }
 
+/* 재료 가방 — 장비 가방과 **같은 칸**이다.
+ * ⚠ 넷을 큰 카드로 늘어놓던 때 310px(휴대폰 368px)를 먹었다. 여기는
+ *   재료를 **소개하는 자리가 아니라 세는 자리**다. 설명은 손을 올렸을 때 준다.
+ * ⚠ 칸 크기를 따로 적지 않는다 — `--bag-cell` 을 함께 쓴다. 두 벌로 두면
+ *   가방 칸을 고칠 때 재료 칸만 남아 서로 다른 크기가 된다. */
 .mats-tab-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, var(--bag-cell, 48px));
+  justify-content: start;
+  gap: 6px;
   margin-top: 10px;
 }
-.mat-card-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: rgba(22, 20, 32, 0.85);
-  border: 1px solid #4a3c2c;
-  border-radius: 8px;
+.mat-slot { border-color: #665239; }
+.mat-slot.filled { border-color: #8a6f42; }
+.mat-ico { font-size: 22px; line-height: 1; pointer-events: none; }
+.mat-slot .mat-n { color: #7ce778; font-weight: 700; }
+.mats-note { margin-top: 8px; font-size: 11px; color: #8d8474; }
+
+/* 손을 올렸을 때 뜨는 설명.
+ * ⚠ `body` 에 붙는 `position: fixed` 다. 패널 안에 두면 구르는 칸에 잘린다.
+ * ⚠ `pointer-events: none` — 상자가 칸을 덮으면 `mouseout` 이 터져
+ *   떴다 사라졌다를 되풀이한다. */
+.mat-tip {
+  /* ⚠ 이 상자는 **패널 위**에 서야 한다. 60 으로 두었더니 패널(900)
+   *   밑에 깔려 왼쪽으로 샐맄 조각만 보였다(실측). 물건 창(1000)보다는
+   *   아래여야 한다 — 창이 뜨면 설명이 그 위로 올라오면 안 된다. */
+  position: fixed; z-index: 920; pointer-events: none;
+  width: max-content; max-width: min(300px, calc(100vw - 16px));
+  padding: 9px 11px;
+  background: rgba(14, 12, 20, .97);
+  border: 1px solid #8a6f42; border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .6);
 }
-.mat-card-ico {
-  font-size: 28px;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
-  border: 1px solid #665239;
-}
-.mat-card-info {
-  flex: 1;
-}
-.mat-card-title {
-  font-size: 14px;
-  font-weight: bold;
-  color: #ffd24a;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.mat-card-qty {
-  color: #7ce778;
-  font-size: 15px;
-}
-.mat-card-desc {
-  font-size: 12px;
-  color: #a09580;
-  margin-top: 4px;
-  line-height: 1.4;
+.mat-tip[hidden] { display: none !important; }
+.mat-tip__h { display: flex; align-items: baseline; gap: 6px; }
+.mat-tip__i { font-size: 15px; }
+.mat-tip__n { font-size: 13px; font-weight: 700; color: #ffd24a; }
+.mat-tip__q { margin-left: auto; font-size: 13px; font-weight: 700; color: #7ce778; }
+.mat-tip__d {
+  margin-top: 5px; font-size: 12px; line-height: 1.5; color: #a09580;
+  white-space: normal;
 }
 
 /* 제작 상점 / 연금술사 */

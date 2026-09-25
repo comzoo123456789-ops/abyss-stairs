@@ -521,6 +521,8 @@
   function closePanel() {
     var box = document.getElementById("panel");
     if (!box) return;
+    /* ⚠ 설명 상자는 `body` 에 붙어 있어 패널을 감춰도 그대로 남는다 */
+    hideMatTip();
     /* ⚠ 모양(class)을 되돌린다. 가방(wide)을 한 번 열면 그 뒤 포탈 창까지
      *   계속 넓게 뜬다 — 열 때만 고치고 닫을 때 안 되돌리면 상태가 샌다. */
     box.className = "panel";
@@ -733,6 +735,104 @@
   var bagSort = "tier";
   var bagSel = {};
 
+  /* 재료 넷. ⚠ 이름 · 그림 · 설명이 **세 곳**에 흩어져 있었다(재료 가방 ·
+   *   연금술사 바 · 토스트). 두 벌이면 한쪽만 고쳐진다 — 여기가 진실원이다. */
+  var MATS = [
+    { k: "m_dust", ico: "✨", name: "영혼의 가루",
+      desc: "장비를 분해하거나 몬스터를 잡을 때 얻는 기초 가루. 연금술과 제작의 기본 재료입니다." },
+    { k: "m_crystal", ico: "💎", name: "마력 결정",
+      desc: "마력이 응축된 정교한 결정체. 고급 유물과 세트 장비 제작에 쓰입니다." },
+    { k: "m_essence", ico: "🔮", name: "심연의 정수",
+      desc: "던전 보스에게서만 나오는 귀한 정수. 신화와 세트 제작의 핵심입니다." },
+    { k: "m_scale", ico: "🛡️", name: "용의 비늘",
+      desc: "고층 몬스터나 강력한 보스가 떨어뜨리는 비늘. 최상급 제작에 쓰입니다." }
+  ];
+  function matOf(k) {
+    for (var i = 0; i < MATS.length; i++) if (MATS[i].k === k) return MATS[i];
+    return null;
+  }
+
+  /* 재료 설명은 **손을 올렸을 때** 준다.
+   *
+   * ⚠ 배선은 **위임**이다. `openBag()` 이 패널을 `innerHTML` 로 통째로 다시
+   *   그리므로 칸에 직접 걸면 다음 그리기에 죽는다.
+   * ⚠ `title` 속성을 쓰지 않는다. 뜨는 데 1초 넘게 걸리고 **휴대폰에서는
+   *   아예 안 뜬다** — 설명을 옮긴 뜻이 사라진다.
+   * ⚠ 그래서 **누르기도 받는다.** hover 로만 두면 터치 기기에서 설명을
+   *   볼 길이 한 곳도 없다(가방 칸을 줄일 때와 같은 판단이다).
+   * ⚠ 상자는 `body` 에 붙이고 `position: fixed` 다. 패널 안에 두면
+   *   구르는 칸에 잘린다.
+   */
+  var matTip = null;
+  function matTipEl() {
+    if (matTip && matTip.parentNode) return matTip;
+    matTip = document.createElement("div");
+    matTip.id = "matTip";
+    matTip.className = "mat-tip";
+    matTip.hidden = true;
+    document.body.appendChild(matTip);
+    return matTip;
+  }
+  function hideMatTip() {
+    if (matTip) { matTip.hidden = true; matTip.removeAttribute("data-for"); }
+  }
+  function showMatTip(cell) {
+    var mt = matOf(cell.getAttribute("data-mat"));
+    if (!mt) return;
+    var n = (hero.mats && hero.mats[mt.k]) || 0;
+    var t = matTipEl();
+    t.innerHTML =
+      '<div class="mat-tip__h"><span class="mat-tip__i">' + mt.ico + '</span>' +
+      '<span class="mat-tip__n">' + esc(mt.name) + '</span>' +
+      '<span class="mat-tip__q">' + n + '개</span></div>' +
+      '<div class="mat-tip__d">' + esc(mt.desc) + '</div>';
+    t.hidden = false;
+    t.setAttribute("data-for", mt.k);
+    /* 자리는 **보이고 나서** 잡는다 — 숨은 채로는 크기가 0 이라 화면 밖으로 나간다 */
+    var r = cell.getBoundingClientRect(), b = t.getBoundingClientRect();
+    /* ⚠ 칸 **가운데**에 맞추지 않는다. 칸은 48px 인데 상자는 300px 이라
+     *   가운데로 두면 패널 **밖으로** 샐진다(실측: 패널 왼쪽 240 에
+     *   상자가 181). 칸 왼쪽에 맞춰 오른쪽으로 펼친다. */
+    var x = Math.round(r.left);
+    var y = Math.round(r.bottom + 8);
+    if (y + b.height > window.innerHeight - 8) y = Math.round(r.top - b.height - 8);
+    if (y < 8) y = 8;
+    /* 패널 안에 둘러놓는다 — 패널이 상자보다 넓을 때만 */
+    var pane = cell.closest("#panel");
+    var pr = pane ? pane.getBoundingClientRect() : null;
+    if (pr && pr.width > b.width + 8)
+      x = Math.max(pr.left + 4, Math.min(x, pr.right - b.width - 4));
+    x = Math.max(8, Math.min(x, window.innerWidth - b.width - 8));
+    t.style.left = x + "px";
+    t.style.top = y + "px";
+  }
+  function bindMatTip(box) {
+    box.addEventListener("mouseover", function (e) {
+      var c = e.target.closest && e.target.closest("[data-mat]");
+      if (c) showMatTip(c);
+    });
+    box.addEventListener("mouseout", function (e) {
+      var c = e.target.closest && e.target.closest("[data-mat]");
+      if (!c) return;
+      var to = e.relatedTarget;
+      if (to && c.contains(to)) return;      /* 칸 안에서 옮겨 다니는 것은 나간 것이 아니다 */
+      hideMatTip();
+    });
+    box.addEventListener("focusin", function (e) {
+      var c = e.target.closest && e.target.closest("[data-mat]");
+      if (c) showMatTip(c);
+    });
+    box.addEventListener("focusout", hideMatTip);
+    /* 누르면 뜬다(같은 것을 다시 누르면 닫힌다) — 터치 기기의 유일한 길이다 */
+    box.addEventListener("click", function (e) {
+      var c = e.target.closest && e.target.closest("[data-mat]");
+      if (!c) return hideMatTip();
+      if (matTip && !matTip.hidden && matTip.getAttribute("data-for") === c.getAttribute("data-mat"))
+        return hideMatTip();
+      showMatTip(c);
+    });
+  }
+
   function openBag(forceTab) {
     if (forceTab) currentBagTab = forceTab;
     var box = document.getElementById("panel");
@@ -757,35 +857,22 @@
     
     if (currentBagTab === "mats") {
       var m = hero.mats;
-      html += '<div class="mats-tab-container">' +
-        '<div class="mat-card-item">' +
-        '<div class="mat-card-ico">✨</div>' +
-        '<div class="mat-card-info">' +
-        '<div class="mat-card-title">영혼의 가루 <span class="mat-card-qty">' + (m.m_dust || 0) + '개</span></div>' +
-        '<div class="mat-card-desc">장비를 분해하거나 몬스터를 잡을 때 획득하는 기초 가루. 연금술 및 제작의 기본 재료입니다.</div>' +
-        '</div></div>' +
-
-        '<div class="mat-card-item">' +
-        '<div class="mat-card-ico">💎</div>' +
-        '<div class="mat-card-info">' +
-        '<div class="mat-card-title">마력 결정 <span class="mat-card-qty">' + (m.m_crystal || 0) + '개</span></div>' +
-        '<div class="mat-card-desc">마력이 응축된 정교한 결정체. 고급 유물/세트 제작 재료로 쓰입니다.</div>' +
-        '</div></div>' +
-
-        '<div class="mat-card-item">' +
-        '<div class="mat-card-ico">🔮</div>' +
-        '<div class="mat-card-info">' +
-        '<div class="mat-card-title">심연의 정수 <span class="mat-card-qty">' + (m.m_essence || 0) + '개</span></div>' +
-        '<div class="mat-card-desc">던전 보스 몬스터에게서만 드롭되는 귀한 정수. 신화 및 세트 제작의 핵심입니다.</div>' +
-        '</div></div>' +
-
-        '<div class="mat-card-item">' +
-        '<div class="mat-card-ico">🛡️</div>' +
-        '<div class="mat-card-info">' +
-        '<div class="mat-card-title">용의 비늘 <span class="mat-card-qty">' + (m.m_scale || 0) + '개</span></div>' +
-        '<div class="mat-card-desc">고층 몬스터나 강력한 보스가 드롭하는 비늘. 최상급 제작에 쓰입니다.</div>' +
-        '</div></div>' +
-        '</div>';
+      /* ⚠ 넷을 큰 카드로 늘어놓아 310px 를 먹고 있었다. **소개하는 자리가
+       *   아니다** — 장비 가방과 같은 칸으로 두고 설명은 손을 올렸을 때 준다
+       *   (지시 2026-09-25). 설명은 버리지 않는다, 자리만 옮긴다. */
+      html += '<div class="mats-tab-container">';
+      for (var mi = 0; mi < MATS.length; mi++) {
+        var mt = MATS[mi], mn = m[mt.k] || 0;
+        html += '<div class="arpg-slot mat-slot' + (mn ? ' filled' : ' empty') +
+          '" data-mat="' + mt.k + '" tabindex="0" role="button"' +
+          ' aria-label="' + esc(mt.name) + ' ' + mn + '개">' +
+          '<span class="mat-ico">' + mt.ico + '</span>' +
+          '<span class="lv-badge mat-n">' + mn + '</span>' +
+          '</div>';
+      }
+      html += '</div>';
+      html += '<div class="mats-note">칸에 손을 올리면 무엇에 쓰는지 보입니다 · ' +
+        '휴대폰에서는 누르십시오</div>';
     } else {
       html += '<div class="inv-body-layout">';
       
@@ -1054,6 +1141,10 @@
         });
       }
     }
+    /* ⚠ 두 탭 **밖**에서 건다. 재료 칸은 재료 탭에만 있지만 위임이라 값싸고,
+     *   안쪽 `if` 에 두면 탭을 옮길 때마다 걸었다 풀렸다 한다. */
+    bindMatTip(box);
+    hideMatTip();
   }
   /* 물건 하나를 눌렀을 때 뜨는 창 — 무엇인지 보여 주고 입거나 벗는다.
    *
@@ -2163,10 +2254,11 @@
     var html = '<h2>연금술사 (장비 제작)</h2>' +
       '<p class="sub">몬스터 처치 및 장비 분해로 얻은 재료로 <b>최상위 유물/세트 장비</b>를 제작합니다</p>' +
       '<div class="mats-bar">' +
-      '<span class="mat-badge">✨ 영혼의 가루: <b>' + (m.m_dust||0) + '</b></span>' +
-      '<span class="mat-badge">💎 마력 결정: <b>' + (m.m_crystal||0) + '</b></span>' +
-      '<span class="mat-badge">🔮 심연의 정수: <b>' + (m.m_essence||0) + '</b></span>' +
-      '<span class="mat-badge">🛡️ 용의 비늘: <b>' + (m.m_scale||0) + '</b></span>' +
+      /* ⚠ 이름을 여기 다시 적지 않는다 — MATS 한 곳에서 온다 */
+      MATS.map(function (mt) {
+        return '<span class="mat-badge">' + mt.ico + ' ' + esc(mt.name) +
+          ': <b>' + (m[mt.k] || 0) + '</b></span>';
+      }).join("") +
       '<span class="mat-badge gold">💰 금화: <b>' + hero.gold + '</b></span>' +
       '</div>' +
       '<div class="craft-recipes-list">';
@@ -3121,6 +3213,9 @@
        * ⚠ 새 겹을 만들 때마다 여기 차례를 더해야 한다 — 안 더하면 그 겹이
        *   생긴 날부터 같은 증상이 조용히 돌아온다. */
       if (e.code === "Escape") {
+        /* ⚠ 설명 상자는 **겹으로 세지 않는다.** 그것 때문에 Esc 를 한 번 더
+         *   눌러야 하면 겹이 하나 늘어난 것처럼 느껴진다 — 조용히 치우고 넘어간다. */
+        hideMatTip();
         if (document.getElementById("itemCtx")) { closeCtxMenu(); return; }
         /* 견주기 창이 물건 창보다 **위**다 — 물건 창에서 열고 들어간다.
          * ⚠ 차례를 뒤집으면 견주다가 ESC 를 눌렀는데 뒤의 물건 창이 닫힌다. */
@@ -3252,6 +3347,7 @@
      *   장비를 끼우는 길만 두면, 그 길이 막히는 날 조준 검사까지 같이 죽는다. */
     global.__give = giveTestItems;
     global.__openCompare = openCompare;
+    global.__closepanel = closePanel;
     global.__autoeq = openAutoEq;
     global.__aeplan = aeMake;
     global.__aekey = function (k) { if (k) autoKey = k; return autoKey; };
