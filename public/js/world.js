@@ -604,6 +604,10 @@
         reach: sw.reach, arc: sw.arc, push: sw.push,
         dmg: Math.max(1, Math.round(raw)),
         /* 원거리 무기면 평타가 **날아간다** — 마법사가 다른 거리에서 노는 근거다 */
+        /* ⚠ **무기 종류를 함께 싣는다.** 화면이 휘두름과 날아가는 것을
+         *   무기마다 다르게 그리려면 이것이 필요한데, 예전에는 swing 에
+         *   없어서 화면이 `e.equipped` 를 따로 뒤졌다(주인공만 되는 길이다). */
+        base: (eq.weapon && eq.weapon.base) || "",
         ranged: !!(eq.weapon && eq.weapon.ranged),
         shotSpeed: (eq.weapon && eq.weapon.shotSpeed) || 12,
         pierce: (eq.weapon && eq.weapon.pierce) || 1
@@ -821,6 +825,9 @@
         var sm = e.swing;
         this.shots.push({ id: ++this._shotId, x: e.x, y: e.y,
           vx: Math.cos(shotAng) * sm.shotSpeed, vy: Math.sin(shotAng) * sm.shotSpeed,
+          /* ⚠ **무엇이 쏘았는지 남긴다.** 없으면 지팡이의 마력탄과 활의
+           *   화살이 **같은 그림**으로 날아간다(실측: 둘 다 호박색 짧은 선). */
+          kind: sm.base || "shot",
           dmg: shotDmg, from: e, team: e.team,
           life: sm.reach / sm.shotSpeed, r: 0.22, mine: true,
           pierce: sm.pierce || 1, hitSet: {} });

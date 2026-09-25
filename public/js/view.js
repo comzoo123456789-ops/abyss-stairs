@@ -407,6 +407,48 @@ function View(canvas) {
         ctx.stroke();
         ctx.fillStyle = "#ffffff";
         ctx.beginPath(); ctx.arc(sxp, syp, 3.2, 0, Math.PI * 2); ctx.fill();
+      } else if (sh.kind === "staff") {
+        /* 지팡이 — 마력탄. 꼬리가 길고 푸른빛이 돈다.
+         * ⚠ 활과 **같은 그림이면 안 된다.** 전에는 둘 다 호박색 짧은 선이라
+         *   마법사가 화살을 쏘는 것처럼 보였다. */
+        var gS = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 9);
+        gS.addColorStop(0, "rgba(255,255,255,.95)");
+        gS.addColorStop(0.45, "rgba(150,190,255,.75)");
+        gS.addColorStop(1, "rgba(90,120,255,0)");
+        ctx.fillStyle = gS;
+        ctx.beginPath(); ctx.arc(sxp, syp, 9, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "rgba(160,200,255,.45)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sxp - sh.vx / tl * 18, syp - sh.vy / tl * 18);
+        ctx.lineTo(sxp, syp);
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(Math.round(sxp) - 2, Math.round(syp) - 2, 4, 4);
+      } else if (sh.kind === "bow") {
+        /* 활 — 화살. 촉 · 대 · 깃이 보여야 화살로 읽힌다 */
+        var ux = sh.vx / tl, uy = sh.vy / tl;
+        var px2 = -uy, py2 = ux;
+        ctx.strokeStyle = "#c9a86a";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sxp - ux * 16, syp - uy * 16);
+        ctx.lineTo(sxp, syp);
+        ctx.stroke();
+        ctx.fillStyle = "#f1faee";                       /* 촉 */
+        ctx.beginPath();
+        ctx.moveTo(sxp + ux * 4, syp + uy * 4);
+        ctx.lineTo(sxp - ux * 3 + px2 * 3, syp - uy * 3 + py2 * 3);
+        ctx.lineTo(sxp - ux * 3 - px2 * 3, syp - uy * 3 - py2 * 3);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(230,230,240,.8)";        /* 깃 */
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sxp - ux * 16 + px2 * 3, syp - uy * 16 + py2 * 3);
+        ctx.lineTo(sxp - ux * 11, syp - uy * 11);
+        ctx.moveTo(sxp - ux * 16 - px2 * 3, syp - uy * 16 - py2 * 3);
+        ctx.lineTo(sxp - ux * 11, syp - uy * 11);
+        ctx.stroke();
       } else {
         ctx.strokeStyle = "rgba(255,210,140,.55)";
         ctx.lineWidth = 2;
@@ -779,6 +821,28 @@ function View(canvas) {
   };
 
   /* 가이더스 스타일 픽셀 검기 궤적 & 무기별 이펙트 (Guidus Dynamic Slash Trail & Spark Bursts) */
+  /* 무기마다 다른 휘두름.
+   *
+   * ⚠ **여기가 진실원이다.** 예전에는 `if (wId === "dagger" || ...)` 사슬이라
+   *   무기를 더할 때마다 사슬이 길어졌고, 실제로 **지팡이와 활이 빠져 있었다.**
+   *   표에 없으면 "slash"(장검)로 떨어진다 — 새 무기가 조용히 안 보이는 것보다
+   *   낫다.
+   * ⚠ 지팡이 · 활은 `arc: 0` 이다(원거리라 부채꼴 판정이 없다). 그래서
+   *   `half = 0` 이 되어 **부채꼴이 폭 0 으로 그려졌다** — 휘둘러도 화면에
+   *   아무 일도 안 일어났다(실측 2026-09-25). 그 둘은 부채꼴이 아니라
+   *   **손에서 터지는 것**으로 그린다.
+   * ⚠ 원거리는 `reach` 가 7.5~9칸이다. 그 값을 반지름으로 쓰면 효과가
+   *   화면을 덮는다 — 손 언저리(0.9칸)로 못 박는다. */
+  var SWING_STYLE = {
+    dagger: "stab", shadowdagger: "stab",
+    sword: "slash",
+    axe: "crush", dragonslayer: "crush",
+    mace: "smash",
+    spear: "thrust",
+    staff: "cast",
+    bow: "draw"
+  };
+
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
     var k = a.t / Math.max(0.01, m.windup);
@@ -786,91 +850,180 @@ function View(canvas) {
     var cx = ex * TILE + ox, cy = (ey - 0.35) * TILE + oy;
     var half = m.arc * Math.PI / 360;
     var radius = m.reach * TILE;
+
+    var style = "claw";
+    if (e.team === 0) {
+      var eq = e.equipped || (global.SAVE && e.hero ? global.SAVE.liveEquip(e.hero) : null);
+      var wId = (eq && eq.weapon) ? (eq.weapon.base || eq.weapon.id || "") : "";
+      style = SWING_STYLE[wId] || "slash";
+    }
+    var shoots = (style === "cast" || style === "draw");
+    if (shoots) { radius = TILE * 0.9; half = Math.PI / 5; }
+
+    /* 손 언저리 — 쏘는 무기는 여기서 터진다 */
+    var hx = cx + Math.cos(a.ang) * TILE * 0.55;
+    var hy = cy + Math.sin(a.ang) * TILE * 0.55;
+
     ctx.save();
 
-    if (live) {
-      if (e.team === 0) {
-        var eq = e.equipped || (global.SAVE && e.hero ? global.SAVE.liveEquip(e.hero) : null);
-        var wId = (eq && eq.weapon) ? (eq.weapon.base || eq.weapon.id || "") : "";
-
-        if (wId === "dagger" || wId === "shadowdagger") {
-          /* 단검: 빠르고 날카로운 이중 민트/청록 픽셀 베기 궤적 */
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius * 1.05, a.ang - half, a.ang + half);
-          ctx.arc(cx, cy, radius * 0.35, a.ang + half, a.ang - half, true);
-          ctx.closePath();
-          var gD = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius * 1.05);
-          gD.addColorStop(0, "rgba(255, 255, 255, 0.98)");
-          gD.addColorStop(0.5, "rgba(100, 240, 255, 0.85)");
-          gD.addColorStop(1, "rgba(0, 180, 220, 0)");
-          ctx.fillStyle = gD;
-          ctx.fill();
-        } else if (wId === "axe" || wId === "mace" || wId === "dragonslayer") {
-          /* 도끼/철퇴: 무겁고 강렬한 붉은 화염 둔탁 폭발 궤적 */
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius * 1.25, a.ang - half, a.ang + half);
-          ctx.arc(cx, cy, radius * 0.25, a.ang + half, a.ang - half, true);
-          ctx.closePath();
-          var gA = ctx.createRadialGradient(cx, cy, radius * 0.25, cx, cy, radius * 1.25);
-          gA.addColorStop(0, "rgba(255, 255, 220, 0.98)");
-          gA.addColorStop(0.4, "rgba(255, 120, 30, 0.88)");
-          gA.addColorStop(1, "rgba(255, 30, 10, 0)");
-          ctx.fillStyle = gA;
-          ctx.fill();
-        } else if (wId === "spear") {
-          /* 장창: 원뿔형 찌르기 파동 & 직선 충격선 */
-          var tx = cx + Math.cos(a.ang) * radius * 1.25;
-          var ty = cy + Math.sin(a.ang) * radius * 1.25;
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(tx + Math.cos(a.ang + 1.57) * 14, ty + Math.sin(a.ang + 1.57) * 14);
-          ctx.lineTo(tx - Math.cos(a.ang + 1.57) * 14, ty - Math.sin(a.ang + 1.57) * 14);
-          ctx.closePath();
-          ctx.fillStyle = "rgba(255, 240, 160, 0.85)";
-          ctx.fill();
-        } else {
-          /* 장검/기본 무기: 가이더스풍 황금 초승달 픽셀 궤적 */
-          ctx.beginPath();
-          ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-          ctx.arc(cx, cy, radius * 0.4, a.ang + half, a.ang - half, true);
-          ctx.closePath();
-          var grad = ctx.createRadialGradient(cx, cy, radius * 0.3, cx, cy, radius);
-          grad.addColorStop(0, "rgba(255, 255, 240, 0.98)");
-          grad.addColorStop(0.55, "rgba(255, 210, 60, 0.85)");
-          grad.addColorStop(1, "rgba(255, 100, 20, 0)");
-          ctx.fillStyle = grad;
-          ctx.fill();
-        }
-
-        /* 검기 끝 스파크 입자 */
-        for (var spi = 0; spi < 8; spi++) {
-          var spAng = a.ang - half + (spi / 7) * (half * 2);
-          var spR = radius * (0.88 + (spi % 2 === 0 ? 0.18 : 0.06));
-          var spx = cx + Math.cos(spAng) * spR;
-          var spy = cy + Math.sin(spAng) * spR;
-          ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe060";
-          ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
-        }
+    if (!live) {
+      /* 예고 — 다가오는 바닥 경고 파동.
+       * ⚠ 쏘는 무기는 부채꼴이 없어 **예고도 안 보였다.** 손에 기운이
+       *   모이는 것으로 바꾼다 — 언제 나가는지 알아야 피할 수 있다. */
+      if (shoots) {
+        var chg = Math.min(1, k);
+        var gC = ctx.createRadialGradient(hx, hy, 0, hx, hy, 14 * chg + 3);
+        gC.addColorStop(0, style === "cast" ? "rgba(200,220,255,.85)" : "rgba(255,240,200,.8)");
+        gC.addColorStop(1, style === "cast" ? "rgba(90,120,255,0)" : "rgba(200,150,60,0)");
+        ctx.fillStyle = gC;
+        ctx.beginPath(); ctx.arc(hx, hy, 14 * chg + 3, 0, Math.PI * 2); ctx.fill();
       } else {
-        /* 몬스터 위협적인 붉은 픽셀 클로 궤적 */
         ctx.beginPath();
-        ctx.arc(cx, cy, radius, a.ang - half, a.ang + half);
-        ctx.arc(cx, cy, radius * 0.45, a.ang + half, a.ang - half, true);
+        ctx.arc(cx, cy, radius * Math.min(1, k), a.ang - half, a.ang + half);
+        ctx.lineTo(cx, cy);
         ctx.closePath();
-        ctx.fillStyle = "rgba(255, 50, 40, 0.7)";
+        ctx.fillStyle = e.team === 0 ? "rgba(255,220,140,0.22)" : "rgba(255,70,50,0.25)";
         ctx.fill();
       }
-    } else {
-      /* 예고 — 다가오는 바닥 경고 파동 */
+      ctx.restore();
+      return;
+    }
+
+    /* 부채꼴 한 벌 — 바깥 반지름 · 안쪽 반지름 · 색 셋만 다르다 */
+    function wedge(outR, inR, c0, c1, c2) {
       ctx.beginPath();
-      ctx.arc(cx, cy, radius * Math.min(1, k), a.ang - half, a.ang + half);
-      ctx.lineTo(cx, cy);
+      ctx.arc(cx, cy, radius * outR, a.ang - half, a.ang + half);
+      ctx.arc(cx, cy, radius * inR, a.ang + half, a.ang - half, true);
       ctx.closePath();
-      ctx.fillStyle = e.team === 0 ? "rgba(255,220,140,0.22)" : "rgba(255,70,50,0.25)";
+      var g = ctx.createRadialGradient(cx, cy, radius * inR, cx, cy, radius * outR);
+      g.addColorStop(0, c0); g.addColorStop(0.5, c1); g.addColorStop(1, c2);
+      ctx.fillStyle = g;
       ctx.fill();
+    }
+
+    if (style === "stab") {
+      /* 단검 — 빠르고 날카로운 이중 민트/청록 베기 */
+      wedge(1.05, 0.35, "rgba(255,255,255,0.98)", "rgba(100,240,255,0.85)", "rgba(0,180,220,0)");
+    } else if (style === "crush") {
+      /* 전투도끼 — 무겁고 붉은 화염 궤적 */
+      wedge(1.25, 0.25, "rgba(255,255,220,0.98)", "rgba(255,120,30,0.88)", "rgba(255,30,10,0)");
+    } else if (style === "smash") {
+      /* 철퇴 — 베는 것이 아니라 **찧는 것**이다. 궤적을 짧게 하고 끝에
+       * 충격 고리를 둔다. ⚠ 도끼와 같은 불꽃을 쓰지 말 것 — 둘이 한
+       * 무기로 보인다(전에 그랬다). */
+      wedge(0.95, 0.45, "rgba(255,255,255,0.95)", "rgba(210,210,225,0.75)", "rgba(140,140,160,0)");
+      var ix = cx + Math.cos(a.ang) * radius * 0.95;
+      var iy = cy + Math.sin(a.ang) * radius * 0.95;
+      ctx.strokeStyle = "rgba(255,255,255,.85)";
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(ix, iy, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = "rgba(200,200,215,.55)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(ix, iy, 15, 0, Math.PI * 2); ctx.stroke();
+      for (var qi = 0; qi < 4; qi++) {
+        var qa = a.ang + (qi - 1.5) * 0.5;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(Math.round(ix + Math.cos(qa) * 13) - 1,
+                     Math.round(iy + Math.sin(qa) * 13) - 1, 3, 3);
+      }
+    } else if (style === "thrust") {
+      /* 장창 — 원뿔형 찌르기 */
+      var tx = cx + Math.cos(a.ang) * radius * 1.25;
+      var ty = cy + Math.sin(a.ang) * radius * 1.25;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(tx + Math.cos(a.ang + 1.57) * 14, ty + Math.sin(a.ang + 1.57) * 14);
+      ctx.lineTo(tx - Math.cos(a.ang + 1.57) * 14, ty - Math.sin(a.ang + 1.57) * 14);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(255, 240, 160, 0.85)";
+      ctx.fill();
+    } else if (style === "cast") {
+      /* 지팡이 — 베는 것이 아니라 **푸는 것**이다. 손 앞에 룬 고리가
+       * 열리고 그 가운데서 마력탄이 나간다. */
+      var gM = ctx.createRadialGradient(hx, hy, 0, hx, hy, 20);
+      gM.addColorStop(0, "rgba(255,255,255,.95)");
+      gM.addColorStop(0.4, "rgba(150,190,255,.7)");
+      gM.addColorStop(1, "rgba(90,120,255,0)");
+      ctx.fillStyle = gM;
+      ctx.beginPath(); ctx.arc(hx, hy, 20, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(190,215,255,.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.stroke();
+      /* 룬 여섯 — 고리 위의 네모. 원 하나만 두면 그냥 빛덩이로 읽힌다 */
+      for (var ri = 0; ri < 6; ri++) {
+        var ra = a.ang + ri * Math.PI / 3;
+        ctx.fillStyle = (ri % 2) ? "#cfe0ff" : "#ffffff";
+        ctx.fillRect(Math.round(hx + Math.cos(ra) * 12) - 1.5,
+                     Math.round(hy + Math.sin(ra) * 12) - 1.5, 3, 3);
+      }
+      /* 나가는 쪽으로 뻗는 빛줄기 */
+      ctx.strokeStyle = "rgba(200,225,255,.65)";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.lineTo(hx + Math.cos(a.ang) * 22, hy + Math.sin(a.ang) * 22);
+      ctx.stroke();
+    } else if (style === "draw") {
+      /* 활 — 시위가 튕긴다. 앞으로 터지는 것이 아니라 **뒤로 되튀는** 결이다 */
+      /* ⚠ 처음에 활대 14 · 시위 13 으로 두었더니 칠한 칸이 544 로
+       *   일곱 중 꼴찌였고, 화면에서는 갈색 얼룩으로 보였다.
+       *   활은 **마름모가 큰 무기**다 — 크게 그려야 활로 읽힌다. */
+      var ux = Math.cos(a.ang), uy = Math.sin(a.ang);
+      var pxn = -uy, pyn = ux;
+      ctx.strokeStyle = "rgba(200,160,90,.85)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();                                   /* 활대 */
+      ctx.arc(hx - ux * 6, hy - uy * 6, 22, a.ang - 1.15, a.ang + 1.15);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,250,230,.95)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();                                   /* 튕겨 나간 시위 */
+      ctx.moveTo(hx - ux * 6 + pxn * 20, hy - uy * 6 + pyn * 20);
+      ctx.quadraticCurveTo(hx + ux * 12, hy + uy * 12,
+                           hx - ux * 6 - pxn * 20, hy - uy * 6 - pyn * 20);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,235,175,.55)";         /* 되튀는 잔상 */
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(hx - ux * 6 + pxn * 20, hy - uy * 6 + pyn * 20);
+      ctx.lineTo(hx - ux * 6 - pxn * 20, hy - uy * 6 - pyn * 20);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,230,.8)";          /* 나간 쪽 섬광 */
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hx + ux * 10, hy + uy * 10);
+      ctx.lineTo(hx + ux * 30, hy + uy * 30);
+      ctx.stroke();
+      var gB = ctx.createRadialGradient(hx, hy, 0, hx, hy, 18);
+      gB.addColorStop(0, "rgba(255,255,255,.85)");
+      gB.addColorStop(1, "rgba(255,210,120,0)");
+      ctx.fillStyle = gB;
+      ctx.beginPath(); ctx.arc(hx, hy, 18, 0, Math.PI * 2); ctx.fill();
+    } else if (style === "claw") {
+      /* 몬스터 — 붉은 발톱 */
+      wedge(1, 0.45, "rgba(255,50,40,0.7)", "rgba(255,50,40,0.7)", "rgba(255,50,40,0.7)");
+    } else {
+      /* 장검과 표에 없는 무기 — 황금 초승달 */
+      wedge(1, 0.4, "rgba(255,255,240,0.98)", "rgba(255,210,60,0.85)", "rgba(255,100,20,0)");
+    }
+
+    /* 궤적 끝 스파크 — 부채꼴을 그린 것에만. ⚠ 쏘는 무기에 붙이면 여덟이
+     * 손 한 점에 겹쳐 쌓여 흰 덩어리가 된다(폭이 0 이던 때 실제로 그랬다). */
+    if (e.team === 0 && !shoots) {
+      for (var spi = 0; spi < 8; spi++) {
+        var spAng = a.ang - half + (spi / 7) * (half * 2);
+        var spR = radius * (0.88 + (spi % 2 === 0 ? 0.18 : 0.06));
+        var spx = cx + Math.cos(spAng) * spR;
+        var spy = cy + Math.sin(spAng) * spR;
+        ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe060";
+        ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
+      }
     }
     ctx.restore();
   };
+
+  /* 검사가 "무기마다 다른 결인가" 를 볼 수 있어야 한다 — 표를 내준다 */
+  View.SWING_STYLE = SWING_STYLE;
 
   View.prototype.hpBar = function (ctx, ex, ey, ox, oy, frac, big) {
     var w = big ? 40 : 22, h = big ? 5 : 3;
@@ -1076,5 +1229,6 @@ function View(canvas) {
     ctx.restore();
   };
 
-  global.VIEW = { View: View, TILE: TILE, variantAt: variantAt, placeAt: placeAt };
+  global.VIEW = { View: View, TILE: TILE, variantAt: variantAt, placeAt: placeAt,
+                  SWING_STYLE: SWING_STYLE };
 })(window);
