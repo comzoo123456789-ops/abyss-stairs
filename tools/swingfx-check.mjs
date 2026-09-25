@@ -30,6 +30,10 @@ const URL_ARG = ui >= 0 ? process.argv[ui + 1] : null;
 if (URL_ARG && OLD) { console.error("--url 과 OLD=1 은 같이 못 쓴다"); process.exit(2); }
 
 const REVERT = [
+  /* 진짜 결함이었던 자리 — 몸이 아니라 빈 객체에서 무기를 찾던 때로
+   * 되돌린다. 이것 하나로 일곱 무기가 전부 장검으로 떨어진다. */
+  ["/js/view.js", /var wId = \(e\.swing && e\.swing\.base\) \|\| "";/,
+   'var eq0 = e.equipped || null; var wId = (eq0 && eq0.weapon) ? (eq0.weapon.base || "") : "";'],
   ["/js/view.js", /    staff: "cast",\n    bow: "draw"\n/, "\n"],
   ["/js/world.js", /          kind: sm\.base \|\| "shot",\n/, ""]
 ];
@@ -104,68 +108,98 @@ await S("Page.navigate", {
 for (let i = 0; i < 400; i++) { if (await ev("!!(window.VIEW && window.ITEMS && window.__w)")) break; await sleep(60); }
 await sleep(500);
 
-/* ⚠ 화면을 얼려 찍지 않는다 — 시간이 흘러 휘두름이 끝나 버려 값이 흔들린다.
- *   `swingArc` 를 **바로 불러** 빈 캔버스에 그린다. 그리는 코드는 제품 것이다. */
+/* ⚠ **가짜 개체를 넣어 재다가 진짜 결함을 놓쳐다.**
+ *   예전 검사는 { team:0, equipped:{weapon:it} } 를 지어 넣어 swingArc 을
+ *   불렀다. 그런데 제품은 Entity 의 equipped 가 **빈 객체**라(applyHero 는
+ *   World 에 담는다) 모든 무기가 장검으로 떨어졌고, 화면에서 단검·도끼·
+ *   장창의 그림은 **한 번도 나온 적이 없었다.** 검사는 초록이었다.
+ *   지금은 **진짜 세계에 무기를 끼워** 한 프레임을 그려 오려 낸다.
+ * ⚠ 그리고 바로 오려 낸다 — 스크린샷을 따로 찍으면 그 사이에 시간이
+ *   흘러 휘두름이 끝나 버린다(한 번 그렇게 재다가 값이 흔들렸다). */
 const M = await ev(`(function(){
   var V = window.VIEW, I = window.ITEMS, D = window.DUNGEON, TILE = V.TILE;
-  var W = 200;
-  var view = Object.create(V.View.prototype);
+  var R = 120;
   var bases = I.BASES.weapon.map(function (b) { return b.id; });
 
-  function shot(base, liveOn) {
+  function frame(base, liveOn) {
+    window.__start({ depth: 1 });
+    var w = window.__w(), view = window.__view();
+    w.level.tiles.fill(D.FLOOR); w.level.visible.fill(1); w.level.seen.fill(1);
+    w.refreshFov = function () { this.level.visible.fill(1); return false; };
+    w.ents.length = 1;
+    w.shots.length = 0;
+    var h = window.__hero(); h.level = 20;
     var it = I.roll(D.makeRng(3), { slot: "weapon", base: base, tier: "rare", ilvl: 12 });
     if (!it) return null;
-    var sw = I.swingOf({ weapon: it }, {});
-    var c = document.createElement("canvas"); c.width = W; c.height = W;
-    var g = c.getContext("2d");
-    var fake = {
-      team: 0, equipped: { weapon: it },
-      atk: { ang: 0, t: liveOn ? sw.windup + 0.01 : sw.windup * 0.7,
-             m: { windup: sw.windup, arc: sw.arc, reach: sw.reach } }
+    h.equip.weapon = I.pack(it);
+    w.applyHero();
+    var p = w.player;
+    window.__aimAt(p.x + 3, p.y);
+    if (!p.atk) return null;
+    p.atk.ang = 0;
+    p.atk.t = (p.atk.m.windup || 0.2) * (liveOn ? 1 : 0.7) + (liveOn ? 0.01 : 0);
+    var before = document.createElement("canvas");
+    /* 효과 없이 한 장 — 그 차이가 곧 휘두름이다 */
+    var keep = p.atk; p.atk = null; view.draw(w, 1);
+    var c = document.getElementById("game") || document.querySelector("canvas");
+    var sx = Math.round(p.x * TILE + (view.ox || 0)), sy = Math.round(p.y * TILE + (view.oy || 0));
+    before.width = R; before.height = R;
+    before.getContext("2d").drawImage(c, sx - R / 2, sy - R / 2, R, R, 0, 0, R, R);
+    p.atk = keep; view.draw(w, 1);
+    var after = document.createElement("canvas"); after.width = R; after.height = R;
+    after.getContext("2d").drawImage(c, sx - R / 2, sy - R / 2, R, R, 0, 0, R, R);
+    return {
+      a: before.getContext("2d").getImageData(0, 0, R, R).data,
+      b: after.getContext("2d").getImageData(0, 0, R, R).data,
+      sw: p.swing, ranged: !!p.swing.ranged
     };
-    view.swingArc(g, fake, 0, 0, W / 2, W / 2 + TILE * 0.35);
-    return { d: g.getImageData(0, 0, W, W).data, sw: sw, it: it };
   }
-  function ink(a) { var n = 0; for (var i = 3; i < a.length; i += 4) if (a[i] > 8) n++; return n; }
-  function reachPx(a) {
-    /* 그려진 것이 주인공에서 몇 px 까지 뻗었나 */
-    var far = 0;
-    for (var y = 0; y < W; y++) for (var x = 0; x < W; x++) {
-      if (a[(y * W + x) * 4 + 3] > 8) {
-        var dx = x - W / 2, dy = y - (W / 2 + ${0});
-        var r = Math.sqrt(dx * dx + dy * dy);
-        if (r > far) far = r;
-      }
+  /* 효과가 있고 없고의 차이 난 칸 = 휘두름이 그린 것 */
+  function drew(f) {
+    var n = 0;
+    for (var i = 0; i < f.a.length; i += 4)
+      if (Math.abs(f.a[i]-f.b[i]) + Math.abs(f.a[i+1]-f.b[i+1]) + Math.abs(f.a[i+2]-f.b[i+2]) > 24) n++;
+    return n;
+  }
+  function mask(f) {
+    var m = new Uint8Array(f.a.length / 4);
+    for (var i = 0, j = 0; i < f.a.length; i += 4, j++)
+      m[j] = (Math.abs(f.a[i]-f.b[i]) + Math.abs(f.a[i+1]-f.b[i+1]) + Math.abs(f.a[i+2]-f.b[i+2]) > 24) ? 1 : 0;
+    return m;
+  }
+  function far(m) {
+    var f = 0;
+    for (var y = 0; y < R; y++) for (var x = 0; x < R; x++) if (m[y * R + x]) {
+      var dx = x - R / 2, dy = y - R / 2, d = Math.sqrt(dx * dx + dy * dy);
+      if (d > f) f = d;
     }
-    return Math.round(far);
+    return Math.round(f);
   }
-  function diff(a, b) {
+  function diff(m1, m2) {
     var n = 0, u = 0;
-    for (var i = 0; i < a.length; i += 4) {
-      if (a[i+3] > 8 || b[i+3] > 8) u++;
-      if (Math.abs(a[i]-b[i]) + Math.abs(a[i+1]-b[i+1]) + Math.abs(a[i+2]-b[i+2]) + Math.abs(a[i+3]-b[i+3]) > 30) n++;
+    for (var i = 0; i < m1.length; i++) {
+      if (m1[i] || m2[i]) u++;
+      if (m1[i] !== m2[i]) n++;
     }
     return u ? Math.round(n / u * 1000) / 10 : 0;
   }
 
-  var rows = [], imgs = [];
+  var rows = [], masks = [];
   bases.forEach(function (b) {
-    var L = shot(b, true), P = shot(b, false);
+    var L = frame(b, true), P = frame(b, false);
     if (!L) { rows.push({ b: b, miss: true }); return; }
+    var mk = mask(L);
     rows.push({
       b: b, style: V.SWING_STYLE[b] || "(표에 없음)", inTable: !!V.SWING_STYLE[b],
-      ink: ink(L.d), warn: P ? ink(P.d) : 0,
-      far: reachPx(L.d), reach: L.sw.reach, arc: L.sw.arc,
-      /* ⚠ swingOf 는 ranged 를 안 담는다 — 물건에서 읽어야 한다.
-       * 그것을 몰라 부르다 쓸 무기가 0개가 되어 판정이 빈 채 빨개졌다. */
-      ranged: !!(L.it && L.it.ranged)
+      ink: drew(L), warn: P ? drew(P) : 0, far: far(mk),
+      reach: L.sw.reach, arc: L.sw.arc, ranged: L.ranged
     });
-    imgs.push({ b: b, d: L.d });
+    masks.push({ b: b, m: mk });
   });
   var pairs = [];
-  for (var i = 0; i < imgs.length; i++)
-    for (var j = i + 1; j < imgs.length; j++)
-      pairs.push({ a: imgs[i].b, b: imgs[j].b, d: diff(imgs[i].d, imgs[j].d) });
+  for (var i = 0; i < masks.length; i++)
+    for (var j = i + 1; j < masks.length; j++)
+      pairs.push({ a: masks[i].b, b: masks[j].b, d: diff(masks[i].m, masks[j].m) });
   pairs.sort(function (x, y) { return x.d - y.d; });
   return { rows: rows, tile: TILE, worst: pairs.slice(0, 3), same: pairs.filter(function (p) { return p.d < 20; }) };
 })()`);

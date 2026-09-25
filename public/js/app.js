@@ -3350,6 +3350,7 @@
      *   장비를 끼우는 길만 두면, 그 길이 막히는 날 조준 검사까지 같이 죽는다. */
     global.__give = giveTestItems;
     global.__openCompare = openCompare;
+    global.__view = function () { return view; };   /* 검사가 한 프레임을 직접 그려 볼 수 있어야 한다 */
     global.__closepanel = closePanel;
     /* 검사가 "그 줄이 표에 있긴 한가" 를 볼 수 있어야 한다 —
      * 값이 안 달라지면 줄은 숨는 것이 이 표의 규칙이라 화면만 봐서는 못 가린다. */

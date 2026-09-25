@@ -408,23 +408,32 @@ function View(canvas) {
         ctx.fillStyle = "#ffffff";
         ctx.beginPath(); ctx.arc(sxp, syp, 3.2, 0, Math.PI * 2); ctx.fill();
       } else if (sh.kind === "staff") {
-        /* 지팡이 — 마력탄. 꼬리가 길고 푸른빛이 돈다.
-         * ⚠ 활과 **같은 그림이면 안 된다.** 전에는 둘 다 호박색 짧은 선이라
-         *   마법사가 화살을 쏘는 것처럼 보였다. */
-        var gS = ctx.createRadialGradient(sxp, syp, 0, sxp, syp, 9);
-        gS.addColorStop(0, "rgba(255,255,255,.95)");
-        gS.addColorStop(0.45, "rgba(150,190,255,.75)");
-        gS.addColorStop(1, "rgba(90,120,255,0)");
-        ctx.fillStyle = gS;
-        ctx.beginPath(); ctx.arc(sxp, syp, 9, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = "rgba(160,200,255,.45)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(sxp - sh.vx / tl * 18, syp - sh.vy / tl * 18);
-        ctx.lineTo(sxp, syp);
-        ctx.stroke();
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(Math.round(sxp) - 2, Math.round(syp) - 2, 4, 4);
+        /* 지팡이 — **휘둘러 날린 기운**이다. 둥근 알이 아니다.
+         *
+         * ⚠ 처음에 빛나는 구체로 그렸더니 **총알처럼** 보였다
+         *   (훈님 지적 2026-09-25). 지팡이는 휘두르는 무기니 나가는 것도
+         *   **날아가는 초승달**이어야 한다 — 날아가는 방향과 직각으로 선다.
+         * ⚠ 둥글게 되돌리지 말 것. */
+        var sux = sh.vx / tl, suy = sh.vy / tl;
+        var sang = Math.atan2(suy, sux);
+        ctx.save();
+        ctx.translate(sxp, syp);
+        ctx.rotate(sang);
+        /* 꾬리 — 지나온 자리가 엷게 남는다 */
+        var gT = ctx.createLinearGradient(-26, 0, 0, 0);
+        gT.addColorStop(0, "rgba(120,150,255,0)");
+        gT.addColorStop(1, "rgba(170,200,255,.45)");
+        ctx.strokeStyle = gT;
+        ctx.lineWidth = 9;
+        ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(-4, 0); ctx.stroke();
+        /* 초승달 두 겹 */
+        ctx.strokeStyle = "rgba(150,190,255,.85)";
+        ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(-9, 0, 13, -1.0, 1.0); ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,.95)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(-7, 0, 13, -0.8, 0.8); ctx.stroke();
+        ctx.restore();
       } else if (sh.kind === "bow") {
         /* 활 — 화살. 촉 · 대 · 깃이 보여야 화살로 읽힌다 */
         var ux = sh.vx / tl, uy = sh.vy / tl;
@@ -851,10 +860,20 @@ function View(canvas) {
     var half = m.arc * Math.PI / 360;
     var radius = m.reach * TILE;
 
+    /* 무엇을 들었나 — **휘두르는 그 몸에서** 읽는다.
+     *
+     * ⚠ 예전에는 e.equipped 를 봤는데, 그것은 **Entity 생성자가 빈
+     *   객체로 두고** applyHero 는 그것을 **World 에** 담는다(world.js 673).
+     *   빈 객체도 참이라 || 뒤의 되돌림길이 한 번도 안 타고,
+     *   wId 가 늘 문자열이 돼 **모든 무기가 장검으로** 떨어졌다.
+     *   단검·도끼·장창의 그림이 화면에서는 **한 번도 나온 적이 없었다**
+     *   (실측 2026-09-25 · 검사는 가짜 객체를 넣어 통과했다).
+     *   지팡이·활은 그 장검 부채꼴을 arc 0 으로 그려 **아무것도 안 나왔다.**
+     * ⚠ swing.base 는 derive 가 넣고 applyHero 가 몸에 붙인다 — 그것이
+     *   유일한 진실원이다. 화면이 저장을 다시 뒤지게 두지 말 것. */
     var style = "claw";
     if (e.team === 0) {
-      var eq = e.equipped || (global.SAVE && e.hero ? global.SAVE.liveEquip(e.hero) : null);
-      var wId = (eq && eq.weapon) ? (eq.weapon.base || eq.weapon.id || "") : "";
+      var wId = (e.swing && e.swing.base) || "";
       style = SWING_STYLE[wId] || "slash";
     }
     var shoots = (style === "cast" || style === "draw");
@@ -938,31 +957,18 @@ function View(canvas) {
       ctx.fillStyle = "rgba(255, 240, 160, 0.85)";
       ctx.fill();
     } else if (style === "cast") {
-      /* 지팡이 — 베는 것이 아니라 **푸는 것**이다. 손 앞에 룬 고리가
-       * 열리고 그 가운데서 마력탄이 나간다. */
-      var gM = ctx.createRadialGradient(hx, hy, 0, hx, hy, 20);
-      gM.addColorStop(0, "rgba(255,255,255,.95)");
-      gM.addColorStop(0.4, "rgba(150,190,255,.7)");
-      gM.addColorStop(1, "rgba(90,120,255,0)");
+      /* 지팡이 — **휘두른다.** 마법진을 손에 띄워 두었더니
+       * 효과 층이 **개체보다 먼저** 그려져 스프라이트 밑에 깔렸고,
+       * 화면에는 둘레 아무것도 없이 **알만 날아갔다**(실측 2026-09-25).
+       * 몸 밖으로 뻗는 초승달이어야 휘두른 것으로 보인다.
+       * ⚠ 반지름은 여전히 손 언저리다 — reach(7.5칸)를 쓰면 화면을 덮는다. */
+      wedge(1.45, 0.55, "rgba(255,255,255,0.95)", "rgba(150,170,255,0.8)", "rgba(110,80,220,0)");
+      /* 손에서 피어나가는 지팡이 끝의 빛 */
+      var gM = ctx.createRadialGradient(hx, hy, 0, hx, hy, 11);
+      gM.addColorStop(0, "rgba(255,255,255,.9)");
+      gM.addColorStop(1, "rgba(120,150,255,0)");
       ctx.fillStyle = gM;
-      ctx.beginPath(); ctx.arc(hx, hy, 20, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(190,215,255,.9)";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(hx, hy, 12, 0, Math.PI * 2); ctx.stroke();
-      /* 룬 여섯 — 고리 위의 네모. 원 하나만 두면 그냥 빛덩이로 읽힌다 */
-      for (var ri = 0; ri < 6; ri++) {
-        var ra = a.ang + ri * Math.PI / 3;
-        ctx.fillStyle = (ri % 2) ? "#cfe0ff" : "#ffffff";
-        ctx.fillRect(Math.round(hx + Math.cos(ra) * 12) - 1.5,
-                     Math.round(hy + Math.sin(ra) * 12) - 1.5, 3, 3);
-      }
-      /* 나가는 쪽으로 뻗는 빛줄기 */
-      ctx.strokeStyle = "rgba(200,225,255,.65)";
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(hx, hy);
-      ctx.lineTo(hx + Math.cos(a.ang) * 22, hy + Math.sin(a.ang) * 22);
-      ctx.stroke();
+      ctx.beginPath(); ctx.arc(hx, hy, 11, 0, Math.PI * 2); ctx.fill();
     } else if (style === "draw") {
       /* 활 — 시위가 튕긴다. 앞으로 터지는 것이 아니라 **뒤로 되튀는** 결이다 */
       /* ⚠ 처음에 활대 14 · 시위 13 으로 두었더니 칠한 칸이 544 로
@@ -1007,17 +1013,18 @@ function View(canvas) {
       wedge(1, 0.4, "rgba(255,255,240,0.98)", "rgba(255,210,60,0.85)", "rgba(255,100,20,0)");
     }
 
-    /* 궤적 끝 스파크 — 부채꼴을 그린 것에만. ⚠ 쏘는 무기에 붙이면 여덟이
-     * 손 한 점에 겹쳐 쌓여 흰 덩어리가 된다(폭이 0 이던 때 실제로 그랬다). */
+    /* 날 끝 선 — 부채꼴의 **바깥 획을 한 줄** 긋는다.
+     *
+     * ⚠ 예전에는 굤적 둘레에 **네모 여덟을 흑뿌렸다.** 어두운
+     *   바닥에서 그것이 **산탄처럼** 보였다(훈님 지적 2026-09-25).
+     *   베는 것은 알이 튀는 것이 아니다 — 날이 지나간 **한 줄**이다.
+     * ⚠ 점을 찍지 말 것. 넣는 순간 다시 산탄으로 보인다. */
     if (e.team === 0 && !shoots) {
-      for (var spi = 0; spi < 8; spi++) {
-        var spAng = a.ang - half + (spi / 7) * (half * 2);
-        var spR = radius * (0.88 + (spi % 2 === 0 ? 0.18 : 0.06));
-        var spx = cx + Math.cos(spAng) * spR;
-        var spy = cy + Math.sin(spAng) * spR;
-        ctx.fillStyle = (spi % 2 === 0) ? "#ffffff" : "#ffe060";
-        ctx.fillRect(Math.round(spx) - 1, Math.round(spy) - 1, 3, 3);
-      }
+      ctx.strokeStyle = "rgba(255,255,255,.9)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius * 0.98, a.ang - half * 0.92, a.ang + half * 0.92);
+      ctx.stroke();
     }
     ctx.restore();
   };
