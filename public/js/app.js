@@ -3399,6 +3399,20 @@
     };
 
     global.__reloadFromCloud = function () {
+      if (global.SAVE && global.SAVE.slots) {
+        var allSlots = global.SAVE.slots();
+        var bestCls = null, maxLv = 0;
+        for (var cId in allSlots) {
+          if (allSlots[cId].level > maxLv) {
+            maxLv = allSlots[cId].level;
+            bestCls = cId;
+          }
+        }
+        if (bestCls) {
+          var bestSlot = global.SAVE.loadSlot(bestCls);
+          if (bestSlot) global.SAVE.save(bestSlot);
+        }
+      }
       var loaded = global.SAVE.load();
       hero = loaded.save;
       if (panelOpen()) closePanel();
@@ -3406,7 +3420,7 @@
       var cName = (hero.advClass && global.CLASSES && global.CLASSES.ADVANCED_CLASSES[hero.advClass])
         ? global.CLASSES.ADVANCED_CLASSES[hero.advClass].name
         : (global.CLASSES && global.CLASSES.byId(hero.cls) ? global.CLASSES.byId(hero.cls).name : "캐릭터");
-      toast("✨ [" + (global.CLOUD ? global.CLOUD.state().login : "계정") + "] 접속 완료! " + cName + " Lv." + hero.level + " 데이터를 불러왔습니다.");
+      toast("✨ [" + (global.CLOUD ? global.CLOUD.state().login : "계정") + "] 로그인 성공! " + cName + " Lv." + hero.level + " 로드 완료!");
     };
 
     global.__reload = function () {

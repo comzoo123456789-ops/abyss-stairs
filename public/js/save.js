@@ -238,7 +238,22 @@
     if (!ls) return { save: blank(), fresh: true, blocked: true };
     var txt;
     try { txt = ls.getItem(KEY); } catch (e) { txt = null; }
-    if (!txt) return { save: blank(), fresh: true };
+    if (!txt) {
+      /* 활성화된 슬롯 키가 없더라도 다른 직업 슬롯 저장이 있다면 가장 최고 레벨 직업을 복구 */
+      var sls = slots();
+      var bestCls = null, bestLv = 0;
+      for (var k in sls) {
+        if (sls[k].level > bestLv) { bestLv = sls[k].level; bestCls = k; }
+      }
+      if (bestCls) {
+        var got = loadSlot(bestCls);
+        if (got) {
+          save(got);
+          return { save: got, fresh: false };
+        }
+      }
+      return { save: blank(), fresh: true };
+    }
     var raw;
     try { raw = JSON.parse(txt); } catch (e) {
       /* 깨진 글자 — 지우지 말고 **옆에 치워 둔다.** 지워 버리면 되살릴 길이 없다. */

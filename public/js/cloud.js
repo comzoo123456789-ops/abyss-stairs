@@ -115,6 +115,25 @@
     }
     /* 이 기기에만 있는 것은 올려 준다 — 합집합이 남아야 한다 */
     await push();
+
+    /* 가장 레벨이 높은 최고 직업 캐릭터를 메인 저장소(KEY)에 활성화 */
+    var bestWrapped = null, bestPeek = null;
+    var allLocal = localSaves();
+    for (var k = 0; k < allLocal.length; k++) {
+      var p = peek(allLocal[k]);
+      if (!p) continue;
+      if (!bestPeek || further(p, bestPeek) === p) {
+        bestPeek = p;
+        bestWrapped = allLocal[k];
+      }
+    }
+    if (bestWrapped) {
+      try {
+        var ls = global.localStorage;
+        if (ls && save()) ls.setItem(save().KEY, JSON.stringify(bestWrapped));
+      } catch (e) {}
+    }
+
     state.note = (took.length ? "내려받음 " + took.join(" · ") : "내려받을 것 없음") +
                  (kept.length ? " · 이 기기가 더 나아가 둠 " + kept.join(" · ") : "");
     paint();
@@ -248,6 +267,9 @@
 
   async function submit(kind) {
     if (state.busy) return;
+    /* ⚠ **그리기 전에 읽는다.** paint 가 칸을 다시 만들므로, 뒤에서 읽으면
+     *   방금 만들어진 빈 칸을 읽는다. 위의 되살리기와 **둘 다** 있어야 한다 —
+     *   하나만으로는 차례가 조금만 바뀌어도 같은 일이 난다. */
     var login = val("acId"), pw = val("acPw");
     state.busy = true; state.note = "보내는 중…"; paint();
     var r = await api("/api/" + kind, {
@@ -259,29 +281,17 @@
     state.login = r.login;
     state.note = "";
     paint();
-    /* 들어오자마자 맞춘다 — 로그인해 놓고 서버 저장을 로컬에 맞추고 갱신 */
+    /* 들어오자마자 맞춘다 — 로그인해 놓고 아무 일도 안 일어나면 된 줄 모른다 */
     await doPull();
-    if (global.__reloadFromCloud) {
-      global.__reloadFromCloud();
-    }
   }
 
   async function doLogout() {
-    state.busy = true; state.note = "저장을 서버에 보낸 후 로그아웃 중…"; paint();
+    /* ⚠ 나가기 **전에 한 번 올린다.** 안 올리면 이 기기에서 방금 한 것이
+     *   서버에 없는 채로 끝난다. */
     await push();
     await api("/api/logout", { method: "POST" });
     state.login = null;
-    state.busy = false;
-
-    /* 이 기기의 로컬 저장소 완전 초기화 */
-    if (save() && save().wipeAll) save().wipeAll();
-
-    /* 게임 상태 초기화 및 화면 갱신 */
-    if (global.__resetGameToFresh) {
-      global.__resetGameToFresh();
-    }
-
-    state.note = "안전하게 로그아웃 되었습니다. 이 기기의 캐릭터 데이터가 완전히 지워졌으며, 서버에 저장되어 있으므로 언제든 아이디/비밀번호로 재접속할 수 있습니다.";
+    state.note = "나갔습니다. 이 기기의 저장은 그대로 있습니다.";
     paint();
   }
 
@@ -289,9 +299,6 @@
     if (btn) { btn.disabled = true; btn.textContent = "맞추는 중…"; }
     var r = await pull();
     if (!r.ok) state.note = r.error;
-    else {
-      if (global.__reloadFromCloud) global.__reloadFromCloud();
-    }
     paint();
   }
 
