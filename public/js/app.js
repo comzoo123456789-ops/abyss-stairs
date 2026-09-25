@@ -2404,7 +2404,7 @@
     if (!box) return;
     var SK = global.SKILLS;
     var html = '<h2>스킬북</h2><p class="sub">남은 점수 <b>' + hero.points +
-      '</b> · 스킬 슬롯 1·2·3·4 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
+      '</b> · 스킬 슬롯 1~6 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
       '<div class="skill-tabs">' +
       '<button id="stabActive" class="stab-btn active">⚡ 액티브 스킬</button>' +
       '<button id="stabPassive" class="stab-btn">🛡️ 패시브 / 버프</button>' +
@@ -2413,29 +2413,24 @@
       '<button class="scroll-arrow left" id="btnSkillPrev" title="이전 스킬">◀</button>' +
       '<div class="cols skill-cols" id="skillColsWrap">';
 
-    var mine = global.CLASSES ? global.CLASSES.skills(hero.cls) : [];
+    var mine = global.CLASSES ? global.CLASSES.skills(hero.cls, hero.advClass) : [];
 
     for (var i = 0; i < mine.length; i++) {
       var sId = mine[i];
-      /* ⚠ `SK.by` 가 아니라 **`SK.byId`** 다. skills.js 는 by 를 안 내보낸다.
-       *   그래서 스킬북이 첫 반복에서 터졌고, 창을 보이게 하는 줄에 아예
-       *   닿지 못했다 — 눌러도 **아무 일도 안 일어나는** 것으로 보였다. */
       var def = SK.byId(sId);
       if (!def) continue;
 
       var barAt = (hero.bar || []).indexOf(def.id);
       var pts = (hero.skills[def.id] || []).length;
-      var isPassive = (def.type === "passive" || def.kind === "buff");
+      var isPassive = (def.type === "passive" || def.kind === "passive");
       var stype = isPassive ? "passive" : "active";
 
-      /* ⚠ `SK.calc` 도 없다. `SK.resolve(id, 가진것)` 이다 — 인자도 다르다.
-       *   이름만 바꾸면 def 를 id 자리에 넣게 되어 조용히 null 이 된다. */
       var r = SK.resolve(def.id, hero.skills);
 
       html += '<div class="col skill" data-type="' + stype + '">' +
         '<div class="head"><canvas width="34" height="34" data-ico="' + def.icon + '"></canvas>' +
         '<div><h3>' + esc(def.name) + '</h3><p class="tag">' +
-        (isPassive ? '지속/버프 스킬' : ('재사용 ' + def.cd + '초 · 기력 ' + def.stam)) +
+        (isPassive ? '지속 패시브 스킬' : ('재사용 ' + def.cd + '초 · 기력 ' + def.stam)) +
         '</p></div></div>' +
         '<p class="desc">' + esc(def.text) + '</p>' +
         '<div class="sub-stat">단계 ' + pts + ' / ' + def.syn.length +
@@ -2454,7 +2449,7 @@
 
       if (!isPassive) {
         html += '<div class="bar-pick">';
-        for (var b = 0; b < 4; b++)
+        for (var b = 0; b < 6; b++)
           html += '<button class="slot' + (barAt === b ? " on" : "") +
             '" data-bar="' + def.id + ':' + b + '">' + (b + 1) + '</button>';
         html += '</div>';
@@ -2579,7 +2574,7 @@
     if (!el) return;
     el.innerHTML = "";
     barEls = [];
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
       var d = document.createElement("div");
       d.className = "sk";
       /* ⚠ 아이콘이 **덮개(.cool) 밑**에 와야 쿨다운이 아이콘을 덮는다.
@@ -2597,7 +2592,7 @@
     if (!barEls) buildBar();
     if (!barEls) return;
     var SK = global.SKILLS;
-    for (var i = 0; i < 4; i++) {
+    for (var i = 0; i < 6; i++) {
       var id = hero.bar[i], e = barEls[i];
       if (!id) {
         e.root.className = "sk empty";
@@ -2618,7 +2613,7 @@
     }
 
     /* 모바일 우측 액션 패드 스킬 버튼 동기화 */
-    for (var j = 0; j < 4; j++) {
+    for (var j = 0; j < 6; j++) {
       var mid = hero.bar[j];
       var mbtn = document.getElementById("btnSkill" + (j + 1));
       if (!mbtn) continue;
@@ -3152,8 +3147,8 @@
       btnTouchRec.addEventListener("click", doTouchRecall);
     }
 
-    /* 1~4 스킬 버튼 */
-    for (var s = 1; s <= 4; s++) {
+    /* 1~6 스킬 버튼 */
+    for (var s = 1; s <= 6; s++) {
       (function (slotIndex) {
         var sb = document.getElementById("btnSkill" + (slotIndex + 1));
         if (sb) {
@@ -3247,10 +3242,11 @@
       if (e.code === "KeyI") { openBag(); e.preventDefault(); return; }
       if (e.code === "KeyQ") { drink(); e.preventDefault(); return; }
       if (e.code === "KeyK") { openBook(); e.preventDefault(); return; }
-      /* QWER 이 아니라 **1234** 다 — Q 는 물약이고, WASD 가 이동이라
-       * Q·W·E·R 은 이미 넷 중 셋이 다른 일을 한다(전에 그렇게 배선했다가
-       * W 를 누르면 걸으면서 스킬이 나갔다). 숫자 줄이 비어 있다. */
-      var slot = { Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3 }[e.code];
+      /* 1~6 번 숫자키 스킬 */
+      var slot = {
+        Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5,
+        Numpad1: 0, Numpad2: 1, Numpad3: 2, Numpad4: 3, Numpad5: 4, Numpad6: 5
+      }[e.code];
       if (slot !== undefined) { castSlot(slot); e.preventDefault(); return; }
       if (e.code === "KeyT") { world.recallStart(); return; }
       if (e.code === "KeyR" && !world.inTown) start({ depth: world.depth });
