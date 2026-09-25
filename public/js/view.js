@@ -71,13 +71,124 @@
 
   function getPdWeaponSprite(it) {
     if (!it) return null;
-    var id = it.id || "";
-    if (id === "excalibur") return "pd_weapon_excalibur";
-    if (id === "dragonslayer") return "pd_weapon_dragonslayer";
-    if (id === "arcanestaff" || id === "staff") return "pd_weapon_arcanestaff";
-    if (id === "shadowdagger" || id === "dagger") return "pd_weapon_shadowdagger";
-    if (id === "celestialbow" || id === "bow") return "pd_weapon_celestialbow";
+    var id = (it.id || "").toLowerCase();
+    var base = (it.base || "").toLowerCase();
+    if (id === "excalibur" || base === "sword" || id === "sword" || id === "w_sword") return "pd_weapon_excalibur";
+    if (id === "dragonslayer" || base === "axe" || id === "axe" || id === "w_axe") return "pd_weapon_dragonslayer";
+    if (id === "arcanestaff" || base === "staff" || id === "staff" || id === "w_staff") return "pd_weapon_arcanestaff";
+    if (id === "shadowdagger" || base === "dagger" || id === "dagger" || id === "w_dagger") return "pd_weapon_shadowdagger";
+    if (id === "celestialbow" || base === "bow" || id === "bow" || id === "w_bow") return "pd_weapon_celestialbow";
+    if (base === "spear" || id === "spear" || id === "w_spear") return "pd_weapon_spear";
+    if (base === "mace" || id === "mace" || id === "w_fist" || id === "w_mace") return "pd_weapon_mace";
     return "pd_weapon_excalibur";
+  }
+
+  function drawDynamicAttackingWeapon(ctx, img, e, sx, sy, weaponItem) {
+    if (!ctx || !img || !e || !e.atk) return;
+    var a = e.atk;
+    var wId = (e.swing && e.swing.base) || (weaponItem ? (weaponItem.base || weaponItem.id) : "sword") || "sword";
+    var style = SWING_STYLE[wId] || "slash";
+    var m = a.m || {};
+    var w = Math.max(0.01, m.windup || 0.18);
+    var r = Math.max(0.01, m.recover || 0.24);
+    var isWindup = a.t < w;
+    var dir = a.flip ? -1 : 1;
+    var half = (m.arc || 100) * Math.PI / 360;
+
+    var hx = sx + 24;
+    var hy = sy + 27;
+
+    var rot = a.ang;
+    var offX = 0, offY = 0;
+
+    if (style === "slash") {
+      if (isWindup) {
+        var wk = a.t / w;
+        rot = a.ang - dir * half * (0.5 + 0.5 * wk);
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var headK = 1 - Math.pow(1 - sw / 0.45, 3);
+        rot = a.ang + dir * (-half + half * 2 * headK);
+      }
+      rot += Math.PI * 0.25;
+    } else if (style === "crush") {
+      if (isWindup) {
+        var wk = a.t / w;
+        rot = a.ang - Math.PI * 0.4 * wk;
+        offY = -4 * wk;
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var headK = 1 - Math.pow(1 - sw / 0.4, 3);
+        rot = a.ang - Math.PI * 0.4 + Math.PI * 0.8 * headK;
+        offX = Math.cos(a.ang) * (4 * headK);
+        offY = Math.sin(a.ang) * (4 * headK);
+      }
+      rot += Math.PI * 0.25;
+    } else if (style === "stab") {
+      var sw = isWindup ? (a.t / w * 0.3) : (0.3 + 0.7 * Math.min(1, (a.t - w) / r));
+      var jabP = (sw < 0.3) ? (sw / 0.3 * 8) : (sw < 0.6 ? (1 - (sw - 0.3) / 0.3) * 8 : (1 - (sw - 0.6) / 0.4) * 12);
+      offX = Math.cos(a.ang) * jabP;
+      offY = Math.sin(a.ang) * jabP;
+      rot = a.ang + Math.PI * 0.25;
+    } else if (style === "thrust") {
+      if (isWindup) {
+        var wk = a.t / w;
+        offX = -Math.cos(a.ang) * (6 * wk);
+        offY = -Math.sin(a.ang) * (6 * wk);
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var reachK = (sw < 0.4) ? (1 - Math.pow(1 - sw / 0.4, 3)) : Math.pow(1 - (sw - 0.4) / 0.6, 2);
+        offX = Math.cos(a.ang) * (18 * reachK);
+        offY = Math.sin(a.ang) * (18 * reachK);
+      }
+      rot = a.ang + Math.PI * 0.25;
+    } else if (style === "smash") {
+      if (isWindup) {
+        var wk = a.t / w;
+        rot = a.ang - Math.PI * 0.5 * wk;
+        offY = -6 * wk;
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var slamK = 1 - Math.pow(1 - sw / 0.35, 3);
+        rot = a.ang - Math.PI * 0.5 + Math.PI * 0.75 * slamK;
+        offX = Math.cos(a.ang) * (8 * slamK);
+        offY = Math.sin(a.ang) * (8 * slamK);
+      }
+      rot += Math.PI * 0.25;
+    } else if (style === "cast") {
+      if (isWindup) {
+        var wk = a.t / w;
+        rot = a.ang - Math.PI * 0.2 * wk;
+        offY = -3 * wk;
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var castK = 1 - Math.pow(1 - sw / 0.4, 3);
+        rot = a.ang + Math.PI * 0.15 * castK;
+        offX = Math.cos(a.ang) * (10 * castK);
+        offY = Math.sin(a.ang) * (10 * castK);
+      }
+      rot += Math.PI * 0.25;
+    } else if (style === "draw") {
+      if (isWindup) {
+        var wk = a.t / w;
+        offX = -Math.cos(a.ang) * (8 * wk);
+        offY = -Math.sin(a.ang) * (8 * wk);
+        rot = a.ang;
+      } else {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / r));
+        var relK = 1 - Math.pow(1 - sw, 3);
+        offX = Math.cos(a.ang) * (6 * relK);
+        offY = Math.sin(a.ang) * (6 * relK);
+        rot = a.ang;
+      }
+      rot += Math.PI * 0.5;
+    }
+
+    ctx.save();
+    ctx.translate(hx + offX, hy + offY);
+    ctx.rotate(rot);
+    ctx.drawImage(img, -24, -27);
+    ctx.restore();
   }
 
   function drawPaperdollOverlays(ctx, e, sx, sy, fr, world) {
@@ -101,7 +212,13 @@
     }
     if (eq.weapon) {
       var pdWeapon = getPdWeaponSprite(eq.weapon);
-      if (pdWeapon && S.has(pdWeapon)) placeAt(ctx, S.bake(pdWeapon, fr), pdWeapon, sx, sy);
+      if (pdWeapon && S.has(pdWeapon)) {
+        if (!e.atk) {
+          placeAt(ctx, S.bake(pdWeapon, fr), pdWeapon, sx, sy);
+        } else {
+          drawDynamicAttackingWeapon(ctx, S.bake(pdWeapon, fr), e, sx, sy, eq.weapon);
+        }
+      }
     }
   }
 
@@ -847,16 +964,14 @@ function View(canvas) {
    * ⚠ 원거리는 `reach` 가 7.5~9칸이다. 그 값을 반지름으로 쓰면 효과가
    *   화면을 덮는다 — 손 언저리(0.9칸)로 못 박는다. */
   var SWING_STYLE = {
-    dagger: "stab", shadowdagger: "stab",
-    sword: "slash",
-    axe: "crush", dragonslayer: "crush",
-    mace: "smash",
-    spear: "thrust",
-    staff: "cast",
-    bow: "draw"
+    dagger: "stab", shadowdagger: "stab", w_dagger: "stab",
+    sword: "slash", excalibur: "slash", w_sword: "slash",
+    axe: "crush", dragonslayer: "crush", w_axe: "crush",
+    mace: "smash", w_fist: "smash", w_mace: "smash",
+    spear: "thrust", w_spear: "thrust",
+    staff: "cast", arcanestaff: "cast", w_staff: "cast",
+    bow: "draw", celestialbow: "draw", w_bow: "draw"
   };
-  /* ⚠ guard 는 무기가 아니라 **직업**이 고르는 결이다. 위 표에
-   *   넣으면 무기 이름이 아니어서 검사가 헷갈린다 — 아래 CLS_STYLE 이 고른다. */
 
   View.prototype.swingArc = function (ctx, e, ex, ey, ox, oy) {
     var a = e.atk, m = a.m;
@@ -866,26 +981,14 @@ function View(canvas) {
     var half = m.arc * Math.PI / 360;
     var radius = m.reach * TILE;
 
-    /* 무엇을 들었나 — **휘두르는 그 몸에서** 읽는다.
-     *
-     * ⚠ 예전에는 e.equipped 를 봤는데, 그것은 **Entity 생성자가 빈
-     *   객체로 두고** applyHero 는 그것을 **World 에** 담는다(world.js 673).
-     *   빈 객체도 참이라 || 뒤의 되돌림길이 한 번도 안 타고,
-     *   wId 가 늘 문자열이 돼 **모든 무기가 장검으로** 떨어졌다.
-     *   단검·도끼·장창의 그림이 화면에서는 **한 번도 나온 적이 없었다**
-     *   (실측 2026-09-25 · 검사는 가짜 객체를 넣어 통과했다).
-     *   지팡이·활은 그 장검 부채꼴을 arc 0 으로 그려 **아무것도 안 나왔다.**
-     * ⚠ swing.base 는 derive 가 넣고 applyHero 가 몸에 붙인다 — 그것이
-     *   유일한 진실원이다. 화면이 저장을 다시 뒤지게 두지 말 것. */
-    /* 기사는 장검을 들어도 전사와 다르게 벤다. ⚠ 무기만 키로 쓰면 둘이
-     * 똑같아진다 — **같은 칼이라도 몸이 다르게 쓴다**는 것이 직업이다. */
-    var CLS_STYLE = { knight: { slash: "guard", stab: "guard", crush: "guard" } };
     var style = "claw";
-    if (e.team === 0) {
+    if (e.team === 0 || e.kind === "player") {
       var wId = (e.swing && e.swing.base) || "";
+      if (!wId && global.SAVE && global.SAVE.liveEquip && e.hero) {
+        var eq = global.SAVE.liveEquip(e.hero);
+        if (eq && eq.weapon) wId = eq.weapon.base || eq.weapon.id || "";
+      }
       style = SWING_STYLE[wId] || "slash";
-      var byCls = CLS_STYLE[(e.swing && e.swing.cls) || ""];
-      if (byCls && byCls[style]) style = byCls[style];
     }
     var shoots = (style === "cast" || style === "draw");
     if (shoots) { radius = TILE * 0.9; half = Math.PI / 5; }
@@ -1275,7 +1378,23 @@ function View(canvas) {
     var a = e.atk;
     if (a && a.m) {
       var w = a.m.windup || 0.2, r = a.m.recover || 0.2;
-      var push = (a.t < w) ? -2 * (a.t / w) : 3 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      var wId = (e.swing && e.swing.base) || "";
+      var style = SWING_STYLE[wId] || "slash";
+      var push = 0;
+      if (style === "crush" || style === "smash") {
+        push = (a.t < w) ? -3 * (a.t / w) : 6 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      } else if (style === "stab") {
+        var sw = Math.min(1, Math.max(0, (a.t - w) / Math.max(0.02, r)));
+        push = (sw < 0.4) ? 4 * (sw / 0.4) : (sw < 0.7 ? 2 : 5 * (1 - (sw - 0.7) / 0.3));
+      } else if (style === "thrust") {
+        push = (a.t < w) ? -2 * (a.t / w) : 7 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      } else if (style === "cast") {
+        push = (a.t < w) ? -2 * (a.t / w) : 3 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      } else if (style === "draw") {
+        push = (a.t < w) ? -4 * (a.t / w) : 2 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      } else {
+        push = (a.t < w) ? -2 * (a.t / w) : 4 * (1 - Math.min(1, (a.t - w) / Math.max(0.01, r)));
+      }
       bx += Math.round(Math.cos(a.ang) * push);
       by += Math.round(Math.sin(a.ang) * push);
     }
