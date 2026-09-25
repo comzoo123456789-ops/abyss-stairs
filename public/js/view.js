@@ -945,9 +945,12 @@ function View(canvas) {
      *   (50%→85% 사이에 바뀜 칸이 32칸뿐). `eOut` 이어야 자국이
      *   눈에 보이게 걱혀 사라진다 — 날이 지나간 자리는 마지막까지 움직인다. */
     var tailK = Math.max(eOut((sw - 0.30) / 0.70), headK - 0.45);
+    /* ⚠ **번갈아 휘두른다.** 한쪽으로만 쓸면 연타가 같은 그림의 반복이
+     *   되어 "위아래로 왔다갔다" 로만 보인다. `flip` 이 참이면 반대로 돈다. */
+    var dir = a.flip ? -1 : 1;
     var span = half * 2;
-    var aTail = a.ang - half + span * tailK;
-    var aHead = a.ang - half + span * headK;
+    var aTail = a.ang + dir * (-half + span * tailK);
+    var aHead = a.ang + dir * (-half + span * headK);
 
     /* 자국 한 벌 — **깃발꼴**이다.
      *
@@ -963,15 +966,20 @@ function View(canvas) {
       for (var wi = 0; wi < N; wi++) {
         var t0 = aTail + (aHead - aTail) * (wi / N);
         var t1 = aTail + (aHead - aTail) * ((wi + 1) / N);
-        if (t1 - t0 < 1e-4) continue;
+        /* ⚠ **절대값이다.** 뒤집으면 t1 < t0 이라 그냥 빼면 음수가 돼
+         *   **모든 조각을 건너뛴다** — 방향을 뒤집자 굤적이 통째로 사라졌다(실측). */
+        if (Math.abs(t1 - t0) < 1e-4) continue;
         var k = (wi + 1) / N;                 /* 0 꼬리 → 1 머리 */
         var thick = 0.10 + 0.90 * (k * k);    /* 두께가 머리 쪽에서만 붙는다 */
         var inHere = outR - (outR - inR) * thick;
         ctx.save();
         ctx.globalAlpha = 0.18 + 0.82 * k;
+        /* ⚠ 뒤집으면 t0 > t1 이 된다. `arc` 의 도는 쪽(anticlockwise)을
+         *   함께 뒤집지 않으면 **부채가 바깥으로 돌아 화면을 한 바퀴 감는다.** */
+        var ccw = t1 < t0;
         ctx.beginPath();
-        ctx.arc(cx, cy, radius * outR, t0, t1);
-        ctx.arc(cx, cy, radius * inHere, t1, t0, true);
+        ctx.arc(cx, cy, radius * outR, t0, t1, ccw);
+        ctx.arc(cx, cy, radius * inHere, t1, t0, !ccw);
         ctx.closePath();
         var g = ctx.createRadialGradient(cx, cy, radius * inHere, cx, cy, radius * outR);
         g.addColorStop(0, c0); g.addColorStop(0.5, c1); g.addColorStop(1, c2);
@@ -997,7 +1005,7 @@ function View(canvas) {
         if (jk <= 0 || jk >= 1) continue;
         var reachJ = eOut(jk / 0.4);
         var fadeJ = 1 - eIn(Math.max(0, (jk - 0.45) / 0.55));
-        var ja = a.ang + J.off;
+        var ja = a.ang + dir * J.off;
         var jux = Math.cos(ja), juy = Math.sin(ja);
         var jpx = -juy, jpy = jux;
         var tipR = radius * (0.35 + 0.95 * reachJ);
@@ -1057,18 +1065,19 @@ function View(canvas) {
        *   유일한 조각이다 — 베는 반대편에 짧은 테두리를 세운다.
        * ⚠ 색은 강철빛이다. 전사의 황금과 갈라야 한 화면에서 구별된다. */
       var gHalf = half * 0.72;
-      var gT = a.ang - gHalf + gHalf * 2 * Math.max(0, tailK);
-      var gH = a.ang - gHalf + gHalf * 2 * headK;
+      var gT = a.ang + dir * (-gHalf + gHalf * 2 * Math.max(0, tailK));
+      var gH = a.ang + dir * (-gHalf + gHalf * 2 * headK);
       for (var gi = 0; gi < 7; gi++) {
         var q0 = gT + (gH - gT) * (gi / 7), q1 = gT + (gH - gT) * ((gi + 1) / 7);
-        if (q1 - q0 < 1e-4) continue;
+        if (Math.abs(q1 - q0) < 1e-4) continue;
         var gk = (gi + 1) / 7;
         var gin = 1.0 - (1.0 - 0.52) * (0.10 + 0.90 * gk * gk);
         ctx.save();
         ctx.globalAlpha = 0.20 + 0.80 * gk;
+        var gcw = q1 < q0;
         ctx.beginPath();
-        ctx.arc(cx, cy, radius * 1.0, q0, q1);
-        ctx.arc(cx, cy, radius * gin, q1, q0, true);
+        ctx.arc(cx, cy, radius * 1.0, q0, q1, gcw);
+        ctx.arc(cx, cy, radius * gin, q1, q0, !gcw);
         ctx.closePath();
         var gg = ctx.createRadialGradient(cx, cy, radius * gin, cx, cy, radius);
         gg.addColorStop(0, "rgba(255,255,255,0.98)");
@@ -1220,22 +1229,15 @@ function View(canvas) {
       wedge(1, 0.4, "rgba(255,255,240,0.98)", "rgba(255,210,60,0.85)", "rgba(255,100,20,0)");
     }
 
-    /* 날 끝 선 — 부채꼴의 **바깥 획을 한 줄** 긋는다.
+    /* ⚠ **곧은 흰 선을 긋지 않는다.**
      *
-     * ⚠ 예전에는 굤적 둘레에 **네모 여덟을 흑뿌렸다.** 어두운
-     *   바닥에서 그것이 **산탄처럼** 보였다(훈님 지적 2026-09-25).
-     *   베는 것은 알이 튀는 것이 아니다 — 날이 지나간 **한 줄**이다.
-     * ⚠ 점을 찍지 말 것. 넣는 순간 다시 산탄으로 보인다. */
-    if (e.team === 0 && !shoots && aHead - aTail > 1e-3) {
-      /* ⚠ **지금 날이 있는 자리**에 긋는다. 부채 전체에 두르면 다시 정지
-       *   화면이 된다 — 움직이는 것은 이 한 줄이다. */
-      ctx.strokeStyle = "rgba(255,255,255,.95)";
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(aHead) * radius * 0.30, cy + Math.sin(aHead) * radius * 0.30);
-      ctx.lineTo(cx + Math.cos(aHead) * radius * 1.02, cy + Math.sin(aHead) * radius * 1.02);
-      ctx.stroke();
-    }
+     *   예전에는 날이 있는 자리에 몸에서 바깥으로 **직선**을 그었다. 그것이
+     *   무기와 상관없이 **칼 한 자루로 보였고**(훈님 지적 2026-09-25:
+     *   "아직도 검이 나온다"), 단검·철퇴·지팡이 위에도 겹쳐 그려져
+     *   직업을 갈라 놓은 것이 도로 묻혔다.
+     *   밝은 머리는 자국 자체가 이미 말한다(wedge 의 마지막 조각) —
+     *   그 위에 선을 하나 더 얹을 까닭이 없다.
+     * ⚠ 점도 선도 얹지 말 것. 넣는 순간 다시 "칼" 이나 "산탄" 이 된다. */
     ctx.restore();
   };
 

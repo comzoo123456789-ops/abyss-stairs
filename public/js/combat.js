@@ -50,10 +50,16 @@
     var len = Math.sqrt(dirX * dirX + dirY * dirY);
     if (len < 1e-6) { dirX = e.face; dirY = 0; len = 1; }
     var m = move || e.swing || SWING;
+    /* ⚠ **한 방향으로만 휘두르면 몇 번을 때려도 같은 동작이다.**
+     *   사람은 오른쪽으로 벤 다음 왼쪽으로 되벤다 — 그 번갈아짐이 없으면
+     *   화면에서 "위아래로만 왔다갔다" 로 보인다(훈님 지적 2026-09-25).
+     *   칠 때마다 뒤집어 둔다. 그리는 쪽이 이것을 읽어 방향을 바꾼다. */
+    e.swingFlip = !e.swingFlip;
     e.atk = {
       m: m,
       t: 0,
       ang: Math.atan2(dirY / len, dirX / len),
+      flip: !!e.swingFlip,
       hit: false
     };
     if (Math.abs(dirX) > 0.05) e.face = dirX > 0 ? 1 : -1;

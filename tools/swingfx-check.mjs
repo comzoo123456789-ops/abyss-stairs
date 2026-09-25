@@ -31,6 +31,8 @@ const URL_ARG = ui >= 0 ? process.argv[ui + 1] : null;
 if (URL_ARG && OLD) { console.error("--url 과 OLD=1 은 같이 못 쓴다"); process.exit(2); }
 
 const REVERT = [
+  /* 방향 번갈아 도는 것을 끔다 — 모든 침이 같은 쪽으로 간다 */
+  ["/js/view.js", /var dir = a\.flip \? -1 : 1;/, "var dir = 1;"],
   /* 직업별 결을 끄면 전사와 기사가 같은 장검으로 똑같아진다 */
   ["/js/view.js", /var CLS_STYLE = \{ knight: \{[^}]*\} \};/, "var CLS_STYLE = {};"],
   /* 한 장이 통째로 떴다 사라지던 때로 — 머리와 꼬리를 끝에 박는다 */
@@ -378,6 +380,49 @@ const cls = await ev(`(function(){
   return { rows: out, pairs: pairs };
 })()`);
 
+/* ⑨ 칠 때마다 **방향이 번갈아 도는가** — 훈님이 짚은 "위아래로만 왔다갔다".
+ * ⚠ 한쪽으로만 쓸면 연타가 같은 그림의 반복이 된다. */
+const flip = await ev(`(function(){
+  var I = window.ITEMS, D = window.DUNGEON;
+  function shot(fl) {
+    window.__pick("warrior");
+    window.__start({ depth: 1 });
+    var w = window.__w(), view = window.__view();
+    w.level.tiles.fill(D.FLOOR); w.level.visible.fill(1); w.level.seen.fill(1);
+    w.refreshFov = function () { this.level.visible.fill(1); return false; };
+    w.ents.length = 1; w.shots.length = 0;
+    var h = window.__hero(); h.level = 20;
+    var it = I.roll(D.makeRng(3), { slot: "weapon", base: "sword", tier: "rare", ilvl: 12 });
+    h.equip.weapon = I.pack(it);
+    w.applyHero();
+    var p = w.player;
+    window.__aimAt(p.x + 3, p.y);
+    if (!p.atk) return null;
+    p.atk.ang = 0; p.atk.flip = fl;
+    var m = p.atk.m, keep = p.atk;
+    var cv = document.getElementById("game") || document.querySelector("canvas");
+    var g = cv.getContext("2d");
+    p.atk = null; view.draw(w, 1);
+    var off = g.getImageData(0, 0, cv.width, cv.height).data;
+    p.atk = keep; p.atk.t = m.windup + m.recover * 0.3;
+    view.draw(w, 1);
+    var on = g.getImageData(0, 0, cv.width, cv.height).data;
+    var TILEc = window.VIEW.TILE;
+    var bx = p.x * TILEc + view.ox, by = p.y * TILEc + view.oy;
+    /* \ud6a8\uacfc\uac00 \ubab8\uc758 **\uc704\ucabd\uc778\uac00 \uc544\ub798\ucabd\uc778\uac00** \u2014 \uadf8\uac83\uc774 \ud718\ub450\ub974\ub294 \ubc29\ud5a5\uc774\ub2e4 */
+    var up = 0, dn = 0;
+    for (var y = 0; y < cv.height; y++) for (var x = 0; x < cv.width; x++) {
+      var i2 = (y * cv.width + x) * 4;
+      if (Math.abs(on[i2]-off[i2]) + Math.abs(on[i2+1]-off[i2+1]) + Math.abs(on[i2+2]-off[i2+2]) <= 24) continue;
+      var dx = x - bx, dy = y - by;
+      if (dx * dx + dy * dy < 26 * 26) continue;
+      if (dy < 0) up++; else dn++;
+    }
+    return { up: up, dn: dn, n: up + dn };
+  }
+  return { a: shot(false), b: shot(true) };
+})()`);
+
 let fails = 0;
 const out = [];
 const add = (n, ok, note) => { if (!ok) fails++; out.push([n, !!ok, note]); };
@@ -395,6 +440,17 @@ add("쓸려 지나간다", mvOk.length >= 7 && still.length === 0,
   mvOk.map(function (x) { return x.b + " " + x.r02 + "%"; }).join(" · ") +
   (still.length ? " ← " + still.map(function (x) { return x.b; }).join(",") + " 가 멈춰 있다"
                 : " (제 넓이의 15% 넘게 움직여야 한다 · 대조군 0.5%)"));
+
+/* 첫 칠은 한쪽, 둘째 칠은 반대쪽에 무게가 실려야 한다 */
+const fa = flip.a, fb = flip.b;
+const fOk = fa && fb && fa.n > 50 && fb.n > 50 &&
+  ((fa.up / fa.n > 0.55 && fb.dn / fb.n > 0.55) || (fa.dn / fa.n > 0.55 && fb.up / fb.n > 0.55));
+add("번갈아 휘두른다", !!fOk,
+  fa && fb
+    ? ("첫 칠 위 " + Math.round(fa.up / fa.n * 100) + "% / 아래 " + Math.round(fa.dn / fa.n * 100) +
+       "% · 둘째 칠 위 " + Math.round(fb.up / fb.n * 100) + "% / 아래 " + Math.round(fb.dn / fb.n * 100) +
+       "% (한쪽이 55% 넘고 다음 칠은 반대여야 한다)")
+    : "휘두름이 안 걸렸다");
 
 const clsBad = cls.pairs.filter(function (p) { return p.d < 30; });
 add("직업 넷이 다르다", cls.rows.every(function (r) { return r.ink > 0; }) && clsBad.length === 0,
