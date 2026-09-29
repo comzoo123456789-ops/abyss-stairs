@@ -49,7 +49,13 @@ const WHOLE = {
   t_anvil:  "Items/Tool/Anvil.png",
   eq_magic: "Items/Resource/GemGreen.png",
   eq_rare:  "Items/Resource/GemPurple.png",
-  eq_relic: "Items/Resource/GemYellow.png"
+  eq_relic: "Items/Resource/GemYellow.png",
+  /* 구역 장식 — 도서관의 장부, 바닥의 이끼와 물웅덩이, 마을의 장작 */
+  p_books:  "Items/Object/Book.png",
+  p_papers: "Items/Scroll/ScrollEmpty.png",
+  p_moss:   "Items/Resource/Grass.png",
+  p_puddle: "Items/Resource/Water.png",
+  t_logs:   "Items/Resource/Branch.png"
 };
 
 const items = [];
