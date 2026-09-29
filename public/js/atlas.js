@@ -169,6 +169,11 @@
     staff: "weapon_green_magic_staff", bow: "weapon_bow", spear: "weapon_spear",
     potion: "flask_red", gold: "coin",
 
+    /* 지나갈 수 있는 곳 — 시트에 문짝이 여닫힌 두 장으로 들어 있다 */
+    door: "doors_leaf_closed", door_open: "doors_leaf_open",
+    stairs: "floor_stairs", deep: "hole", trap: "floor_spikes",
+    t_barrel: "crate", t_banner: "wall_banner_red",
+
     p_crate: "crate", p_skull: "skull", p_bones: "skull",
     t_stash: "chest_full_open", t_well: "wall_fountain_basin_blue"
   };
