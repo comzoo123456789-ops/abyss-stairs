@@ -27,6 +27,7 @@
   <div class="top-bar">
     <div class="top-left">
       <div id="diag" class="diag">…</div>
+      <div id="buffbar" class="buffbar"></div>
       <div id="minimapBox" class="minimap-box" style="display:none">
         <canvas id="minimap" width="112" height="80"></canvas>
       </div>
@@ -35,8 +36,10 @@
       <button id="btnHamb" class="tbtn hamb-btn" title="전체 메뉴"><span class="t-ico">☰</span><span class="t-lbl">메뉴</span></button>
       <button id="btnBag" class="tbtn" title="가방 / 장비 (I)"><span class="t-ico">🎒</span><span class="t-lbl">가방</span><kbd>I</kbd></button>
       <button id="btnSkills" class="tbtn" title="재주책 / 스킬트리 (K)"><span class="t-ico">📜</span><span class="t-lbl">스킬</span><kbd>K</kbd></button>
+      <button id="btnMerc" class="tbtn" title="조련사 & 용병소 — 펫/용병 고용 (O)"><span class="t-ico">🐾</span><span class="t-lbl">용병/펫</span><kbd>O</kbd></button>
       <button id="btnClass" class="tbtn" title="직업 선택 / 캐릭터 변경"><span class="t-ico">👤</span><span class="t-lbl">직업</span></button>
       <button id="btnPotion" class="tbtn" title="생명력 물약 마시기 (Q)"><span class="t-ico">🧪</span><span class="t-lbl">물약</span><b class="t-badge" id="potNum">0</b><kbd>Q</kbd></button>
+      <button id="btnSettings" class="tbtn" title="게임 설정 — 음량 및 소리 설정"><span class="t-ico">⚙️</span><span class="t-lbl">설정</span></button>
       <!-- 계정. ⚠ 게임은 로그인 없이도 그대로 된다 — 저장을 서버에도 남기기 위한 것뿐이다. -->
       <button id="btnAcct" class="tbtn" title="계정 — 저장을 서버에도 남긴다"><span class="t-ico">🔑</span><span class="t-lbl">계정</span></button>
     </div>
@@ -109,6 +112,7 @@
     <span class="hk"><b>E</b> 조작</span>
     <span class="hk"><b>I</b> 가방</span>
     <span class="hk"><b>K</b> 재주책</span>
+    <span class="hk"><b>O</b> 용병/펫</span>
     <span class="hk"><b>Q</b> 물약</span>
     <span class="hk"><b>T</b> 귀환</span>
   </div>
@@ -139,8 +143,10 @@
     <button id="mBtnStat" class="mitem"><span class="ico">👤</span><span>내 정보 / 능력치</span></button>
     <button id="mBtnBag" class="mitem"><span class="ico">🎒</span><span>가방 / 장비</span><kbd>I</kbd></button>
     <button id="mBtnSkills" class="mitem"><span class="ico">✨</span><span>스킬북</span><kbd>K</kbd></button>
+    <button id="mBtnMerc" class="mitem"><span class="ico">🐾</span><span>조련사 & 용병소 (펫/용병 고용)</span><kbd>O</kbd></button>
     <button id="mBtnClass" class="mitem"><span class="ico">🎭</span><span>직업 / 캐릭터 선택</span></button>
     <button id="mBtnPotion" class="mitem"><span class="ico">🧪</span><span>물약 마시기</span><kbd>Q</kbd></button>
+    <button id="mBtnSettings" class="mitem"><span class="ico">⚙️</span><span>게임 설정 · 음량 설정</span></button>
     <!-- ⚠ 계정을 여기 **꼭** 둔다. 680px 아래에서는 위 줄의 단추가 통째로
          감춰지므로(.top-menu button:not(#btnHamb)), 여기 없으면 휴대폰에서
          계정을 여는 길이 하나도 없다. -->

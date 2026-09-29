@@ -602,7 +602,7 @@ function View(canvas) {
       var e = list[i];
       var ex = lerp(e.px, e.x, alpha), ey = lerp(e.py, e.y, alpha);
       var tx = Math.floor(ex), ty = Math.floor(ey);
-      if (e.kind !== "player" && !lv.visible[ty * lv.w + tx]) continue;
+      if (e.team !== 0 && !lv.visible[ty * lv.w + tx]) continue;
       /* 발밑을 칸 바닥에 맞춘다 — 몸의 중심이 아니라 서 있는 자리다 */
       sx = (ex - 0.5) * TILE + ox;
       sy = (ey - 0.5) * TILE + oy;

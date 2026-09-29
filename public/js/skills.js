@@ -225,7 +225,7 @@
         { id: "two",   name: "둘",     text: "두 장을 던진다", s: { count: 1 } }
       ] },
 
-    { id: "ward", name: "결의", kind: "buff", icon: "s_ward",
+    { id: "ward", type: "active", name: "결의", kind: "buff", icon: "s_ward",
       cd: 16.0, cast: 0.0, after: 0.10, stam: 25,
       dur: 6.0, armor: 8, apsPct: 25,
       text: "6초간 방어 +8 · 공격속도 +25%",
@@ -233,6 +233,175 @@
         { id: "long",  name: "오래",    text: "지속 6 → 10초", s: { dur: 4 } },
         { id: "heal",  name: "회복",    text: "걸 때 체력 25% 를 채운다", s: { heal: 25 } },
         { id: "rage",  name: "분노",    text: "방어 대신 피해 +35%", s: { armor: -8, dmgPct: 35 } }
+      ] },
+
+    /* ── 1차 전직 전용 활성 스킬 16종 ── */
+    /* 광전사 (Berserker) */
+    { id: "bloodrage", type: "active", name: "광폭화", kind: "buff", icon: "s_cleave",
+      cd: 15.0, cast: 0.10, after: 0.10, stam: 20, dur: 8.0,
+      dmgPct: 30, spdPct: 20, lifeOnHit: 5,
+      text: "8초간 분노에 휩싸인다 — 피해 +30% · 속도 +20% · 타격 회복 +5",
+      syn: [
+        { id: "fury",  name: "피의 맹세", text: "피해 +30% → +50%", s: { dmgPct: 20 } },
+        { id: "long",  name: "지속 분노", text: "지속 8 → 13초", s: { dur: 5 } },
+        { id: "vamp",  name: "흡혈의 피", text: "타격 회복 5 → 12", s: { lifeOnHit: 7 } }
+      ] },
+
+    { id: "leap", type: "active", name: "도약 도륙", kind: "nova", icon: "s_stomp",
+      cd: 8.0, cast: 0.20, after: 0.20, stam: 25,
+      mult: 2.8, reach: 3.2, push: 1.8, slow: 40,
+      text: "적들에게 높이 도약하여 찍어누른다 — 2.8배 피해 및 둔화",
+      syn: [
+        { id: "wide",  name: "광역 도륙", text: "반경 3.2 → 4.8칸", s: { reach: 1.6 } },
+        { id: "heavy", name: "파멸 강타", text: "위력 2.8 → 3.9배", s: { mult: 1.1 } },
+        { id: "quick", name: "신속 도약", text: "재사용 8.0 → 5.0초", s: { cd: -3.0 } }
+      ] },
+
+    /* 드레드노트 (Dreadnought) */
+    { id: "shatter", type: "active", name: "대지 파쇄", kind: "swing", icon: "s_bash",
+      cd: 7.0, cast: 0.20, after: 0.20, stam: 22,
+      mult: 3.2, reach: 1.8, arc: 120, push: 2.5,
+      text: "전방 대지를 깨트려 무장 해제 및 3.2배 극딜",
+      syn: [
+        { id: "heavy", name: "지진파",   text: "위력 3.2 → 4.5배", s: { mult: 1.3 } },
+        { id: "wide",  name: "파쇄 충격", text: "부채꼴 120° → 180°", s: { arc: 60 } },
+        { id: "stony", name: "단단함",   text: "시전 시 방어 +15 보너스", s: { armor: 15 } }
+      ] },
+
+    { id: "decimate", type: "active", name: "난무 학살", kind: "nova", icon: "s_whirl",
+      cd: 10.0, cast: 0.15, after: 0.25, stam: 30,
+      mult: 3.0, reach: 3.8, push: 1.5,
+      text: "사방으로 거대한 쇄편을 흩날려 연쇄 파괴",
+      syn: [
+        { id: "big",   name: "학살 반경", text: "반경 3.8 → 5.2칸", s: { reach: 1.4 } },
+        { id: "heavy", name: "파쇄 극딜", text: "위력 3.0 → 4.2배", s: { mult: 1.2 } },
+        { id: "quick", name: "빠른 순환", text: "재사용 10.0 → 6.5초", s: { cd: -3.5 } }
+      ] },
+
+    /* 성기사 (Paladin) */
+    { id: "aegis", type: "active", name: "신성 가호", kind: "buff", icon: "s_guard",
+      cd: 14.0, cast: 0.0, after: 0.10, stam: 25, dur: 6.0,
+      armor: 20, reflect: 50, heal: 20,
+      text: "6초간 신성 수호막 — 방어 +20 · 반사 50% · 체력 20% 회복",
+      syn: [
+        { id: "holy",  name: "성스러운 빛", text: "체력 회복 20% → 40%", s: { heal: 20 } },
+        { id: "long",  name: "영원한 가호", text: "지속 6 → 10초", s: { dur: 4 } },
+        { id: "iron",  name: "철통 수호",   text: "방어 +20 → +35", s: { armor: 15 } }
+      ] },
+
+    { id: "judgment", type: "active", name: "신벌의 빛", kind: "nova", icon: "s_nova",
+      cd: 9.0, cast: 0.25, after: 0.20, stam: 28,
+      mult: 2.5, reach: 3.6, push: 1.2,
+      text: "자신 주변에 주님의 성벌 폭발을 일으킨다",
+      syn: [
+        { id: "bright", name: "찬란한 빛", text: "위력 2.5 → 3.7배", s: { mult: 1.2 } },
+        { id: "wide",   name: "넓은 은혜", text: "반경 3.6 → 5.0칸", s: { reach: 1.4 } },
+        { id: "quick",  name: "징벌 순환", text: "재사용 9.0 → 5.5초", s: { cd: -3.5 } }
+      ] },
+
+    /* 암흑기사 (Dark Knight) */
+    { id: "brand", type: "active", name: "사령의 낙인", kind: "swing", icon: "s_cleave",
+      cd: 6.0, cast: 0.15, after: 0.15, stam: 20,
+      mult: 2.4, reach: 1.6, leechPct: 15,
+      text: "적에게 사령의 낙인을 찍어 타격 시 15% 흡혈",
+      syn: [
+        { id: "vamp",  name: "영혼 쟁탈", text: "체력 흡수 15% → 35%", s: { leechPct: 20 } },
+        { id: "heavy", name: "마기 낙인", text: "위력 2.4 → 3.5배", s: { mult: 1.1 } },
+        { id: "quick", name: "연속 낙인", text: "재사용 6.0 → 3.5초", s: { cd: -2.5 } }
+      ] },
+
+    { id: "souldrain", type: "active", name: "영혼 갈퀴", kind: "field", icon: "s_burn",
+      cd: 11.0, cast: 0.20, after: 0.15, stam: 32, dur: 6.0, tick: 0.8,
+      reach: 3.2, mult: 1.2, slow: 35,
+      text: "6초간 바닥에 암흑 영역을 생성하여 갈퀴 수확",
+      syn: [
+        { id: "wide",  name: "암흑 지대", text: "반경 3.2 → 4.8칸", s: { reach: 1.6 } },
+        { id: "long",  name: "지속 갈퀴", text: "지속 6 → 10초", s: { dur: 4 } },
+        { id: "pain",  name: "고통의 사슬", text: "위력 1.2 → 2.0배", s: { mult: 0.8 } }
+      ] },
+
+    /* 암살자 (Assassin) */
+    { id: "stealth", type: "active", name: "은신 암습", kind: "buff", icon: "s_dash",
+      cd: 12.0, cast: 0.0, after: 0.10, stam: 20, dur: 5.0,
+      critPct: 50, spdPct: 30,
+      text: "5초간 그림자에 숨어 이동속도 +30% · 치명타율 +50%",
+      syn: [
+        { id: "deadly", name: "절대 암습", text: "치명타율 +50% → +100%", s: { critPct: 50 } },
+        { id: "swift",  name: "바람의 걸음", text: "이동속도 +30% → +60%", s: { spdPct: 30 } },
+        { id: "long",   name: "은형 지속", text: "지속 5 → 8초", s: { dur: 3 } }
+      ] },
+
+    { id: "fatalslash", type: "active", name: "급소 베기", kind: "swing", icon: "s_backstab",
+      cd: 7.0, cast: 0.10, after: 0.15, stam: 25,
+      mult: 3.5, reach: 1.5, arc: 70, push: 0.3,
+      text: "적의 심장을 정확히 도려내 3.5배 급소 일격",
+      syn: [
+        { id: "fatal",  name: "일격 필살", text: "위력 3.5 → 5.2배", s: { mult: 1.7 } },
+        { id: "quick",  name: "소리없는 베기", text: "재사용 7.0 → 4.0초", s: { cd: -3.0 } },
+        { id: "bleed",  name: "치명적 출혈", text: "맞은 적 출혈 중독", s: { bleed: 5 } }
+      ] },
+
+    /* 그림자검 (Shadowblade) */
+    { id: "mirrorimage", type: "active", name: "환영 분신", kind: "buff", icon: "s_dash",
+      cd: 13.0, cast: 0.0, after: 0.10, stam: 25, dur: 7.0,
+      apsPct: 35, spdPct: 25,
+      text: "7초간 쾌검 분신을 이끌며 공격속도 +35% · 이동속도 +25%",
+      syn: [
+        { id: "speed",  name: "환영 쾌검", text: "공격속도 +35% → +65%", s: { apsPct: 30 } },
+        { id: "long",   name: "잔상 지속", text: "지속 7 → 11초", s: { dur: 4 } },
+        { id: "dodge",  name: "그림자 회피", text: "방어 +10 보너스", s: { armor: 10 } }
+      ] },
+
+    { id: "shadowdance", type: "active", name: "그림자 춤", kind: "dash", icon: "s_dash",
+      cd: 8.0, cast: 0.0, after: 0.15, stam: 24,
+      mult: 2.2, dist: 5.5, speed: 24, reach: 1.2,
+      text: "그림자 속을 춤추듯 관통하며 연쇄 참격",
+      syn: [
+        { id: "far",    name: "긴 기무",   text: "거리 5.5 → 8.5칸", s: { dist: 3.0 } },
+        { id: "sharp",  name: "예리한 춤", text: "위력 2.2 → 3.4배", s: { mult: 1.2 } },
+        { id: "quick",  name: "연속 기무", text: "재사용 8.0 → 4.5초", s: { cd: -3.5 } }
+      ] },
+
+    /* 대마법사 (Archmage) */
+    { id: "meteor", type: "active", name: "메테오 스트라이크", kind: "field", icon: "s_burn",
+      cd: 14.0, cast: 0.40, after: 0.20, stam: 40, dur: 5.0, tick: 0.7,
+      reach: 4.2, mult: 2.2,
+      text: "하늘에서 거대한 유성을 낙하하여 대지 초토화",
+      syn: [
+        { id: "big",    name: "초대형 운석", text: "반경 4.2 → 6.0칸", s: { reach: 1.8 } },
+        { id: "heavy",  name: "지옥 화염", text: "위력 2.2 → 3.5배", s: { mult: 1.3 } },
+        { id: "quick",  name: "신속 시전", text: "시전 0.40 → 0.15초", s: { cast: -0.25 } }
+      ] },
+
+    { id: "chainlightning", type: "active", name: "연쇄 벼락", kind: "nova", icon: "s_lightning",
+      cd: 7.0, cast: 0.20, after: 0.15, stam: 26,
+      mult: 2.4, reach: 4.5, push: 1.0,
+      text: "사방으로 전류 방출 및 2.4배 벼락 폭발",
+      syn: [
+        { id: "heavy",  name: "고전압",   text: "위력 2.4 → 3.6배", s: { mult: 1.2 } },
+        { id: "wide",   name: "광역 번개", text: "반경 4.5 → 6.2칸", s: { reach: 1.7 } },
+        { id: "quick",  name: "전광석화", text: "재사용 7.0 → 4.2초", s: { cd: -2.8 } }
+      ] },
+
+    /* 네크로맨서 (Necromancer) */
+    { id: "summonundead", type: "active", name: "해골 군단 소환", kind: "nova", icon: "s_nova",
+      cd: 16.0, cast: 0.30, after: 0.20, stam: 35,
+      mult: 2.0, reach: 3.5, push: 1.5,
+      text: "사령의 기운으로 해골 군단을 소환하여 충격파 방출",
+      syn: [
+        { id: "heavy",  name: "원혼 폭발", text: "위력 2.0 → 3.2배", s: { mult: 1.2 } },
+        { id: "wide",   name: "사령 군단", text: "반경 3.5 → 5.2칸", s: { reach: 1.7 } },
+        { id: "quick",  name: "영혼 소환", text: "재사용 16.0 → 10.0초", s: { cd: -6.0 } }
+      ] },
+
+    { id: "decayaura", type: "active", name: "부패의 오라", kind: "field", icon: "s_smoke",
+      cd: 12.0, cast: 0.15, after: 0.10, stam: 30, dur: 8.0, tick: 1.0,
+      reach: 3.6, mult: 1.4, slow: 45,
+      text: "8초간 부패의 오라를 발산하여 지속 피해 및 45% 둔화",
+      syn: [
+        { id: "wide",   name: "역병 확산", text: "반경 3.6 → 5.4칸", s: { reach: 1.8 } },
+        { id: "long",   name: "영원한 부패", text: "지속 8 → 13초", s: { dur: 5 } },
+        { id: "slow",   name: "칠흑 둔화", text: "둔화 45% → 70%", s: { slow: 25 } }
       ] }
   ];
 
@@ -264,14 +433,14 @@
   }
 
   /* 쓸 수 있는가. **왜 못 쓰는지**를 돌려준다 — 아무 일도 안 일어나면 고장으로 느낀다. */
-  function why(world, id, taken, cls) {
+  function why(world, id, taken, cls, advClass) {
     var p = world.player;
     if (p.dead) return "쓰러졌다";
     var sk = resolve(id, taken);
     if (!sk) return "없는 스킬";
-    /* ⚠ 직업이 못 쓰는 스킬는 **애초에 손잡이에 안 들어가지만**, 저장을 손으로
-     *   고치면 들어올 수 있다. 여기서 한 번 더 막는다(관문은 한 곳에 걸면 샌다). */
-    if (cls && global.CLASSES && !global.CLASSES.canUse(cls, id))
+    var c = cls || (world.hero && world.hero.cls);
+    var adv = advClass || (world.hero && world.hero.advClass);
+    if (c && global.CLASSES && !global.CLASSES.canUse(c, id, adv))
       return "이 직업은 못 쓴다";
     var left = cdLeft(world, id, taken);
     if (left > 0) return left.toFixed(1) + "초 남았다";
@@ -287,8 +456,8 @@
     return Math.max(0, sk.cd - (world.time - at));
   }
 
-  function use(world, id, aimX, aimY, taken, cls) {
-    var no = why(world, id, taken, cls);
+  function use(world, id, aimX, aimY, taken, cls, advClass) {
+    var no = why(world, id, taken, cls, advClass);
     if (no) return no;
     var sk = resolve(id, taken);
     var p = world.player;

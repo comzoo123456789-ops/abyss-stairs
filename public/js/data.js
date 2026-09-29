@@ -314,11 +314,11 @@
   }
 
   function countAt(depth, walkable) {
-    var n = Math.min(22, 8 + Math.floor(depth * 0.7));
+    var n = Math.min(48, 18 + Math.floor(depth * 1.1));
     /* ⚠ 안 넘겨주면 옛 값 그대로다. 부르는 곳이 하나라 지금은 늘 넘어오지만,
      *   빠뜨렸을 때 조용히 0 이 되면 몬스터 없는 층이 된다. */
     if (!walkable) return n;
-    return Math.max(3, Math.round(n * walkable / REF_WALK));
+    return Math.max(10, Math.round(n * walkable / REF_WALK));
   }
 
   function audit() {
