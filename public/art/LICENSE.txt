@@ -2,3 +2,8 @@ public/art/dungeon.png
   "16x16 DungeonTileset II" v1.7 — 0x72 (https://0x72.itch.io/dungeontileset-ii)
   License: Creative Commons Zero (CC0 1.0) — public domain.
   상업 이용·수정·재배포 모두 자유. 크레딧은 선택이지만 남겨 둔다.
+
+public/art/fx.png
+  "Ninja Adventure - Asset Pack" — Pixel-Boy & AAA (https://pixel-boy.itch.io/ninja-adventure-asset-pack)
+  License: Creative Commons Zero (CC0 1.0) — public domain.
+  tools/build-fx.mjs 로 원본 낱장에서 구웠다(가운데 장만 뽑아 한 장으로 묶었다).

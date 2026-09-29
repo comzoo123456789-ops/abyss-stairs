@@ -26,6 +26,39 @@
   var SCALE = 2;                 /* 16px 을 32px 자리에 — 정수배라 도트가 고르다 */
   var SRC = "art/dungeon.png";
 
+  /* 두 번째 시트 — 재주 아이콘과 몇몇 물건. 원본은 Ninja Adventure (CC0).
+   * ⚠ 이쪽은 **키우지 않는다.** 이펙트 장이 이미 30px 언저리라 2배로 늘리면
+   *   재주 칸(32px)을 넘어 서로 겹친다. 던전 시트만 16→32 로 키운다.
+   * ⚠ 시트가 둘이므로 **둘 다 온 뒤에** 구운 것을 버려야 한다. 하나만 보고
+   *   버리면 나중에 온 쪽이 영영 안 나온다. */
+  var FX_SRC = "art/fx.png";
+  var FX_SCALE = 1;
+  var FXT = {
+    "s_cleave": [[0,0,24,27]],
+    "s_whirl": [[25,0,26,28]],
+    "s_backstab": [[52,0,26,27]],
+    "s_dash": [[79,0,24,27]],
+    "s_knives": [[104,0,59,41]],
+    "s_throw": [[164,0,51,47]],
+    "s_bash": [[0,48,48,46]],
+    "s_stomp": [[49,48,27,26]],
+    "s_nova": [[77,48,36,33]],
+    "s_burn": [[114,48,30,28]],
+    "s_frost": [[145,48,31,31]],
+    "s_lightning": [[177,48,28,23]],
+    "s_venom": [[206,48,28,24]],
+    "s_smoke": [[0,95,41,40]],
+    "s_guard": [[42,95,26,16]],
+    "s_ward": [[69,95,26,16]],
+    "s_provoke": [[96,95,26,26]],
+    "s_shout": [[123,95,21,20]],
+    "scroll": [[145,95,28,28]],
+    "t_anvil": [[174,95,16,16]],
+    "eq_magic": [[191,95,16,15]],
+    "eq_rare": [[208,95,16,16]],
+    "eq_relic": [[225,95,28,28]]
+  };
+
   /* 시트 안의 칸 — [x, y, w, h] 를 프레임 순서대로. 원본 tile_list 에서 뽑았다. */
   var TILES = {
     "knight_m_idle": [[128,100,16,28],[144,100,16,28],[160,100,16,28],[176,100,16,28]],
@@ -215,6 +248,12 @@
   }
 
   var img = null, loaded = false, cache = {}, tcache = {};
+  var fximg = null, fxloaded = false;
+
+  function fxCell(name) {
+    var cs = FXT[name];
+    return (fxloaded && cs && cs.length) ? cs[0] : null;
+  }
 
   function tileFor(name, f) {
     var stem = CHAR[name];
@@ -236,26 +275,33 @@
     var n = 0, k;
     for (k in CHAR) n += fix(S, k);
     for (k in OBJ) n += fix(S, k);
+    for (k in FXT) n += fix(S, k);
     if (S.clearTerrain) S.clearTerrain();   /* 바닥·벽도 다시 굽는다 */
     if (global.console && global.console.log) console.log("[atlas] " + n + "개를 시트로 바꿨다");
   }
   function fix(S, k) {
     var s = S.data[k]; if (!s) return 0;          /* 게임에 없는 이름은 건너뛴다 */
-    var c = tileFor(k, 0); if (!c) return 0;
+    var fc = fxCell(k);
+    var c = fc || tileFor(k, 0); if (!c) return 0;
+    var sc = fc ? FX_SCALE : SCALE;
     s.opt = s.opt || {};
-    s.opt.w = c[2] * SCALE;
-    s.opt.h = c[3] * SCALE;
+    s.opt.w = c[2] * sc;
+    s.opt.h = c[3] * sc;
     s.baked = {};                                 /* 옛 그림을 버린다 */
     s._afr = null;
     return 1;
   }
 
   global.ATLAS = {
-    has: function (name) { return loaded && !!(CHAR[name] || OBJ[name]); },
+    has: function (name) {
+      if (fxloaded && FXT[name]) return true;
+      return loaded && !!(CHAR[name] || OBJ[name]);
+    },
 
     /* 이 이름이 몇 장짜리인가 — 그리는 쪽이 번호를 고를 때 쓴다.
      * 걷고 싸우는 것은 언제나 다섯(섬·걷1·걷2·치켜·내려)이다. */
     frames: function (name) {
+      if (fxloaded && FXT[name]) return 1;    /* 아이콘은 한 장이다 */
       if (!loaded) return 0;
       if (CHAR[name]) return POSE.length;
       var t = OBJ[name]; if (!t) return 0;
@@ -294,6 +340,18 @@
     },
 
     get: function (name, f) {
+      var fc = fxCell(name);
+      if (fc) {
+        var fk = "fx|" + name;
+        if (cache[fk]) return cache[fk];
+        var fv = document.createElement("canvas");
+        fv.width = fc[2] * FX_SCALE; fv.height = fc[3] * FX_SCALE;
+        var fx2 = fv.getContext("2d");
+        fx2.imageSmoothingEnabled = false;
+        fx2.drawImage(fximg, fc[0], fc[1], fc[2], fc[3], 0, 0, fv.width, fv.height);
+        cache[fk] = fv;
+        return fv;
+      }
       if (!loaded) return null;
       var c = tileFor(name, f); if (!c) return null;
       var key = name + "|" + (f || 0);
@@ -310,12 +368,18 @@
     /* 점검기용 — 무엇이 시트로 갔고 무엇이 코드 도트로 남았는가 */
     report: function () {
       var S = global.SPRITES, on = [], off = [];
-      for (var k in S.data) (CHAR[k] || OBJ[k] ? on : off).push(k);
+      for (var k in S.data) (CHAR[k] || OBJ[k] || FXT[k] ? on : off).push(k);
       return { loaded: loaded, atlas: on.length, code: off.length, codeNames: off };
     },
 
     load: function () {
       if (img) return;
+      fximg = new Image();
+      fximg.onload = function () { fxloaded = true; cache = {}; if (loaded) adopt(); };
+      fximg.onerror = function () {
+        if (global.console && global.console.warn) console.warn("[atlas] " + FX_SRC + " 를 못 받았다");
+      };
+      fximg.src = FX_SRC;
       img = new Image();
       img.onload = function () { loaded = true; cache = {}; tcache = {}; adopt(); };
       img.onerror = function () {
