@@ -205,6 +205,14 @@
       s.baked[key] = tc;
       return tc;
     }
+    /* 시트에 이 이름이 있으면 거기서 꺼낸다 — 없으면 아래 코드 도트로 간다.
+     * ⚠ 시트는 네트워크로 늦게 오므로 올 때까지 여기서 null 이 나온다. 그게
+     *   정상이다(그 사이에는 코드 도트가 나간다). 온 뒤에 ATLAS 가 구워 둔
+     *   판을 전부 버리므로 저절로 갈린다. */
+    if (global.ATLAS && global.ATLAS.has(name)) {
+      var ac = global.ATLAS.get(name, f);
+      if (ac) return ac;
+    }
     if (s.baked[f]) return s.baked[f];
     var b = draw(name, f);
     var c = document.createElement("canvas");
@@ -229,6 +237,19 @@
   function framesOf(name) {
     var s = SPR[name];
     if (!s) return [];
+    /* ⚠ 시트 그림은 프레임 수가 코드 도안과 다르다(idle 4장이 흔하다).
+     *   옛 수를 그대로 돌려주면 그리는 쪽이 0번만 골라 **조각상이 된다** —
+     *   9/22 에 고쳤던 그 증상이 그대로 돌아온다. */
+    if (global.ATLAS && global.ATLAS.has(name)) {
+      var an = global.ATLAS.frames(name);
+      if (an > 1) {
+        if (!s._afr || s._afr.length !== an) {
+          s._afr = []; for (var q = 0; q < an; q++) s._afr.push(q);
+        }
+        return s._afr;
+      }
+      if (an === 1) return [];
+    }
     if (!s._frames) {
       var set = {};
       for (var i = 0; i < s.ops.length; i++) {

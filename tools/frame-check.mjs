@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { CHROME } from "./chrome.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "public");
-const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8" };
+const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".png": "image/png" };
 const srv = http.createServer((q, r) => {
   let p = decodeURIComponent(q.url.split("?")[0]); if (p === "/") p = "/index.html";
   const f = path.join(ROOT, p);
@@ -44,9 +44,19 @@ const ev = async x => (await S("Runtime.evaluate", { expression: x, returnByValu
 await S("Page.navigate", { url: "http://127.0.0.1:" + port + "/index.html" });
 await new Promise(r => setTimeout(r, 1200));
 
-const rows = await ev(`(()=>{
+const res = await ev(`(()=>{
   const out = [];
-  const names = Object.keys(SPRITES.data).filter(n => SPRITES.framesOf(n).length > 0);
+  /* ⚠ 시트(ATLAS)에서 온 그림은 **이 검사의 대상이 아니다.** 여기서 잡으려는 고장은
+   *   "프레임 필터를 잘못 묶어 팔다리가 안 그려졌다" 인데, 시트는 장마다 통째로
+   *   완성된 그림이라 그 고장이 날 수 없다. 반대로 진짜 달리는 자세는 발이 뜨고
+   *   몸이 숙여져 구간 픽셀이 크게 달라진다 — 그걸 "뭔가 빠졌다" 로 읽는다.
+   *   빼되 **몇 개를 뺐는지 반드시 찍는다** — 조용히 빠지면 검사가 준 셈이 된다. */
+  const skipped = [];
+  const names = Object.keys(SPRITES.data).filter(n => {
+    if (SPRITES.framesOf(n).length === 0) return false;
+    if (window.ATLAS && window.ATLAS.has(n)) { skipped.push(n); return false; }
+    return true;
+  });
   for (const name of names) {
     const sz = SPRITES.sizeOf(name);
     const frames = SPRITES.framesOf(name);
@@ -72,9 +82,10 @@ const rows = await ev(`(()=>{
     }
     out.push({ name, w: sz.w, h: sz.h, per });
   }
-  return out;
+  return { rows: out, skipped: skipped };
 })()`);
 
+const rows = res.rows, skipped = res.skipped;
 let bad = 0;
 const ok = b => { if (!b) bad++; return b ? "✔" : "✘"; };
 console.log("── 프레임마다 몸이 온전한가 ──");
@@ -102,5 +113,6 @@ for (const r of rows) {
 }
 console.log("");
 console.log("살펴본 스프라이트:", rows.length + "개");
+if (skipped.length) console.log("시트에서 온 것은 건너뛴다(장마다 완성된 그림이라 부위가 빠질 수 없다): " + skipped.length + "개 — " + skipped.join(", "));
 console.log(bad ? "\n결과: 확인 필요" : "\n결과: 통과");
 ch.kill(); srv.close(); process.exit(bad ? 1 : 0);
