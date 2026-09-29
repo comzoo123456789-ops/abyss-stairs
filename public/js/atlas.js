@@ -71,7 +71,38 @@
     "coin": [[289,385,6,7],[297,385,6,7],[305,385,6,7],[313,385,6,7]],
     "crate": [[288,408,16,24]],
     "chest_full_open": [[304,416,16,16],[320,416,16,16],[336,416,16,16]],
-    "wall_fountain_basin_blue": [[64,64,16,16],[80,64,16,16],[96,64,16,16]]
+    "wall_fountain_basin_blue": [[64,64,16,16],[80,64,16,16],[96,64,16,16]],
+    "floor_1": [[16,64,16,16]],
+    "floor_2": [[32,64,16,16]],
+    "floor_3": [[48,64,16,16]],
+    "floor_4": [[16,80,16,16]],
+    "floor_5": [[32,80,16,16]],
+    "floor_6": [[48,80,16,16]],
+    "floor_7": [[16,96,16,16]],
+    "floor_8": [[32,96,16,16]],
+    "wall_top_mid": [[32,0,16,16]],
+    "wall_top_left": [[16,0,16,16]],
+    "wall_top_right": [[48,0,16,16]],
+    "wall_mid": [[32,16,16,16]],
+    "wall_left": [[16,16,16,16]],
+    "wall_right": [[48,16,16,16]],
+    "wall_hole_1": [[48,32,16,16]],
+    "wall_hole_2": [[48,48,16,16]],
+    "wall_goo": [[64,80,16,16]],
+    "wall_banner_red": [[16,32,16,16]],
+    "wall_banner_blue": [[32,32,16,16]],
+    "doors_leaf_closed": [[32,240,32,32]],
+    "doors_leaf_open": [[80,240,32,32]],
+    "doors_frame_left": [[16,240,16,32]],
+    "doors_frame_right": [[64,240,16,32]],
+    "doors_frame_top": [[32,224,32,16]],
+    "floor_stairs": [[80,192,16,16]],
+    "floor_ladder": [[48,96,16,16]],
+    "floor_spikes": [[16,192,16,16],[32,192,16,16],[48,192,16,16],[64,192,16,16]],
+    "hole": [[96,144,16,16]],
+    "column": [[80,80,16,48]],
+    "column_wall": [[96,80,16,48]],
+    "edge_down": [[96,128,16,16]]
   };
 
   /* 게임의 프레임 번호 → 시트의 [자세, 그 자세의 몇 번째 장] */
@@ -109,7 +140,81 @@
     t_stash: "chest_full_open", t_well: "wall_fountain_basin_blue"
   };
 
-  var img = null, loaded = false, cache = {};
+  /* ── 지형 ────────────────────────────────────────
+   *
+   * ⚠ **구역 색을 잃으면 안 된다.** 다섯 구역(묘지·물든 계단·도서관·뼈 무덤·
+   *   군주의 방)은 벽·바닥 색으로만 갈린다. 시트 타일은 색이 박혀 있으니
+   *   그대로 깔면 서른 층이 전부 같은 방으로 보인다.
+   *   그래서 캔버스의 color 혼합을 쓴다 — **밝기는 시트, 색조는 구역**이다.
+   *   (multiply 로는 안 된다. 어두운 구역색을 곱하면 타일이 까맣게 죽는다.)
+   *
+   * ⚠ 지형 타일은 불투명하다. 그래서 color 혼합 뒤에 알파를 되살릴 필요가
+   *   없다 — 생물 그림에 같은 짓을 하면 투명한 바깥까지 칠해진다. */
+  var FLOORS = ["floor_1", "floor_2", "floor_3", "floor_4",
+                "floor_5", "floor_6", "floor_7", "floor_8"];
+  /* 벽은 윗면과 앞면이 따로다(시트도 그렇게 나뉘어 있다). 변종은 여섯이다. */
+  var WALLTOP  = ["wall_top_mid", "wall_top_left", "wall_top_right",
+                  "wall_top_mid", "wall_top_mid", "wall_top_right"];
+  var WALLFACE = ["wall_mid", "wall_mid", "wall_hole_1",
+                  "wall_mid", "wall_hole_2", "wall_mid"];
+
+  /* 색조만 옮기면 **밝기가 안 따라온다.** 시트 바닥은 회색 돌(밝기 45% 언저리)인데
+   * 이 게임의 바닥은 원래 12% 였다 — 그대로 깔면 던전이 대낮이 된다("심연" 이
+   * 아니게 된다). 그래서 색조를 옮긴 뒤 구역색으로 한 번 더 곱해 어둡기를 당긴다.
+   * ⚠ 곱하기만 쓰면 안 된다 — 어두운 구역색을 온전히 곱하면 질감이 까맣게 죽는다.
+   *   색조(color) → 어둡기(multiply, 일부만) 두 단계다. 바닥이 벽보다 더 어둡다. */
+  var DARK = { floor: 0.34, wall: 0.14 };
+  /* ⚠ 색조만 옮겨도 **구역이 안 갈린다.** 다섯 구역의 바닥색은 전부 어두운
+   *   중성 갈색이라(#211d15 #1a2328 #262016 #251e1d #1f171a) 색조 차이가
+   *   화면 평균에서 거의 사라진다 — world-check 의 「구역마다 색이 다르다」가
+   *   가장 비슷한 둘의 차이 4 로 잡았다. 그래서 구역색을 **직접 한 겹 덮는다**.
+   *   질감을 죽이지 않을 만큼만(덮개가 0.5 를 넘으면 시트 무늬가 안 보인다). */
+  var TINT = { floor: 0.46, wall: 0.44 };
+  var SAT  = { floor: 0.55, wall: 0.45 };
+
+  /* ⚠ **구역을 가르는 것은 벽색이지 바닥색이 아니다.** 다섯 구역의 바닥색은
+   *   서로 거의 같다 — 묘지 #211d15 와 도서관 #262016 은 차이가 5 밖에 안 된다.
+   *   반면 벽색은 초록·청록·갈색·자주·보라로 뚜렷이 갈린다(차이 20 이상).
+   *   그래서 **바닥도 그 구역의 벽색으로 색조를 잡고**, 어둡기만 제 바닥색에서
+   *   가져온다. 같은 암반을 깎아 만든 방처럼 보이고, 층을 옮기면 바로 읽힌다.
+   *   (바닥색으로 색조까지 잡으면 world-check 의 「구역마다 색이 다르다」가
+   *    가장 비슷한 둘의 차이 5 로 떨어진다 — 기준은 12 다.) */
+  /* ⚠ **밝기를 올려 구역을 가르려 하면 안 된다.** 던전은 어두운 것이 설정이고,
+   *   밝히면 색은 갈려도 "심연" 이 아니게 된다. 어두운 화면에서 남은 손잡이는
+   *   **채도** 하나다 — 같은 밝기에서 채도를 올리면 RGB 세 값이 서로 벌어진다.
+   *   그래서 구역색을 그대로 쓰지 않고 채도만 끌어올린 판(vivid)을 만들어
+   *   canvas 의 saturation 혼합에 넣는다. 밝기는 손대지 않는다. */
+  function vivid(hex) {
+    var m = /^#([0-9a-f]{6})$/i.exec(hex || ""); if (!m) return hex;
+    var n = parseInt(m[1], 16), r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, h = 0;
+    if (mx !== mn) {
+      var d = mx - mn;
+      h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? ((b - r) / d + 2) : ((r - g) / d + 4);
+      h /= 6;
+    }
+    /* 채도는 거의 끝까지, 밝기는 가운데로 — saturation 혼합은 이 판의 **채도만**
+     * 읽으므로 밝기 값은 결과에 안 들어간다(0 이나 1 이면 채도가 0 이 되어버린다). */
+    return "hsl(" + Math.round(h * 360) + ",90%,50%)";
+  }
+
+  function hueColor(zone) {
+    return (zone && zone.wall && zone.wall.face) || null;
+  }
+  function darkColor(zone, kind) {
+    if (!zone) return null;
+    var p = (kind === "floor") ? zone.floor : zone.wall;
+    return (p && p.face) || null;
+  }
+
+  function terrainTile(kind, variant) {
+    var v = variant | 0;
+    if (kind === "floor") return FLOORS[v % FLOORS.length];
+    if (kind === "wall") return WALLTOP[v % WALLTOP.length];
+    return WALLFACE[v % WALLFACE.length];      /* wallface · wallthin */
+  }
+
+  var img = null, loaded = false, cache = {}, tcache = {};
 
   function tileFor(name, f) {
     var stem = CHAR[name];
@@ -131,6 +236,7 @@
     var n = 0, k;
     for (k in CHAR) n += fix(S, k);
     for (k in OBJ) n += fix(S, k);
+    if (S.clearTerrain) S.clearTerrain();   /* 바닥·벽도 다시 굽는다 */
     if (global.console && global.console.log) console.log("[atlas] " + n + "개를 시트로 바꿨다");
   }
   function fix(S, k) {
@@ -154,6 +260,37 @@
       if (CHAR[name]) return POSE.length;
       var t = OBJ[name]; if (!t) return 0;
       var cs = TILES[t]; return cs ? cs.length : 0;
+    },
+
+    /* 지형은 bake() 가 아니라 terrain() 을 지난다 — 따로 받는다. */
+    terrainOn: function () { return loaded; },
+    terrain: function (kind, variant, zone) {
+      if (!loaded) return null;
+      var nm = terrainTile(kind, variant); if (!nm) return null;
+      var cs = TILES[nm]; if (!cs || !cs.length) return null;
+      var c = cs[0];
+      var hue = hueColor(zone);
+      var col = darkColor(zone, kind === "floor" ? "floor" : "wall");
+      var key = kind + "|" + variant + "|" + (hue || "_") + (col || "_");
+      if (tcache[key]) return tcache[key];
+      var cv = document.createElement("canvas");
+      cv.width = c[2] * SCALE; cv.height = c[3] * SCALE;
+      var x = cv.getContext("2d");
+      x.imageSmoothingEnabled = false;
+      x.drawImage(img, c[0], c[1], c[2], c[3], 0, 0, cv.width, cv.height);
+      if (col) {
+        x.globalCompositeOperation = "color";     /* ① 색조를 구역 것으로 */
+        x.fillStyle = col;
+        x.fillRect(0, 0, cv.width, cv.height);
+        x.fillStyle = col;
+        x.globalCompositeOperation = "multiply";  /* ② 어둡기는 제 바닥/벽색 */
+        x.globalAlpha = (kind === "floor") ? DARK.floor : DARK.wall;
+        x.fillRect(0, 0, cv.width, cv.height);
+        x.globalAlpha = 1;
+        x.globalCompositeOperation = "source-over";
+      }
+      tcache[key] = cv;
+      return cv;
     },
 
     get: function (name, f) {
@@ -180,7 +317,7 @@
     load: function () {
       if (img) return;
       img = new Image();
-      img.onload = function () { loaded = true; cache = {}; adopt(); };
+      img.onload = function () { loaded = true; cache = {}; tcache = {}; adopt(); };
       img.onerror = function () {
         /* ⚠ 조용히 실패하게 두지 않는다 — 그림만 옛것으로 돌아가면
          *   "왜 안 바뀌지" 로 한참 헤맨다. */

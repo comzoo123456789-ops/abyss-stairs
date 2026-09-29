@@ -56,18 +56,18 @@
       floor: { mortar: "#18140e", face: "#262016", lit: "#302816", dim: "#1e1811",
                grain1: "#2c251a", grain2: "#211b13", crack: "#1b160f",
                peb1: "#352d1f", peb2: "#3e3523", peb3: "#2a2318" },
-      wall:  { mortar: "#5a382a", face: "#845640", lit: "#a66c50", dim: "#674332",
-               grain1: "#946147", grain2: "#744b38", moss: "#7d5b3c" } },
+      wall:  { mortar: "#6b5520", face: "#9a7b3c", lit: "#c29a4c", dim: "#7a6230",
+               grain1: "#ab8945", grain2: "#856b34", moss: "#8d7a3a" } },
 
     { id: "bones", from: 19, to: 24, boss: "b_ossuary",
       name: "뼈 무덤", tag: "먼저 내려간 사람들",
       enter: "뼈 무덤. 밟을 때마다 무언가가 바스러진다 — 전부 사람 것이다.",
       props: ["bones", "skull", "torch"],
-      floor: { mortar: "#171313", face: "#251e1d", lit: "#2d2623", dim: "#1e1616",
-               grain1: "#2a2320", grain2: "#201a18", crack: "#1a1413",
-               peb1: "#352e2a", peb2: "#3f3631", peb3: "#28211f" },
-      wall:  { mortar: "#533f41", face: "#7d6060", lit: "#9c807f", dim: "#64494a",
-               grain1: "#8c6b67", grain2: "#6c4d4a", moss: "#7d645c" } },
+      floor: { mortar: "#1b1915", face: "#2b2822", lit: "#37332a", dim: "#23201b",
+               grain1: "#302c25", grain2: "#25221c", crack: "#1d1a16",
+               peb1: "#3c382e", peb2: "#474235", peb3: "#2f2c25" },
+      wall:  { mortar: "#4b4d6b", face: "#6d6f9a", lit: "#8a8cb8", dim: "#585a80",
+               grain1: "#7b7da8", grain2: "#63658c", moss: "#6a6f96" } },
 
     { id: "lord", from: 25, to: 30,
       name: "군주의 방", tag: "벽이 숨을 쉰다",
@@ -75,11 +75,11 @@
       props: ["blood", "vein", "torch"],
       /* ⚠ 처음 값은 분홍으로 읽혔다(6배로 늘려 보고 알았다). 마른 피 쪽으로
        *   채도를 내렸다 — 밝기는 그대로 두어 그 위의 도트가 묻히지 않게. */
-      floor: { mortar: "#130e11", face: "#1f171a", lit: "#271d20", dim: "#191316",
-               grain1: "#241b1e", grain2: "#1b1517", crack: "#161113",
-               peb1: "#2d2326", peb2: "#35292d", peb3: "#241b1e" },
-      wall:  { mortar: "#463041", face: "#69495d", lit: "#855d73", dim: "#55394a",
-               grain1: "#785268", grain2: "#5d4053", moss: "#754759" } }
+      floor: { mortar: "#150d0c", face: "#221614", lit: "#2b1c18", dim: "#1b1210",
+               grain1: "#271a17", grain2: "#1e1411", crack: "#18100e",
+               peb1: "#31211d", peb2: "#3a2722", peb3: "#271a17" },
+      wall:  { mortar: "#462925", face: "#6b3a36", lit: "#8a4d45", dim: "#552e2b",
+               grain1: "#7a4640", grain2: "#5c332f", moss: "#6e4135" } }
   ];
 
   function zoneAt(depth) {

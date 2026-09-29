@@ -510,6 +510,13 @@
     var zid = zone ? zone.id : "_";
     var key = kind + ":" + variant + ":" + zid;
     if (terrainCache[key]) return terrainCache[key];
+    /* 시트가 왔으면 지형도 시트에서 꺼낸다. 구역 색은 ATLAS 가 색조로 얹는다.
+     * ⚠ 여기서 받은 것도 terrainCache 에 넣는다 — 한 화면에 375칸이 깔리므로
+     *   칸마다 캔버스를 새로 만들면 그 자리에서 프레임이 무너진다. */
+    if (global.ATLAS && global.ATLAS.terrainOn()) {
+      var at = global.ATLAS.terrain(kind, variant, zone);
+      if (at) { terrainCache[key] = at; return at; }
+    }
     var b;
     if (kind === "floor") b = floorTile(variant % FLOOR_VARIANTS, zone && zone.floor);
     else if (kind === "wall") b = wallTile(variant % WALL_VARIANTS, zone && zone.wall);
@@ -689,6 +696,9 @@
     framesOf: framesOf, hasFrame: hasFrame,
     sizeOf: sizeOf,          /* 그리는 쪽이 바닥을 맞추려면 크기를 알아야 한다 */
     terrain: terrain,
+    /* ⚠ 시트는 늦게 온다. 그 전에 구워 둔 지형이 캐시에 남아 있으면
+     *   바닥만 옛 그림으로 영영 남는다 — ATLAS 가 다 받은 뒤 이걸 부른다. */
+    clearTerrain: function () { terrainCache = {}; },
     data: SPR
   };
 })(window);
