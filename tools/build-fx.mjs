@@ -58,6 +58,42 @@ const WHOLE = {
   t_logs:   "Items/Resource/Branch.png"
 };
 
+
+/* 타일셋에서 칸 단위로 오려 온다 — [파일, col, row, 몇 칸 너비, 몇 칸 높이].
+ *
+ * ⚠ **불빛은 여기 없다.** 횃불 · 등불 · 화덕 · 심연의 문은 게임에서 프레임이
+ *   돌아간다(frame-check 가 t_fire 0,1,2 · t_lamp 0,1 로 확인한다). 타일셋의
+ *   정지 그림으로 바꾸면 그 흔들림이 죽는다 — 횃불로 밝히는 던전에서 불이
+ *   멈추면 바로 티가 난다. 움직이지 않는 것만 가져온다.
+ *
+ * ⚠ 칸 좌표는 눈으로 골랐다. tools 로 타일셋을 눈금과 함께 키워 보고 짚었고,
+ *   구운 뒤 한 줄로 늘어놓고 다시 확인했다. 바꿀 때도 그렇게 할 것. */
+const CELL = 16;
+const CROP = {
+  /* 마을 시설 (TilesetElement) */
+  blacksmith: ["Backgrounds/Tilesets/TilesetElement.png", 12, 0, 1, 1],
+  t_stall:    ["Backgrounds/Tilesets/TilesetElement.png",  7, 2, 1, 1],
+  t_cart:     ["Backgrounds/Tilesets/TilesetElement.png",  0, 3, 2, 2],
+  t_sign:     ["Backgrounds/Tilesets/TilesetElement.png",  5, 2, 1, 1],
+  t_dummy:    ["Backgrounds/Tilesets/TilesetElement.png", 15, 0, 1, 1],
+  t_bench:    ["Backgrounds/Tilesets/TilesetElement.png",  5, 6, 1, 1],
+  altar:      ["Backgrounds/Tilesets/TilesetElement.png",  3, 2, 1, 1],
+  p_grave:    ["Backgrounds/Tilesets/TilesetElement.png",  4, 2, 1, 1],
+
+  /* 구역 장식 · 나무 (TilesetNature) */
+  t_tree:     ["Backgrounds/Tilesets/TilesetNature.png",   0, 2, 2, 3],
+  p_deadtree: ["Backgrounds/Tilesets/TilesetNature.png",   0, 5, 2, 3],
+  t_bush:     ["Backgrounds/Tilesets/TilesetNature.png",   0, 10, 1, 1],
+
+  /* 사람 — 넉 장짜리 걸음 시트의 첫 장(앞을 본다) */
+  merchant:   ["Actor/Character/Villager/SpriteSheet.png", 0, 0, 1, 1],
+
+  /* 펫 — 걸음 시트의 첫 장 */
+  pet_cat:    ["Actor/Animal/CatOrange/SpriteSheet.png",    0, 0, 1, 1],
+  pet_hound:  ["Actor/Animal/DogBlack/SpriteSheet.png",     0, 0, 1, 1],
+  pet_slime:  ["Actor/Monster/Slime/Slime.png",       0, 0, 1, 1]
+};
+
 const items = [];
 for (const [name, rel] of Object.entries(FX)) {
   const f = path.join(SRC, rel);
@@ -74,6 +110,13 @@ for (const [name, rel] of Object.entries(FX)) {
     if (ink > bestInk) { bestInk = ink; best = k; }
   }
   items.push({ name, img, sx: best * fw, sy: 0, w: fw, h: img.h });
+}
+for (const [name, spec] of Object.entries(CROP)) {
+  const p = path.join(SRC, spec[0]);
+  if (!fs.existsSync(p)) { console.log("  X 없다 " + spec[0]); continue; }
+  const img = readPNG(p);
+  items.push({ name, img, sx: spec[1] * CELL, sy: spec[2] * CELL,
+               w: spec[3] * CELL, h: spec[4] * CELL });
 }
 for (const [name, rel] of Object.entries(WHOLE)) {
   const f = path.join(SRC, rel);
