@@ -122,6 +122,26 @@ button, .itm, .floors button, .pick, .sbtn, .slot {
   font-size: 10px; color: #7a7060; margin-left: 2px;
 }
 
+/* 활성 버프 표시줄 (Active Buff HUD Bar) */
+.buffbar {
+  display: flex; gap: 4px; flex-wrap: wrap; pointer-events: auto; margin-top: 2px; z-index: 900;
+}
+.buff-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 6px;
+  background: rgba(20, 16, 28, 0.92);
+  border: 1px solid #ffd166;
+  font-size: 11px; color: #ffd166; white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+  animation: buffGlow 1.5s infinite alternate;
+}
+.buff-badge .b-name { font-weight: bold; color: #ffffff; }
+.buff-badge .b-time { color: #52e3ff; font-weight: bold; font-family: monospace; margin-left: 2px; }
+@keyframes buffGlow {
+  0% { border-color: rgba(255, 209, 102, 0.5); }
+  100% { border-color: rgba(255, 209, 102, 1); box-shadow: 0 0 10px rgba(255, 209, 102, 0.5); }
+}
+
 /* 상단 우측 퀵 메뉴바 */
 .top-menu {
   position: relative;

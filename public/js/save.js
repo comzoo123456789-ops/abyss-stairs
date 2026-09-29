@@ -51,6 +51,7 @@
      * ⚠ 함수로 둔다. save.js 는 classes.js 보다 **먼저** 실리므로(index.html)
      *   선언할 때 읽으면 늘 undefined 다. 부를 때 읽어야 한다. */
     cls:      { def: "warrior", oneOf: clsList },
+    advClass: { def: "", str: 24 },
     level:    { def: 1, min: 1, max: 99, int: true },
     xp:       { def: 0, min: 0, max: 1e12, int: true },
     gold:     { def: 0, min: 0, max: 1e12, int: true },
@@ -59,7 +60,9 @@
     deaths:   { def: 0, min: 0, max: 1e9, int: true },
     born:     { def: 0, min: 0, max: 1e15, int: true }, /* 만든 시각 */
     potions:  { def: 3, min: 0, max: 99, int: true },
-    points:   { def: 0, min: 0, max: 200, int: true }  /* 안 쓴 재주 점수 */
+    points:   { def: 0, min: 0, max: 200, int: true }, /* 안 쓴 재주 점수 */
+    pet:      { def: "", str: 24 },
+    merc:     { def: "", str: 24 }
   };
 
   /* 가방 크기. ⚠ 무제한으로 두면 회원이 정리를 안 하고, 저장이 끝없이 커진다.
@@ -122,7 +125,7 @@
         var def = SK.LIST[ki];
         /* ⚠ 남의 직업 재주에 찍힌 점수는 버린다 — 안 버리면 직업을 바꿔도
          *   옛 시너지가 따라다니며 재주책에 ✔ 로 남는다. */
-        if (global.CLASSES && !global.CLASSES.canUse(out.cls, def.id)) continue;
+        if (global.CLASSES && !global.CLASSES.canUse(out.cls, def.id, out.advClass)) continue;
         var want = rawSk[def.id];
         if (!Array.isArray(want) || !want.length) continue;
         var ok = null;

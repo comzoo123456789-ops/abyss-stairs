@@ -115,25 +115,6 @@
     }
     /* 이 기기에만 있는 것은 올려 준다 — 합집합이 남아야 한다 */
     await push();
-
-    /* 가장 레벨이 높은 최고 직업 캐릭터를 메인 저장소(KEY)에 활성화 */
-    var bestWrapped = null, bestPeek = null;
-    var allLocal = localSaves();
-    for (var k = 0; k < allLocal.length; k++) {
-      var p = peek(allLocal[k]);
-      if (!p) continue;
-      if (!bestPeek || further(p, bestPeek) === p) {
-        bestPeek = p;
-        bestWrapped = allLocal[k];
-      }
-    }
-    if (bestWrapped) {
-      try {
-        var ls = global.localStorage;
-        if (ls && save()) ls.setItem(save().KEY, JSON.stringify(bestWrapped));
-      } catch (e) {}
-    }
-
     state.note = (took.length ? "내려받음 " + took.join(" · ") : "내려받을 것 없음") +
                  (kept.length ? " · 이 기기가 더 나아가 둠 " + kept.join(" · ") : "");
     paint();

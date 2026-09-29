@@ -187,6 +187,16 @@
        * ⚠ 더 줄이지 말 것. 36x26 이면 방이 여섯뿐이라 보스방과 보물방을 넣고
        *   나면 고를 길이 사라진다. */
       this.level = D.generate(opt.w || 40, opt.h || 28, this.depth, seed);
+      this.decor = [];
+      var rngDec = D.makeRng(seed ^ 0x7a8c);
+      for (var rk = 0; rk < this.level.rooms.length; rk++) {
+        var rm = this.level.rooms[rk];
+        this.decor.push({
+          x: rm.cx + 0.5, y: rm.y + 1 + 0.5,
+          phase: rngDec(),
+          def: { sprite: "t_fire", sway: true, light: 3.4 }
+        });
+      }
     }
     this.ents = [];
     this.floaters = [];     /* 떠오르는 피해 숫자 — 규칙이 만들고 화면이 지운다 */
@@ -258,7 +268,58 @@
     /* ⚠ 마릿수를 여기서 정하지 않는다 — DATA.countAt 이 정한다.
      *   두 곳이 되면 표를 고쳐도 안 바뀐다. */
     if (!this.inTown && opt.mobs !== 0) this.spawn(opt.mobs);
+    this.spawnPetAndMerc();
   }
+
+  var PETS = {
+    cat:   { id: "cat",   name: "골드 캣",     sprite: "pet_cat",   text: "자동 금화/장비 루팅 범위 +4.5칸" },
+    slime: { id: "slime", name: "수호 슬라임", sprite: "pet_slime", text: "초당 체력 회복 +3 HP & 방어력 +3" },
+    hound: { id: "hound", name: "지옥 펠하운드", sprite: "pet_hound", text: "치명타율 +6% & 치명타 피해 +20%" }
+  };
+
+  var MERCS = {
+    guardian: { id: "guardian", name: "수호기사 메이슨", sprite: "knight", hp: 160, def: 8, dmg: 18, reach: 1.2, text: "전방 근접 도발 & 탱킹" },
+    ranger:   { id: "ranger",   name: "사냥꾼 엘라",     sprite: "rogue",  hp: 110, def: 4, dmg: 24, reach: 6.0, text: "원거리 화살 연속 지원 사격" },
+    cleric:   { id: "cleric",   name: "사제 리아",       sprite: "mage",   hp: 120, def: 5, dmg: 12, reach: 4.5, text: "체력 회복 힐 & 보호막 수호" }
+  };
+
+  World.prototype.spawnPetAndMerc = function () {
+    if (!this.hero) return;
+    for (var i = this.ents.length - 1; i >= 0; i--) {
+      var k = this.ents[i].kind;
+      if (k === "pet" || k === "merc") this.ents.splice(i, 1);
+    }
+    var sx = this.player ? this.player.x : 2.5;
+    var sy = this.player ? this.player.y : 2.5;
+
+    if (this.hero.pet && PETS[this.hero.pet]) {
+      var pdef = PETS[this.hero.pet];
+      this.pet = new Entity({
+        x: sx - 0.5, y: sy - 0.5, kind: "pet", sprite: pdef.sprite,
+        team: 0, hp: 9999, maxHp: 9999, name: pdef.name, spd: 5.2
+      });
+      this.pet.petId = this.hero.pet;
+      this.ents.push(this.pet);
+    }
+
+    if (this.hero.merc && MERCS[this.hero.merc]) {
+      var mdef = MERCS[this.hero.merc];
+      var level = Math.max(1, this.hero.level || 1);
+      var mHp = mdef.hp + level * 10;
+      var mDmg = mdef.dmg + level * 2;
+      this.merc = new Entity({
+        x: sx + 0.5, y: sy + 0.5, kind: "merc", sprite: mdef.sprite,
+        team: 0, hp: mHp, maxHp: mHp, def: mdef.def + Math.floor(level * 0.5),
+        name: mdef.name, spd: 4.5
+      });
+      this.merc.mercId = this.hero.merc;
+      this.merc.dmgOut = mDmg;
+      this.merc.reach = mdef.reach;
+      this.merc.healCd = 0;
+      this.merc.atkCd = 0;
+      this.ents.push(this.merc);
+    }
+  };
 
   /* 몬스터를 뿌린다.
    * ⚠ 주인공 근처에 놓지 말 것 — 들어서자마자 맞으면 조작을 배울 틈이 없다. */
@@ -533,6 +594,11 @@
       if (global.SFX) global.SFX.play("level");
       /* 레벨이 오르면 **그 자리에서 체력이 늘고 다 찬다.** 실시간에서는 숨 돌릴
        * 틈이 없으므로 이게 유일한 회복 순간이다(물약이 붙기 전까지). */
+      if (this.hero.level >= 15 && !this.hero.advClass && global.openAdvancementModal) {
+        setTimeout(function() {
+          global.openAdvancementModal();
+        }, 300);
+      }
       this.applyHero();
       this.player.hp = this.player.maxHp;
     }
@@ -589,6 +655,35 @@
     o.stamMax = cls ? cls.stam : (global.SKILLS ? global.SKILLS.STAM_MAX : 100);
     o.stamRegen = cls ? cls.stamRegen : 12;
 
+    /* 1차 전직 보너스 적용 */
+    if (CL && h && h.advClass && CL.ADVANCED_CLASSES && CL.ADVANCED_CLASSES[h.advClass]) {
+      var advB = CL.ADVANCED_CLASSES[h.advClass].bonuses || {};
+      if (advB.hpMult) o.maxHp = Math.round(o.maxHp * advB.hpMult);
+      if (advB.armorAdd) o.def += advB.armorAdd;
+      if (advB.spdMult) o.spd *= advB.spdMult;
+      if (advB.critPctAdd) {
+        critRaw += advB.critPctAdd;
+        o.critOver = Math.max(0, critRaw - 100);
+        o.critPct = Math.min(100, critRaw);
+      }
+      if (advB.critDmgAdd) o.critDmgPct += advB.critDmgAdd;
+      if (advB.stamAdd) o.stamMax += advB.stamAdd;
+      if (advB.stamRegenAdd) o.stamRegen += advB.stamRegenAdd;
+      if (advB.leechPct) o.lifeOnHit += advB.leechPct;
+    }
+
+    /* 동행 펫 패시브 보너스 */
+    if (h && h.pet) {
+      if (h.pet === "hound") {
+        critRaw += 6;
+        o.critOver = Math.max(0, critRaw - 100);
+        o.critPct = Math.min(100, critRaw);
+        o.critDmgPct += 20;
+      } else if (h.pet === "slime") {
+        o.def += 3;
+      }
+    }
+
     o.swing = null;
     o.adept = false;
     var sw = I ? I.swingOf(eq, t) : null;
@@ -599,6 +694,9 @@
        * 쓰레기가 되어 줍는 재미가 사라진다. */
       o.adept = !!(CL && h && eq.weapon && CL.adept(h.cls, eq.weapon));
       if (o.adept) raw *= (1 + CL.ADEPT_BONUS / 100);
+      if (CL && h && h.advClass && CL.ADVANCED_CLASSES && CL.ADVANCED_CLASSES[h.advClass] && CL.ADVANCED_CLASSES[h.advClass].bonuses && CL.ADVANCED_CLASSES[h.advClass].bonuses.dmgMult) {
+        raw *= CL.ADVANCED_CLASSES[h.advClass].bonuses.dmgMult;
+      }
       o.swing = {
         aps: sw.aps, windup: sw.windup, recover: sw.recover,
         reach: sw.reach, arc: sw.arc, push: sw.push,
@@ -608,7 +706,7 @@
          *   무기마다 다르게 그리려면 이것이 필요한데, 예전에는 swing 에
          *   없어서 화면이 `e.equipped` 를 따로 뒤졌다(주인공만 되는 길이다). */
         base: (eq.weapon && eq.weapon.base) || "",
-        /* ⚠ **직업도 싣는다.** 전사와 기사는 둘 다 장검으로 시작해서
+        /* ⚠ **직업도 싣는다.** 전리와 기사는 둘 다 장검으로 시작해서
          *   무기만 보면 **한 글자도 안 다른 그림**이 나온다(실측). 기사는
          *   한손검에 방패라 어깨로 짧게 통제해 벤다 — 두 손으로 허리를
          *   돌려 크게 쓰는 전사와 결이 다르다(MoCap Online). */
@@ -797,9 +895,138 @@
     return true;
   };
 
+  World.prototype.updatePetAndMerc = function (dt) {
+    var p = this.player;
+    if (!p || p.dead) return;
+
+    for (var i = 0; i < this.ents.length; i++) {
+      var e = this.ents[i];
+      if (e.dead) continue;
+
+      /* ── 펫 갱신 (추적, 슬라임 힐, 마그넷 자동 루팅) ───────────────── */
+      if (e.kind === "pet") {
+        var pd = Math.hypot(p.x - e.x, p.y - e.y);
+        if (pd > 10) {
+          e.x = p.x; e.y = p.y;
+        } else if (pd > 1.2) {
+          var ang = Math.atan2(p.y - e.y, p.x - e.x);
+          e.mx = Math.cos(ang);
+          e.my = Math.sin(ang);
+          e.face = e.mx < 0 ? -1 : 1;
+        } else {
+          e.mx = 0; e.my = 0;
+        }
+
+        if (e.petId === "slime") {
+          p.hp = Math.min(p.maxHp, p.hp + 3 * dt);
+        }
+
+        var magnetRange = (e.petId === "cat") ? 4.5 : 2.5;
+        for (var dIdx = this.drops.length - 1; dIdx >= 0; dIdx--) {
+          var drop = this.drops[dIdx];
+          var distPet = Math.hypot(drop.x - e.x, drop.y - e.y);
+          var distPlr = Math.hypot(drop.x - p.x, drop.y - p.y);
+          if (distPet < magnetRange || distPlr < magnetRange) {
+            var pullAng = Math.atan2(p.y - drop.y, p.x - drop.x);
+            drop.x += Math.cos(pullAng) * 7.5 * dt;
+            drop.y += Math.sin(pullAng) * 7.5 * dt;
+
+            if (Math.hypot(drop.x - p.x, drop.y - p.y) < 0.9) {
+              if (drop.gold) {
+                if (this.hero) this.hero.gold += drop.gold;
+                this.floaters.push({ x: drop.x, y: drop.y - 0.5, text: "+" + drop.gold + "금", t: 0, life: 0.8, foe: true });
+                if (global.SFX) global.SFX.play("gold");
+                this.drops.splice(dIdx, 1);
+              } else if (drop.item && (e.petId === "cat" || distPlr < 1.0)) {
+                var res = this.takeDrop(drop);
+                if (!res) {
+                  this.floaters.push({ x: p.x, y: p.y - 0.7, text: "🐾 " + drop.item.name + " 획득!", t: 0, life: 1.2 });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      /* ── 용병 갱신 (추적, 적 공격, 사제 힐, 기사 도발) ───────────── */
+      if (e.kind === "merc") {
+        var md = Math.hypot(p.x - e.x, p.y - e.y);
+        if (md > 12) {
+          e.x = p.x; e.y = p.y;
+        }
+
+        var target = null, minDist = 8.0;
+        for (var j = 0; j < this.ents.length; j++) {
+          var foe = this.ents[j];
+          if (foe.team === 1 && !foe.dead && foe.kind !== "dummy") {
+            var fd = Math.hypot(foe.x - e.x, foe.y - e.y);
+            if (fd < minDist) { minDist = fd; target = foe; }
+          }
+        }
+
+        if (target) {
+          if (e.mercId === "cleric") {
+            e.healCd = (e.healCd || 0) - dt;
+            if (p.hp / p.maxHp < 0.75 && e.healCd <= 0) {
+              var healAmt = Math.round(p.maxHp * 0.35);
+              p.hp = Math.min(p.maxHp, p.hp + healAmt);
+              this.floaters.push({ x: p.x, y: p.y - 0.8, text: "✨ 힐 +" + healAmt, t: 0, life: 1.2 });
+              if (global.SFX) global.SFX.play("heal");
+              e.healCd = 4.0;
+            }
+          }
+
+          var tDist = Math.hypot(target.x - e.x, target.y - e.y);
+          var idealReach = e.reach || 1.5;
+          if (tDist > idealReach * 0.8) {
+            var tAng = Math.atan2(target.y - e.y, target.x - e.x);
+            e.mx = Math.cos(tAng);
+            e.my = Math.sin(tAng);
+            e.face = e.mx < 0 ? -1 : 1;
+          } else {
+            e.mx = 0; e.my = 0;
+          }
+
+          e.atkCd = (e.atkCd || 0) - dt;
+          if (tDist <= idealReach && e.atkCd <= 0) {
+            e.atkCd = 1.2;
+            var dmg = e.dmgOut || 20;
+            if (e.mercId === "ranger") {
+              var sAng = Math.atan2(target.y - e.y, target.x - e.x);
+              this.shots.push({
+                id: ++this._shotId, x: e.x, y: e.y,
+                vx: Math.cos(sAng) * 14, vy: Math.sin(sAng) * 14,
+                kind: "w_bow", dmg: dmg, from: e, team: 0,
+                life: 0.8, r: 0.22, mine: false, pierce: 1, hitSet: {}
+              });
+              if (global.SFX) global.SFX.play("ability");
+            } else {
+              target.hp -= dmg;
+              target.hurt = 0.2;
+              this.floaters.push({ x: target.x, y: target.y - 0.5, text: "-" + dmg, t: 0, life: 0.8 });
+              if (e.mercId === "guardian") {
+                target.goal = e;
+              }
+            }
+          }
+        } else {
+          if (md > 1.8) {
+            var followAng = Math.atan2(p.y - e.y, p.x - e.x);
+            e.mx = Math.cos(followAng);
+            e.my = Math.sin(followAng);
+            e.face = e.mx < 0 ? -1 : 1;
+          } else {
+            e.mx = 0; e.my = 0;
+          }
+        }
+      }
+    }
+  };
+
   /* 규칙 한 걸음. **여기 들어오는 dt 는 언제나 SIM_DT 다.** */
   World.prototype.step = function () {
     var i, e;
+    this.updatePetAndMerc(SIM_DT);
     for (i = 0; i < this.ents.length; i++) {
       e = this.ents[i];
       e.px = e.x; e.py = e.y;
@@ -1137,7 +1364,7 @@
   /* 스킬을 쓴다. **왜 못 쓰는지**를 돌려준다 — null 이면 성공. */
   World.prototype.useSkill = function (id, aimX, aimY, taken) {
     if (!global.SKILLS) return "재주가 없다";
-    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero && this.hero.cls);
+    return global.SKILLS.use(this, id, aimX, aimY, taken, this.hero && this.hero.cls, this.hero && this.hero.advClass);
   };
 
   /* 사람이 휘두른다. app.js 가 마우스 방향을 준다. */

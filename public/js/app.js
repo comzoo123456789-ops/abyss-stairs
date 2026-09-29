@@ -108,6 +108,7 @@
 
     hud();
     drawBar();
+    drawBuffsHUD();
     paintMeter();
 
     fps.t += dt; fps.n++;
@@ -189,11 +190,12 @@
     closePanel();
     /* ⚠ 되사기는 **이번 방문 동안만**이다. 계속 쌓아 두면 무한 보관함이 된다. */
     buyback.length = 0;
-    /* ⚠ 테스트 모드에서도 **상한은 지킨다.** 31층은 구역이 없어 빈 층이 된다. */
-    var cap = devOn() ? (global.DATA ? global.DATA.MAX_DEPTH : 30) : hero.maxDepth;
-    d = Math.max(1, Math.min(cap, Math.floor(d) || 1));
+    var maxCap = global.DATA ? global.DATA.MAX_DEPTH : 30;
+    d = Math.max(1, Math.min(maxCap, Math.floor(Number(d)) || 1));
+    hero.maxDepth = Math.max(hero.maxDepth || 1, d);
     start({ depth: d });
-    global.SAVE.save(hero);
+    if (global.SAVE) global.SAVE.save(hero);
+    toast("⚔️ " + d + "층에 입장했습니다!");
   }
 
   /* 한 층 더 깊이 — 계단을 밟고 눌렀을 때.
@@ -421,6 +423,8 @@
       if (pr.id === "stash") return openStash();
       if (pr.id === "smith") return openSmith();
       if (pr.id === "craft") return openCraft();
+      if (pr.id === "pet_shop") return openPetShop();
+      if (pr.id === "altar") return openAltar();
       if (pr.id === "well") {
         var p = world.player;
         if (p.hp >= p.maxHp) return;
@@ -464,28 +468,22 @@
   function openPortal() {
     var box = document.getElementById("panel");
     if (!box) return;
-    var dev = devOn();
-    var top = dev ? (global.DATA ? global.DATA.MAX_DEPTH : 30) : hero.maxDepth;
-    var html = '<h2>심연의 문</h2><p class="sub">' +
-      (dev ? '<b>테스트 모드</b> — 1~' + top + '층이 다 열려 있다 (끄려면 주소에 ?dev=0)'
-           : '가 본 곳까지 열린다 — 지금 ' + hero.maxDepth + '층') +
+    var top = 30;
+    var html = '<h2>🏛️ 심연의 문 (층 선택)</h2><p class="sub">' +
+      '<b>테스트 전 층 개방</b> — 1층부터 30층까지 즉시 이동할 수 있습니다.' +
       '</p><div class="floors">';
     for (var d = 1; d <= top; d++)
-      html += '<button data-depth="' + d + '">' + d + '층</button>';
+      html += '<button data-depth="' + d + '" style="' + (hero.maxDepth >= d ? 'border-color:#ffd166;' : '') + '">' + d + '층</button>';
     html += '</div><p class="sub">Esc 로 닫는다</p>';
     box.innerHTML = html;
-    box.className = "panel";
+    box.className = "panel wide";
     box.hidden = false;
     box.style.display = "";
     addCloseButton(box);
 
-    var btns = box.querySelectorAll("button[data-depth]");
-    for (var i = 0; i < btns.length; i++) {
-      btns[i].addEventListener("click", function () {
-        toDepth(Number(this.getAttribute("data-depth")));
-      });
-    }
-    if (btns.length) btns[btns.length - 1].focus();
+    wire(box, "depth", function (val) {
+      toDepth(Number(val));
+    });
   }
 
   /* 짧은 알림. ⚠ 캔버스가 아니라 DOM 이다 — 캔버스에 그리면 창 위에 안 뜬다. */
@@ -2346,6 +2344,307 @@
     openShop();
   }
 
+  /* ── 펫 조련사 & 용병 고용소 ────────────────────────── */
+  var PET_DEFS = {
+    cat:   { id: "cat",   name: "골드 캣",     sprite: "pet_cat",   price: 500,  text: "금화 & 전리품 자동 흡수 (루팅 범위 +4.5칸 내 즉시 끌어당김)" },
+    slime: { id: "slime", name: "수호 슬라임", sprite: "pet_slime", price: 800,  text: "체력 회복 +3 HP/sec 및 방어력 +3 증가" },
+    hound: { id: "hound", name: "지옥 펠하운드", sprite: "pet_hound", price: 1200, text: "치명타율 +6% 및 치명타 피해 +20% 증폭 버프" }
+  };
+
+  var MERC_DEFS = {
+    guardian: { id: "guardian", name: "수호기사 메이슨", sprite: "knight", price: 1000, text: "전방 근접 도발 & 탱킹 (몬스터 시선을 끌어 몸빵)" },
+    ranger:   { id: "ranger",   name: "사냥꾼 엘라",     sprite: "rogue",  price: 1200, text: "원거리 화살 연속 지원 사격 (강력한 딜 지원)" },
+    cleric:   { id: "cleric",   name: "사제 리아",       sprite: "mage",   price: 1500, text: "신성의 힐 (체력 75% 이하 시 체력 35% 회복)" }
+  };
+
+  function openPetShop() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var S = global.SAVE;
+
+    var html = '<h2>🐾 펫 조련사 & 용병소</h2>' +
+      '<p class="sub">동료 펫과 용병을 고용하여 던전 탐험에 함께하세요! (보유 금화: <b>' + (hero.gold || 0) + '금</b>)</p>' +
+      '<div class="cols" style="display:flex; gap:16px;">';
+
+    /* 좌측 컬럼: 펫 분양소 */
+    html += '<div class="col" style="flex:1;"><h3>🐶 펫 분양 (자동 루팅 & 버프)</h3>';
+    for (var pk in PET_DEFS) {
+      var p = PET_DEFS[pk];
+      var isEquipped = (hero.pet === pk);
+      var imgHtml = (global.SPRITES && global.SPRITES.has(p.sprite))
+        ? '<img src="' + global.SPRITES.bake(p.sprite).toDataURL() + '" class="item-sprite-img" alt="" />'
+        : '🐾';
+
+      html += '<div class="itm" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; padding:8px; border:1px solid #443c53; border-radius:6px; background:#1b1724;">' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+        '<div class="itm-icon-box" style="border-color:#ffd166;">' + imgHtml + '</div>' +
+        '<div><b style="color:#ffd166; font-size:14px;">' + esc(p.name) + '</b><br>' +
+        '<span style="font-size:11px; color:#c7c2d6;">' + esc(p.text) + '</span></div>' +
+        '</div>' +
+        '<div>';
+
+      if (isEquipped) {
+        html += '<button class="sbtn" data-petact="unequip" data-petid="' + pk + '" style="background:#8c2727; color:#fff;">해제</button>';
+      } else {
+        html += '<button class="sbtn" data-petact="equip" data-petid="' + pk + '" style="background:#278c4d; color:#fff;">' + p.price + '금 고용</button>';
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+
+    /* 우측 컬럼: 용병 고용소 */
+    html += '<div class="col" style="flex:1;"><h3>⚔️ 용병 계약 (전투 & 지원)</h3>';
+    for (var mk in MERC_DEFS) {
+      var m = MERC_DEFS[mk];
+      var isHired = (hero.merc === mk);
+      var mImgHtml = (global.SPRITES && global.SPRITES.has(m.sprite))
+        ? '<img src="' + global.SPRITES.bake(m.sprite).toDataURL() + '" class="item-sprite-img" alt="" />'
+        : '⚔️';
+
+      html += '<div class="itm" style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; padding:8px; border:1px solid #443c53; border-radius:6px; background:#1b1724;">' +
+        '<div style="display:flex; align-items:center; gap:8px;">' +
+        '<div class="itm-icon-box" style="border-color:#52b788;">' + mImgHtml + '</div>' +
+        '<div><b style="color:#52b788; font-size:14px;">' + esc(m.name) + '</b><br>' +
+        '<span style="font-size:11px; color:#c7c2d6;">' + esc(m.text) + '</span></div>' +
+        '</div>' +
+        '<div>';
+
+      if (isHired) {
+        html += '<button class="sbtn" data-mercact="dismiss" data-mercid="' + mk + '" style="background:#8c2727; color:#fff;">해고</button>';
+      } else {
+        html += '<button class="sbtn" data-mercact="hire" data-mercid="' + mk + '" style="background:#278c4d; color:#fff;">' + m.price + '금 계약</button>';
+      }
+      html += '</div></div>';
+    }
+    html += '</div></div>';
+    html += '<p class="sub">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    addCloseButton(box);
+
+    box.querySelectorAll("[data-petact]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var act = this.getAttribute("data-petact");
+        var petId = this.getAttribute("data-petid");
+        var pdef = PET_DEFS[petId];
+        if (!pdef) return;
+
+        if (act === "unequip") {
+          hero.pet = "";
+          toast("🐾 펫 동행을 해제했습니다.");
+        } else if (act === "equip") {
+          if (hero.pet !== petId) {
+            if ((hero.gold || 0) < pdef.price) { toast("❌ 금화가 부족합니다 (" + pdef.price + "금 필요)"); return; }
+            hero.gold -= pdef.price;
+            hero.pet = petId;
+            toast("🐾 " + pdef.name + "(이)가 동행을 시작합니다!");
+          }
+        }
+        if (world) {
+          if (world.applyHero) world.applyHero();
+          if (world.spawnPetAndMerc) world.spawnPetAndMerc();
+        }
+        if (S) S.save(hero);
+        openPetShop();
+      });
+    });
+
+    box.querySelectorAll("[data-mercact]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var act = this.getAttribute("data-mercact");
+        var mercId = this.getAttribute("data-mercid");
+        var mdef = MERC_DEFS[mercId];
+        if (!mdef) return;
+
+        if (act === "dismiss") {
+          hero.merc = "";
+          toast("⚔️ 용병과의 계약을 해지했습니다.");
+        } else if (act === "hire") {
+          if (hero.merc !== mercId) {
+            if ((hero.gold || 0) < mdef.price) { toast("❌ 금화가 부족합니다 (" + mdef.price + "금 필요)"); return; }
+            hero.gold -= mdef.price;
+            hero.merc = mercId;
+            toast("⚔️ " + mdef.name + "(와)과 용병 계약을 체결했습니다!");
+          }
+        }
+        if (world) {
+          if (world.applyHero) world.applyHero();
+          if (world.spawnPetAndMerc) world.spawnPetAndMerc();
+        }
+        if (S) S.save(hero);
+        openPetShop();
+      });
+    });
+  }
+
+  /* ── 1차 전직 제단 ─────────────────────────────────── */
+  function openAltar() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+    var CL = global.CLASSES, S = global.SAVE;
+    if (!CL) return;
+
+    var level = hero.level || 1;
+    var options = CL.getAdvancements(hero.cls);
+    var curAdv = hero.advClass && CL.ADVANCED_CLASSES[hero.advClass] ? CL.ADVANCED_CLASSES[hero.advClass] : null;
+
+    var html = '<h2>🏛️ 전직의 제단</h2>';
+
+    if (level < 15) {
+      html += '<p class="sub">1차 전직은 <b>Lv.15</b> 달성 시 전직의 제단에서 진행할 수 있습니다. (현재 레벨: Lv.' + level + ')</p>' +
+        '<div style="text-align:center; padding:24px; color:#c7c2d6; background:#1b1724; border-radius:8px; margin:16px 0;">' +
+        '<p style="font-size:16px; color:#ffd166; font-weight:bold;">⚔️ 열심히 던전을 탐험하여 Lv.15를 달성해 보세요!</p>' +
+        '<p style="font-size:12px; color:#aaa; margin-top:8px;">전직 시 무시무시한 상위 계열 직업 스킬과 파격적인 패시브 스탯 보너스를 획득합니다.</p>' +
+        '</div>';
+    } else {
+      if (curAdv) {
+        html += '<p class="sub">현재 <b>' + curAdv.name + '</b>(으)로 1차 전직을 완료한 상태입니다.</p>' +
+          '<div style="max-width:480px; margin:16px auto; padding:16px; background:#1b1724; border:1px solid #ffd166; border-radius:8px; text-align:center;">' +
+          '<h3 style="color:#ffd166; font-size:18px;">✨ ' + curAdv.name + ' <span style="font-size:13px; color:#aaa;">(' + curAdv.tag + ')</span></h3>' +
+          '<p style="font-size:13px; color:#e0d8bd; margin:12px 0; line-height:1.6;">' + curAdv.text + '</p>' +
+          '<button id="btnResetAdv" class="sbtn" style="background:#8c2727; color:#fff; margin-top:12px; padding:6px 14px;">⚔️ 다른 직업으로 전직 변경하기</button>' +
+          '</div>';
+      } else {
+        html += '<p class="sub">Lv.15 달성을 축하합니다! 아래 1차 전직 직업 중 하나를 선택하여 새로운 힘을 얻으세요.</p>' +
+          '<div class="cols" style="display:flex; gap:16px; margin:16px 0;">';
+
+        for (var i = 0; i < options.length; i++) {
+          var adv = options[i];
+          html += '<div class="col" style="flex:1; padding:14px; background:#1b1724; border:1px solid #443c53; border-radius:8px; display:flex; flex-direction:column; justify-space-between;">' +
+            '<div>' +
+            '<h3 style="color:#ffd166; font-size:17px; margin-bottom:4px;">⚔️ ' + adv.name + '</h3>' +
+            '<p style="font-size:12px; color:#a8dede; margin-bottom:8px;">' + adv.tag + '</p>' +
+            '<p style="font-size:13px; color:#c7c2d6; line-height:1.5;">' + adv.text + '</p>' +
+            '</div>' +
+            '<button class="sbtn" data-doadv="' + adv.id + '" style="background:#278c4d; color:#fff; width:100%; margin-top:14px; padding:8px; font-weight:bold;">⚔️ ' + adv.name + '(으)로 전직하기</button>' +
+            '</div>';
+        }
+        html += '</div>';
+      }
+    }
+
+    html += '<p class="sub" style="margin-top:16px;">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel wide";
+    box.hidden = false; box.style.display = "";
+    addCloseButton(box);
+
+    box.querySelectorAll("[data-doadv]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var advId = this.getAttribute("data-doadv");
+        var advObj = CL.ADVANCED_CLASSES[advId];
+        if (!advObj) return;
+
+        hero.advClass = advId;
+
+        var allSkills = CL.skillsOf(hero.cls, hero.advClass);
+        if (allSkills && allSkills.length) {
+          for (var skIdx = 0; skIdx < Math.min(6, allSkills.length); skIdx++) {
+            hero.bar[skIdx] = allSkills[skIdx];
+          }
+        }
+
+        if (world && world.applyHero) world.applyHero();
+        if (S) S.save(hero);
+        if (global.SFX) global.SFX.play("level");
+        toast("✨ [" + advObj.name + "](으)로 1차 전직을 완료했습니다!");
+        openAltar();
+      });
+    });
+
+    var bReset = document.getElementById("btnResetAdv");
+    if (bReset) {
+      bReset.addEventListener("click", function () {
+        hero.advClass = "";
+        if (world && world.applyHero) world.applyHero();
+        if (S) S.save(hero);
+        toast("⚔️ 전직 선택이 초기화되었습니다.");
+        openAltar();
+      });
+    }
+  }
+
+  /* ── 게임 설정 (음량 및 소리 설정) ────────────────────────── */
+  function openSettings() {
+    var box = document.getElementById("panel");
+    if (!box) return;
+
+    var sfxOn = global.SFX ? global.SFX.isOn() : true;
+    var masterV = Math.round((global.AUDIO ? global.AUDIO.getMasterVol() : 1) * 100);
+    var musicV = Math.round((global.AUDIO ? global.AUDIO.getMusicVol() : 0.8) * 100);
+    var sfxV = Math.round((global.AUDIO ? global.AUDIO.getSfxVol() : 1) * 100);
+
+    var html = '<h2>⚙️ 게임 설정 (소리 및 음량)</h2>' +
+      '<p class="sub">게임 효과음 및 배경음 음량을 자유롭게 조절합니다.</p>' +
+      '<div class="cols" style="flex-direction:column; gap:12px; max-width:420px; margin:0 auto;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px; background:#1b1724; border-radius:6px;">' +
+      '<b>🔊 전체 소리 ON / OFF</b>' +
+      '<button id="btnSoundToggle" class="sbtn" style="background:' + (sfxOn ? '#278c4d' : '#8c2727') + '; color:#fff;">' +
+      (sfxOn ? '소리 켜짐 (ON)' : '소리 꺼짐 (OFF)') + '</button>' +
+      '</div>' +
+
+      '<div style="padding:10px; background:#1b1724; border-radius:6px;">' +
+      '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>🎚️ 전체 음량</span><b>' + masterV + '%</b></div>' +
+      '<input type="range" id="rngMasterVol" min="0" max="100" value="' + masterV + '" style="width:100%; cursor:pointer;">' +
+      '</div>' +
+
+      '<div style="padding:10px; background:#1b1724; border-radius:6px;">' +
+      '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>🎵 배경음 (BGM) 음량</span><b>' + musicV + '%</b></div>' +
+      '<input type="range" id="rngMusicVol" min="0" max="100" value="' + musicV + '" style="width:100%; cursor:pointer;">' +
+      '</div>' +
+
+      '<div style="padding:10px; background:#1b1724; border-radius:6px;">' +
+      '<div style="display:flex; justify-content:space-between; margin-bottom:4px;"><span>⚔️ 효과음 (SFX) 음량</span><b>' + sfxV + '%</b></div>' +
+      '<input type="range" id="rngSfxVol" min="0" max="100" value="' + sfxV + '" style="width:100%; cursor:pointer;">' +
+      '</div>' +
+      '</div>' +
+      '<p class="sub" style="margin-top:14px;">Esc 로 닫는다</p>';
+
+    box.innerHTML = html;
+    box.className = "panel";
+    box.hidden = false; box.style.display = "";
+    addCloseButton(box);
+
+    var bToggle = document.getElementById("btnSoundToggle");
+    if (bToggle) {
+      bToggle.addEventListener("click", function () {
+        if (global.SFX) {
+          var state = global.SFX.toggle();
+          toast(state ? "🔊 소리를 켰습니다." : "🔇 소리를 껐습니다.");
+          openSettings();
+        }
+      });
+    }
+
+    var rMaster = document.getElementById("rngMasterVol");
+    if (rMaster) {
+      rMaster.addEventListener("input", function () {
+        if (global.AUDIO) global.AUDIO.setMasterVol(Number(rMaster.value) / 100);
+        var b = rMaster.previousElementSibling ? rMaster.previousElementSibling.querySelector("b") : null;
+        if (b) b.textContent = rMaster.value + "%";
+      });
+    }
+    var rMusic = document.getElementById("rngMusicVol");
+    if (rMusic) {
+      rMusic.addEventListener("input", function () {
+        if (global.AUDIO) global.AUDIO.setMusicVol(Number(rMusic.value) / 100);
+        var b = rMusic.previousElementSibling ? rMusic.previousElementSibling.querySelector("b") : null;
+        if (b) b.textContent = rMusic.value + "%";
+      });
+    }
+    var rSfx = document.getElementById("rngSfxVol");
+    if (rSfx) {
+      rSfx.addEventListener("input", function () {
+        if (global.AUDIO) global.AUDIO.setSfxVol(Number(rSfx.value) / 100);
+        var b = rSfx.previousElementSibling ? rSfx.previousElementSibling.querySelector("b") : null;
+        if (b) b.textContent = rSfx.value + "%";
+      });
+    }
+  }
+
   /* ── 창고 ───────────────────────────────────────────────
    * ⚠ 창고는 **마을에서만** 열린다. 던전에서 열리면 가방 크기가 뜻을 잃는다
    *   (가방이 차면 마을에 다녀오게 만드는 것이 그 숫자의 목적이다). */
@@ -2404,6 +2703,7 @@
     if (!box) return;
     var SK = global.SKILLS;
     var html = '<h2>스킬북</h2><p class="sub">남은 점수 <b>' + hero.points +
+      '</b> · 스킬 슬롯 1·2·3·4 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
       '</b> · 스킬 슬롯 1~6 (◀ ▶ 버튼 또는 좌우 스크롤)</p>' +
       '<div class="skill-tabs">' +
       '<button id="stabActive" class="stab-btn active">⚡ 액티브 스킬</button>' +
@@ -2417,20 +2717,25 @@
 
     for (var i = 0; i < mine.length; i++) {
       var sId = mine[i];
+      /* ⚠ `SK.by` 가 아니라 **`SK.byId`** 다. skills.js 는 by 를 안 내보낸다.
+       *   그래서 스킬북이 첫 반복에서 터졌고, 창을 보이게 하는 줄에 아예
+       *   닿지 못했다 — 눌러도 **아무 일도 안 일어나는** 것으로 보였다. */
       var def = SK.byId(sId);
       if (!def) continue;
 
       var barAt = (hero.bar || []).indexOf(def.id);
       var pts = (hero.skills[def.id] || []).length;
-      var isPassive = (def.type === "passive" || def.kind === "passive");
+      var isPassive = (def.type === "passive" && def.kind === "passive");
       var stype = isPassive ? "passive" : "active";
 
+      /* ⚠ `SK.calc` 도 없다. `SK.resolve(id, 가진것)` 이다 — 인자도 다르다.
+       *   이름만 바꾸면 def 를 id 자리에 넣게 되어 조용히 null 이 된다. */
       var r = SK.resolve(def.id, hero.skills);
 
       html += '<div class="col skill" data-type="' + stype + '">' +
         '<div class="head"><canvas width="34" height="34" data-ico="' + def.icon + '"></canvas>' +
         '<div><h3>' + esc(def.name) + '</h3><p class="tag">' +
-        (isPassive ? '지속 패시브 스킬' : ('재사용 ' + def.cd + '초 · 기력 ' + def.stam)) +
+        (isPassive ? '지속 패시브 스킬' : ('재사용 ' + def.cd + '초 · 기력 ' + def.stam + (def.dur ? (' · 지속 ' + def.dur + '초') : ''))) +
         '</p></div></div>' +
         '<p class="desc">' + esc(def.text) + '</p>' +
         '<div class="sub-stat">단계 ' + pts + ' / ' + def.syn.length +
@@ -2682,6 +2987,40 @@
     e.root.classList.toggle("low", f < 0.3);
   }
 
+  function drawBuffsHUD() {
+    var el = document.getElementById("buffbar");
+    if (!el) return;
+    if (!world || !world.buffs || !world.buffs.length) {
+      el.innerHTML = "";
+      return;
+    }
+    var html = "";
+    var SK = global.SKILLS;
+    for (var i = 0; i < world.buffs.length; i++) {
+      var b = world.buffs[i];
+      var left = Math.max(0, b.until - world.time);
+      if (left <= 0) continue;
+      var name = b.name || (SK && SK.byId(b.id) ? SK.byId(b.id).name : b.id);
+      var icon = "✨";
+      if (b.id === "venom") icon = "🗡️";
+      else if (b.id === "shout") icon = "📢";
+      else if (b.id === "shieldup") icon = "🛡️";
+      else if (b.id === "aegis") icon = "✨";
+      else if (b.id === "bloodrage") icon = "🩸";
+      else if (b.id === "stealth") icon = "👤";
+      else if (b.id === "mirrorimage") icon = "👥";
+      else if (b.id === "provoke") icon = "💢";
+      else if (b.id === "ward") icon = "🛡️";
+
+      html += '<div class="buff-badge" title="' + esc(name) + ' 효과 적용 중">' +
+        '<span>' + icon + '</span>' +
+        '<span class="b-name">' + esc(name) + '</span>' +
+        '<span class="b-time">' + left.toFixed(1) + 's</span>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  }
+
   /* ── 캐릭터 만들기 ─────────────────────────────────────
    * 처음 켜면 여기부터다. ⚠ 직업을 못 고르게 두면 도트 셋과 저장 검증이
    *   있으나 마나다(실제로 그랬다 — 전사 하나로만 30층을 도는 게임이었다).
@@ -2832,10 +3171,19 @@
     var place = world.inTown ? "마을 (0층)" : world.depth + "층 (심연의 던전)";
     var xpPct = need ? Math.min(100, Math.round((hero.xp || 0) / need * 100)) : 0;
 
+    var CL = global.CLASSES;
+    var advStr = "미전직 (Lv.15 필요)";
+    if (hero.advClass && CL && CL.ADVANCED_CLASSES[hero.advClass]) {
+      advStr = CL.ADVANCED_CLASSES[hero.advClass].name;
+    } else if (hero.level >= 15) {
+      advStr = '<span style="color:#ffd166; font-weight:bold;">전직 가능! (Lv.15+)</span>';
+    }
+
     var html = '<h2>캐릭터 정보</h2><div class="sub">현재 탐험 및 보유 상태</div>' +
       '<div class="cols" style="flex-direction:column; gap:8px;">' +
         '<div class="col" style="width:100%; font-size:13px; line-height:1.95; word-break:break-word;">' +
           '<div>• 직업 / 레벨: <b style="color:#ffd24a;">' + (world.cls ? world.cls.name : "방랑자") + ' (Lv.' + hero.level + ')</b></div>' +
+          '<div>• 1차 전직: <b>' + advStr + '</b> <button id="btnInfoAltar" class="sbtn" style="background:#278c4d; color:#fff; padding:2px 8px; font-size:12px; margin-left:6px; cursor:pointer;">🏛️ 전직 제단</button></div>' +
           '<div>• 현재 위치: <b>' + place + '</b></div>' +
           '<div>• 보유 금화: <b style="color:#ffe9a8;">' + hero.gold + ' GOLD</b></div>' +
           '<div>• 보유 물약: <b style="color:#9fd29a;">' + hero.potions + '개</b></div>' +
@@ -2851,6 +3199,13 @@
     box.hidden = false;
     box.style.display = "";
     addCloseButton(box);
+
+    var bAltar = document.getElementById("btnInfoAltar");
+    if (bAltar) {
+      bAltar.addEventListener("click", function() {
+        openAltar();
+      });
+    }
   }
 
   function diag() {
@@ -2862,15 +3217,13 @@
       if (!world.ents[i].dead && world.ents[i].team !== 0 && world.ents[i].kind !== "dummy") alive++;
     var need = global.SAVE.needFor(hero.level);
     var place = world.inTown ? "마을" : world.depth + "층";
+    var advNotice = (hero.level >= 15 && !hero.advClass) ? '<span style="color:#ffd166; font-weight:bold; margin-left:6px;" title="1차 전직 가능!">⚡전직가능</span>' : '';
     el.innerHTML =
-      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b></span></div>' +
+      '<div class="d-badge" title="상세 정보 보기 (클릭)"><span class="d-cls">' + (world.cls ? world.cls.name : "방랑자") + ' <b>Lv.' + hero.level + '</b>' + advNotice + '</span></div>' +
       '<div class="d-info">' +
         '<span>' + place + '</span>' +
-        '<span>금화 <b>' + hero.gold + '</b></span>' +
-        '<span>물약 <b>' + hero.potions + '</b></span>' +
         (alive > 0 ? '<span class="d-foe">적 <b>' + alive + '</b></span>' : '') +
-      '</div>' +
-      '<div class="d-fps">' + fps.v + 'fps</div>';
+      '</div>';
   }
 
   function start(opt) {
@@ -2907,7 +3260,9 @@
     var bBag = document.getElementById("btnBag");
     var bSkills = document.getElementById("btnSkills");
     var bClass = document.getElementById("btnClass");
+    var bMerc = document.getElementById("btnMerc");
     var bPot = document.getElementById("btnPotion");
+    var bSet = document.getElementById("btnSettings");
     var bRec = document.getElementById("btnRecall");
     var elDiag = document.getElementById("diag");
 
@@ -2918,7 +3273,9 @@
     var mBag = document.getElementById("mBtnBag");
     var mSkill = document.getElementById("mBtnSkills") || document.getElementById("mBtnSkill");
     var mJob = document.getElementById("mBtnClass") || document.getElementById("mBtnJob");
+    var mMerc = document.getElementById("mBtnMerc");
     var mPot = document.getElementById("mBtnPotion");
+    var mSet = document.getElementById("mBtnSettings");
 
     var bindTap = function (el, fn) {
       if (!el) return;
@@ -2995,6 +3352,15 @@
       if (panelOpen()) closePanel(); else openCreate();
     });
 
+    bindTap(bMerc, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openPetShop();
+    });
+    bindTap(mMerc, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openPetShop();
+    });
+
     bindTap(bPot, function() {
       closeDrop();
       drink();
@@ -3002,6 +3368,15 @@
     bindTap(mPot, function() {
       closeDrop();
       drink();
+    });
+
+    bindTap(bSet, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openSettings();
+    });
+    bindTap(mSet, function() {
+      closeDrop();
+      if (panelOpen()) closePanel(); else openSettings();
     });
 
     bindTap(bRec, function() {
@@ -3229,6 +3604,7 @@
       /* ⚠ **연 키로 닫히게** 한다. I 로 열고 Esc 로만 닫히면 매번 손이 멀리 간다. */
       if (e.code === "KeyI" && panelOpen()) { closePanel(); return; }
       if (e.code === "KeyK" && panelOpen()) { closePanel(); return; }
+      if (e.code === "KeyO" && panelOpen()) { closePanel(); return; }
       /* ⚠ 창 잠금은 **무엇보다 먼저**다. 아래에 두면 이동 키가 이미 처리된
        *   뒤라 층을 고르는 동안 주인공이 그대로 걸어간다(실측 2.24칸 이동).
        *   ⚠ 게다가 keys[] 에 눌림이 남아 창을 닫은 뒤에도 혼자 걸어간다. */
@@ -3242,6 +3618,7 @@
       if (e.code === "KeyI") { openBag(); e.preventDefault(); return; }
       if (e.code === "KeyQ") { drink(); e.preventDefault(); return; }
       if (e.code === "KeyK") { openBook(); e.preventDefault(); return; }
+      if (e.code === "KeyO") { openPetShop(); e.preventDefault(); return; }
       /* 1~6 번 숫자키 스킬 */
       var slot = {
         Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3, Digit5: 4, Digit6: 5,
@@ -3399,20 +3776,6 @@
     };
 
     global.__reloadFromCloud = function () {
-      if (global.SAVE && global.SAVE.slots) {
-        var allSlots = global.SAVE.slots();
-        var bestCls = null, maxLv = 0;
-        for (var cId in allSlots) {
-          if (allSlots[cId].level > maxLv) {
-            maxLv = allSlots[cId].level;
-            bestCls = cId;
-          }
-        }
-        if (bestCls) {
-          var bestSlot = global.SAVE.loadSlot(bestCls);
-          if (bestSlot) global.SAVE.save(bestSlot);
-        }
-      }
       var loaded = global.SAVE.load();
       hero = loaded.save;
       if (panelOpen()) closePanel();
@@ -3420,7 +3783,7 @@
       var cName = (hero.advClass && global.CLASSES && global.CLASSES.ADVANCED_CLASSES[hero.advClass])
         ? global.CLASSES.ADVANCED_CLASSES[hero.advClass].name
         : (global.CLASSES && global.CLASSES.byId(hero.cls) ? global.CLASSES.byId(hero.cls).name : "캐릭터");
-      toast("✨ [" + (global.CLOUD ? global.CLOUD.state().login : "계정") + "] 로그인 성공! " + cName + " Lv." + hero.level + " 로드 완료!");
+      toast("✨ [" + (global.CLOUD ? global.CLOUD.state().login : "계정") + "] 접속 완료! " + cName + " Lv." + hero.level + " 데이터를 불러왔습니다.");
     };
 
     global.__reload = function () {
@@ -3470,6 +3833,8 @@
       mouse.has = false;                 /* 화면 좌표 대신 월드 좌표를 바로 쓴다 */
       return world.swing(wx, wy);
     };
+    global.openAltar = openAltar;
+    global.openAdvancementModal = openAltar;
   }
 
   if (document.readyState === "loading")

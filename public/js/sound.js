@@ -34,10 +34,36 @@
   var failed = false;
   var bus = null;                    /* { master, dry, wet } */
 
+  var masterVol = 1.0;
+  var musicVol = 0.8;
+  var sfxVol = 1.0;
+
   try {
     var saved = localStorage.getItem("rl_sound");
     if (saved === "0") on = false;
+    var smv = localStorage.getItem("rl_master_vol");
+    if (smv !== null && !isNaN(parseFloat(smv))) masterVol = Math.max(0, Math.min(1, parseFloat(smv)));
+    var smu = localStorage.getItem("rl_music_vol");
+    if (smu !== null && !isNaN(parseFloat(smu))) musicVol = Math.max(0, Math.min(1, parseFloat(smu)));
+    var ssf = localStorage.getItem("rl_sfx_vol");
+    if (ssf !== null && !isNaN(parseFloat(ssf))) sfxVol = Math.max(0, Math.min(1, parseFloat(ssf)));
   } catch (e) { /* 저장이 막힌 브라우저 — 이번 판만 기본값으로 */ }
+
+  function updateMasterGain() {
+    if (bus && bus.master) {
+      try { bus.master.gain.value = masterVol; } catch (e) {}
+    }
+  }
+
+  function updateMusicGain() {
+    if (mus && mus.gain && ctx) {
+      try {
+        var t = ctx.currentTime;
+        mus.gain.gain.cancelScheduledValues(t);
+        mus.gain.gain.setValueAtTime(Math.max(0.0001, musicVol), t);
+      } catch (e) {}
+    }
+  }
 
   /* 돌방 울림. 짧게 감쇠하는 잡음을 임펄스로 쓴다.
    *
@@ -74,7 +100,7 @@
     /* ⚠ 실측으로 소리 하나의 최대가 0.014~0.205 였다 — 여유가 다섯 배
      *   남아 있었다. 크기를 올리되 **compressor 가 받아 주는 선**까지만
      *   간다. 겹쳤을 때 1.0 을 넘는지는 검사가 따로 잰다. */
-    master.gain.value = 1.0;
+    master.gain.value = masterVol;
 
     /* ⚠ compressor 가 **찌그러짐을 막는 핵심**이다. 예전에는 소리 셋이 겹치면
      *   진폭이 그냥 더해져 1.0 을 넘었다. */
@@ -328,14 +354,24 @@
   VOICE.levelup = VOICE.level;
 
   function play(name) {
-    if (!on) return false;
+    if (!on || sfxVol <= 0) return false;
     var a = ac();
     if (!a) return false;
     var v = VOICE[name];
     if (!v) return false;
     try {
       if (a.state === "suspended") a.resume();
-      v(a, { dry: bus.dry, wet: bus.wet, live: true });
+      if (sfxVol >= 0.99) {
+        v(a, { dry: bus.dry, wet: bus.wet, live: true });
+      } else {
+        var sg = a.createGain();
+        sg.gain.value = sfxVol;
+        sg.connect(bus.dry);
+        var sw = a.createGain();
+        sw.gain.value = sfxVol * 0.22;
+        sw.connect(bus.wet);
+        v(a, { dry: sg, wet: sw, live: true });
+      }
       return true;
     } catch (e) { return false; }   /* 재생 실패는 게임을 멈출 이유가 아니다 */
   }
@@ -452,7 +488,7 @@
       if (a.state === "suspended") a.resume();
       var g = a.createGain();
       g.gain.setValueAtTime(0.0001, a.currentTime);
-      g.gain.exponentialRampToValueAtTime(1, a.currentTime + 1.6);   /* 스며들 듯 들어온다 */
+      g.gain.exponentialRampToValueAtTime(Math.max(0.0001, musicVol), a.currentTime + 1.6);   /* 스며들 듯 들어온다 */
       /* ⚠ 배경음도 **같은 줄기**를 탄다(dry+wet). 따로 destination 에 꽂으면
        *   compressor 를 안 거쳐 효과음과 합쳐질 때 찌그러진다. */
       g.connect(bus.dry);
@@ -572,14 +608,15 @@
     play: function (name) { return play(name); },
     names: function () { return Object.keys(VOICE); },
     isOn: function () { return on; },
-    toggle: function () {
-      on = !on;
+    setOn: function (v) {
+      on = !!v;
       try { localStorage.setItem("rl_sound", on ? "1" : "0"); } catch (e) {}
-      /* ⚠ 「소리 끔」인데 음악이 계속 나면 고장으로 느낀다 — 함께 멈춘다.
-       *   다시 켤 때 음악을 되살리는 것은 부르는 쪽 몫이다(지금 구역을 알아야 한다). */
       if (!on && global.MUSIC) global.MUSIC.stop();
-      if (on) play("pickup");        /* 켠 순간 들려 줘야 켜졌는지 안다 */
+      if (on) play("pickup");
       return on;
+    },
+    toggle: function () {
+      return this.setOn(!on);
     },
     /* 점검기 창구 — 소리를 **틀지 않고 렌더해서** 잰다.
      *
@@ -631,6 +668,29 @@
           });
         }, fail);
       });
+    }
+  };
+
+  global.AUDIO = {
+    getMasterVol: function () { return masterVol; },
+    setMasterVol: function (val) {
+      masterVol = Math.max(0, Math.min(1, Number(val)));
+      try { localStorage.setItem("rl_master_vol", masterVol); } catch (e) {}
+      updateMasterGain();
+      return masterVol;
+    },
+    getMusicVol: function () { return musicVol; },
+    setMusicVol: function (val) {
+      musicVol = Math.max(0, Math.min(1, Number(val)));
+      try { localStorage.setItem("rl_music_vol", musicVol); } catch (e) {}
+      updateMusicGain();
+      return musicVol;
+    },
+    getSfxVol: function () { return sfxVol; },
+    setSfxVol: function (val) {
+      sfxVol = Math.max(0, Math.min(1, Number(val)));
+      try { localStorage.setItem("rl_sfx_vol", sfxVol); } catch (e) {}
+      return sfxVol;
     }
   };
 })(window);

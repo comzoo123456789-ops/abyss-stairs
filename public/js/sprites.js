@@ -448,6 +448,19 @@
       var px = Math.floor(r() * SIZE), py = cap + Math.floor(r() * (SIZE - cap));
       if (b.get(px, py) === P.face) b.set(px, py, r() < 0.5 ? P.grain1 : P.grain2);
     }
+    /* 덩굴 (Vines) 및 이끼 줄기 — 벽 꼭대기에서 아래로 늘어지는 덩굴 파티클 */
+    if (r() < 0.60) {
+      var vineColor = P.moss || "#6d8a4a";
+      var vineX = Math.floor(r() * (SIZE - 6)) + 2;
+      var vineLen = 10 + Math.floor(r() * 16);
+      for (var vy = cap; vy < cap + vineLen && vy < SIZE - 2; vy++) {
+        var vx = vineX + Math.floor(Math.sin(vy * 0.45) * 2);
+        if (vx >= 0 && vx < SIZE) {
+          b.set(vx, vy, vineColor);
+          if (vx + 1 < SIZE && r() < 0.7) b.set(vx + 1, vy, vineColor);
+        }
+      }
+    }
     /* 바닥과 닿는 두 줄은 가장 어둡게 — 벽이 바닥에 **박혀** 있어야 한다 */
     b.rect(0, SIZE - 2, SIZE, 2, P.mortar);
     return b;
